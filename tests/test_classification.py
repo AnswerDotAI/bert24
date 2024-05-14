@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from omegaconf import DictConfig, OmegaConf
-from sequence_classification import main
+from ..sequence_classification import main
 
 
 def test_classification_script():

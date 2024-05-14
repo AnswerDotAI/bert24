@@ -6,7 +6,8 @@ import tempfile
 from typing import Any
 
 import pytest
-from glue import train
+
+from ..glue import train
 from omegaconf import DictConfig, OmegaConf
 
 
