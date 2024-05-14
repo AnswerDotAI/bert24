@@ -7,7 +7,7 @@ parallel: true
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
 base_run_name: mosaic-bert-base-uncased-glue-finetuning # Determines how runs are saved and logged in W&B
 default_seed: 19
-precision: bf16
+precision: amp_bf16
 
 # Tokenizer for dataset creation
 tokenizer_name: bert-base-uncased

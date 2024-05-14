@@ -22,12 +22,6 @@ from bert_padding import (IndexFirstAxis, IndexPutFirstAxis, index_first_axis,
                           unpad_input_only)
 from configuration_bert import BertConfig
 
-if torch.cuda.is_available():
-    from flash_attn_triton import \
-        flash_attn_func as flash_attn_func_bert # type: ignore
-    from flash_attn_triton import \
-        flash_attn_qkvpacked_func as flash_attn_qkvpacked_func_bert # type: ignore
-
 from hf_bert import create_hf_bert_classification, create_hf_bert_mlm
 from mosaic_bert import (create_mosaic_bert_classification,
                          create_mosaic_bert_mlm)

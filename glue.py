@@ -23,9 +23,8 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import torch
 from composer import algorithms
-from composer.callbacks import (HealthChecker, LRMonitor, MemoryMonitor,
-                                OptimizerMonitor, RuntimeEstimator,
-                                SpeedMonitor)
+from composer.callbacks import (LRMonitor, MemoryMonitor,
+                                OptimizerMonitor, RuntimeEstimator, SpeedMonitor)
 from composer.loggers import WandBLogger
 from composer.optim.scheduler import (ConstantWithWarmupScheduler,
                                       CosineAnnealingWithWarmupScheduler,
@@ -76,8 +75,6 @@ def build_callback(name, kwargs):
     elif name == 'optimizer_monitor':
         return OptimizerMonitor(log_optimizer_metrics=kwargs.get(
             'log_optimizer_metrics', True),)
-    elif name == 'health_checker':
-        return HealthChecker(**kwargs)
     else:
         raise ValueError(f'Not sure how to build callback: {name}')
 

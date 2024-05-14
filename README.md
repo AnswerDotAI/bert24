@@ -38,7 +38,6 @@ You'll find in this folder:
 - `src/mosaic_bert.py` — Mosaic BERT models for MLM (pre-training) or classification (GLUE fine-tuning). See [Mosaic BERT](#mosaic-bert) for more.
 - `src/bert_layers.py` — The Mosaic BERT layers/modules with our custom speed up methods built in, with an eye towards HuggingFace API compatibility.
 - `src/bert_padding.py` — Utilities for Mosaic BERT that help avoid padding overhead.
-- `src/flash_attn_triton.py` - Source code for the [FlashAttention](https://arxiv.org/abs/2205.14135) implementation used in Mosaic BERT.
 - `src/text_data.py`- a [MosaicML streaming dataset](https://streaming.docs.mosaicml.com/en/stable/) that can be used with a vanilla PyTorch dataloader.
 - `src/convert_dataset.py` - A script to convert a text dataset from HuggingFace to a [MosaicML streaming dataset](https://streaming.docs.mosaicml.com/en/stable/).
 - `requirements.txt` — All needed Python dependencies.
