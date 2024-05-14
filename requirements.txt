@@ -5,4 +5,3 @@ mosaicml-streaming==0.7.6
 omegaconf==2.3.0
 transformers==4.40.2
 triton==2.3.0
-flash_attn==2.5.8

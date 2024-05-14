@@ -6,6 +6,19 @@ This repository is initialised off [MosaicBERT](https://github.com/mosaicml/exam
 
 Below, you'll temporarily find the original repository's README.md to help get you started in navigating the repository, as we start hacking away.
 
+## Setup
+
+To setup a reproducible Conda environment, run the following commands:
+
+```bash
+conda env create -f environment.yaml
+conda activate bert24
+pip install "flash_attn==2.5.8" --no-build-isolation
+# or download a precompiled wheel from https://github.com/Dao-AILab/flash-attention/releases/tag/v2.5.8
+# or limit the number of parallel compilation jobs
+# MAX_JOBS=8 pip install "flash_attn==2.5.8" --no-build-isolation
+```
+
 ----
 
 ## Original README
