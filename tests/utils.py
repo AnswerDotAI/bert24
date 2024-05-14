@@ -12,7 +12,6 @@ import streaming
 
 
 class SynthTextDirectory(object):
-
     def __enter__(self):
         path = create_synthetic_text_dataset()
         self.path = path  # type: ignore (reportUninitializedInstanceVariable)
@@ -26,20 +25,14 @@ class SynthTextDirectory(object):
 def create_synthetic_text_dataset(n_samples: int = 16):
     tmp_dirname = tempfile.mkdtemp()
 
-    for split in ['train', 'val']:
+    for split in ["train", "val"]:
         dirname = os.path.join(tmp_dirname, split)
-        hashes = ['sha1', 'xxh64']
+        hashes = ["sha1", "xxh64"]
         size_limit = 1 << 25
-        with streaming.MDSWriter(columns={'text': 'str'},
-                                 out=dirname,
-                                 hashes=hashes,
-                                 size_limit=size_limit) as out:
+        with streaming.MDSWriter(columns={"text": "str"}, out=dirname, hashes=hashes, size_limit=size_limit) as out:
             for _ in range(n_samples):
                 n_letters = np.random.randint(low=5, high=256)
-                letter_str = ' '.join([
-                    random.choice('abcdefghijklmnopqrstuvwxyz')
-                    for _ in range(n_letters)
-                ])
-                out.write({'text': letter_str})
+                letter_str = " ".join([random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(n_letters)])
+                out.write({"text": letter_str})
 
     return tmp_dirname

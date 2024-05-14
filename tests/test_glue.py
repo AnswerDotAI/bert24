@@ -11,7 +11,6 @@ from omegaconf import DictConfig, OmegaConf
 
 
 class GlueDirContext(object):
-
     def __init__(self):
         self.path = None
 
@@ -25,9 +24,9 @@ class GlueDirContext(object):
             shutil.rmtree(self.path)
 
 
-@pytest.mark.parametrize('model_name', ['mosaic_bert', 'hf_bert'])
+@pytest.mark.parametrize("model_name", ["mosaic_bert", "hf_bert"])
 def test_glue_script(model_name: str):
-    with open('tests/smoketest_config_glue.yaml') as f:
+    with open("tests/smoketest_config_glue.yaml") as f:
         config = OmegaConf.load(f)
     assert isinstance(config, DictConfig)
     config.model.name = model_name

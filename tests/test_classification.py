@@ -6,7 +6,7 @@ from sequence_classification import main
 
 
 def test_classification_script():
-    with open('tests/smoketest_config_classification.yaml') as f:
+    with open("tests/smoketest_config_classification.yaml") as f:
         config = OmegaConf.load(f)
     assert isinstance(config, DictConfig)
 
