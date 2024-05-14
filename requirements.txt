@@ -1,0 +1,12 @@
+einops==0.5.0
+torch==2.1.1
+composer[nlp,wandb]>=0.17.0,<0.18
+mosaicml-streaming<=0.7
+omegaconf==2.3.0
+transformers==4.35.2
+# need a newer version of FA2
+flash_attn>=2.4.2
+# previously, the following triton version was required for
+# custom Flash Attention that supported ALiBi. This is only
+# compatible with PyTorch 1.13 and is deprecated
+#triton==2.0.0.dev20221103
