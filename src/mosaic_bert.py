@@ -15,22 +15,23 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import bert_layers as bert_layers_module
 import configuration_bert as configuration_bert_module
 import transformers
-from composer.metrics.nlp import (BinaryF1Score, LanguageCrossEntropy,
-                                  MaskedAccuracy)
+from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification.accuracy import MulticlassAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
 
-all = ['create_mosaic_bert_mlm', 'create_mosaic_bert_classification']
+all = ["create_mosaic_bert_mlm", "create_mosaic_bert_classification"]
 
 
-def create_mosaic_bert_mlm(pretrained_model_name: str = 'bert-base-uncased',
-                           model_config: Optional[dict] = None,
-                           tokenizer_name: Optional[str] = None,
-                           gradient_checkpointing: Optional[bool] = False,
-                           pretrained_checkpoint: Optional[str] = None):
+def create_mosaic_bert_mlm(
+    pretrained_model_name: str = "bert-base-uncased",
+    model_config: Optional[dict] = None,
+    tokenizer_name: Optional[str] = None,
+    gradient_checkpointing: Optional[bool] = False,
+    pretrained_checkpoint: Optional[str] = None,
+):
     """Mosaic BERT masked language model based on |:hugging_face:| Transformers.
 
     For more information, see
@@ -93,10 +94,9 @@ def create_mosaic_bert_mlm(pretrained_model_name: str = 'bert-base-uncased',
         model_config = {}
 
     if not pretrained_model_name:
-        pretrained_model_name = 'bert-base-uncased'
+        pretrained_model_name = "bert-base-uncased"
 
-    config = configuration_bert_module.BertConfig.from_pretrained(
-        pretrained_model_name, **model_config)
+    config = configuration_bert_module.BertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -104,7 +104,8 @@ def create_mosaic_bert_mlm(pretrained_model_name: str = 'bert-base-uncased',
 
     if pretrained_checkpoint is not None:
         model = bert_layers_module.BertForMaskedLM.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config)
+            pretrained_checkpoint=pretrained_checkpoint, config=config
+        )
     else:
         model = bert_layers_module.BertForMaskedLM(config)
 
@@ -115,19 +116,15 @@ def create_mosaic_bert_mlm(pretrained_model_name: str = 'bert-base-uncased',
     if tokenizer_name:
         tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            pretrained_model_name)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
     metrics = [
         # vocab size no longer arg in composer
         LanguageCrossEntropy(ignore_index=-100),
-        MaskedAccuracy(ignore_index=-100)
+        MaskedAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(model=model,
-                                tokenizer=tokenizer,
-                                use_logits=True,
-                                metrics=metrics)
+    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
@@ -139,12 +136,13 @@ def create_mosaic_bert_mlm(pretrained_model_name: str = 'bert-base-uncased',
 
 
 def create_mosaic_bert_classification(
-        num_labels: int,
-        pretrained_model_name: str = 'bert-base-uncased',
-        model_config: Optional[dict] = None,
-        tokenizer_name: Optional[str] = None,
-        gradient_checkpointing: Optional[bool] = False,
-        pretrained_checkpoint: Optional[str] = None):
+    num_labels: int,
+    pretrained_model_name: str = "bert-base-uncased",
+    model_config: Optional[dict] = None,
+    tokenizer_name: Optional[str] = None,
+    gradient_checkpointing: Optional[bool] = False,
+    pretrained_checkpoint: Optional[str] = None,
+):
     """Mosaic BERT classification model based on |:hugging_face:| Transformers.
 
     For more information, see `Transformers. <https://huggingface.co/transformers/>`_.
@@ -233,22 +231,23 @@ def create_mosaic_bert_classification(
     # Flash Attention 2 supports dropout in the attention module
     # while our previous Triton Flash Attention layer only works with
     # attention_probs_dropout_prob = 0.
-    if 'attention_probs_dropout_prob' not in model_config:
-        model_config['attention_probs_dropout_prob'] = 0.0
+    if "attention_probs_dropout_prob" not in model_config:
+        model_config["attention_probs_dropout_prob"] = 0.0
 
     # Use `alibi_starting_size` to determine how large of an alibi tensor to
     # create when initializing the model. You should be able to ignore
     # this parameter in most cases.
-    if 'alibi_starting_size' not in model_config:
-        model_config['alibi_starting_size'] = 512
+    if "alibi_starting_size" not in model_config:
+        model_config["alibi_starting_size"] = 512
 
-    model_config['num_labels'] = num_labels
+    model_config["num_labels"] = num_labels
 
     if not pretrained_model_name:
-        pretrained_model_name = 'bert-base-uncased'
+        pretrained_model_name = "bert-base-uncased"
 
     config, unused_kwargs = transformers.AutoConfig.from_pretrained(
-        pretrained_model_name, return_unused_kwargs=True, **model_config)
+        pretrained_model_name, return_unused_kwargs=True, **model_config
+    )
     # This lets us use non-standard config fields (e.g. `starting_alibi_size`)
     config.update(unused_kwargs)
 
@@ -258,7 +257,8 @@ def create_mosaic_bert_classification(
 
     if pretrained_checkpoint is not None:
         model = bert_layers_module.BertForSequenceClassification.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config)
+            pretrained_checkpoint=pretrained_checkpoint, config=config
+        )
     else:
         model = bert_layers_module.BertForSequenceClassification(config)
 
@@ -269,8 +269,7 @@ def create_mosaic_bert_classification(
     if tokenizer_name:
         tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            pretrained_model_name)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
     if num_labels == 1:
         # Metrics for a regression model
@@ -278,17 +277,13 @@ def create_mosaic_bert_classification(
     else:
         # Metrics for a classification model
         metrics = [
-            MulticlassAccuracy(num_classes=num_labels, average='micro'),
-            MatthewsCorrCoef(task='multiclass',
-                             num_classes=model.config.num_labels)
+            MulticlassAccuracy(num_classes=num_labels, average="micro"),
+            MatthewsCorrCoef(task="multiclass", num_classes=model.config.num_labels),
         ]
         if num_labels == 2:
             metrics.append(BinaryF1Score())
 
-    hf_model = HuggingFaceModel(model=model,
-                                tokenizer=tokenizer,
-                                use_logits=True,
-                                metrics=metrics)
+    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it

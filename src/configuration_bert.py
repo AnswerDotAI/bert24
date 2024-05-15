@@ -5,7 +5,6 @@ from transformers import BertConfig as TransformersBertConfig
 
 
 class BertConfig(TransformersBertConfig):
-
     def __init__(
         self,
         alibi_starting_size: int = 512,
@@ -22,6 +21,5 @@ class BertConfig(TransformersBertConfig):
                 Note that the custom Triton Flash Attention with ALiBi implementation does not support droput.
                 However, Flash Attention 2 supports ALiBi and dropout https://github.com/Dao-AILab/flash-attention
         """
-        super().__init__(
-            attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
+        super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size

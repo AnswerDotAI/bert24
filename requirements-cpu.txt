@@ -1,6 +1,6 @@
-einops==0.5.0
-torch==2.1.1
-composer[nlp,wandb]>=0.17.0,<0.18
-mosaicml-streaming<=0.7
+einops==0.8.0
+torch==2.3.0
+mosaicml[nlp,wandb]>=0.22.0,<0.23
+mosaicml-streaming==0.7.6
 omegaconf==2.3.0
-transformers==4.35.2
+transformers==4.40.2

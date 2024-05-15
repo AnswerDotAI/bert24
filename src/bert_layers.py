@@ -42,7 +42,6 @@ import math
 import os
 import sys
 import warnings
-from functools import lru_cache
 from typing import List, Optional, Tuple, Union
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
@@ -56,39 +55,25 @@ import torch.nn as nn
 from einops import rearrange
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from transformers.activations import ACT2FN
-from transformers.modeling_outputs import (MaskedLMOutput,
-                                           SequenceClassifierOutput)
+from transformers.modeling_outputs import MaskedLMOutput, SequenceClassifierOutput
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
 try:
-    from flash_attn import flash_attn_qkvpacked_func  # type: ignore
-    installed_version = importlib.metadata.version('flash_attn')  # type: ignore
-    if installed_version < '2.4.2':
-        raise ImportError('newer version of flash_attn required (>= 2.4.2)')
+    from flash_attn import flash_attn_varlen_qkvpacked_func  # type: ignore
+
+    installed_version = importlib.metadata.version("flash_attn")  # type: ignore
+    if installed_version < "2.5.7":
+        raise ImportError("newer version of flash_attn required (>= 2.5.7)")
     IMPL_USE_FLASH2 = True
+    flash_attn_qkvpacked_func = None
 except ImportError as e:
     warnings.warn(
-        f'Failed to import flash_attn. Will try to import triton implementation: {e}',
-        stacklevel=2)
-    # Import custom Triton Flash Attention implementation that supports ALiBi
-    try:
-        import flash_attn_triton as flash_attn_triton
-        flash_attn_qkvpacked_func = flash_attn_triton.flash_attn_qkvpacked_func
-    except ImportError as e:
-        flash_attn_qkvpacked_func = None
-        warnings.warn(f'Failed to import flash_attn_triton as a fallback: {e}',
-                      stacklevel=2)
+        f"Failed to import flash_attn. Will use slow and memory hungry PyTorch native implementation: {e}", stacklevel=2
+    )
 
 logger = logging.getLogger(__name__)
-
-
-@lru_cache
-def _get_half_dtype() -> torch.dtype:
-    if torch.cuda.is_bf16_supported():
-        return torch.bfloat16
-    return torch.float16
 
 
 class BertEmbeddings(nn.Module):
@@ -109,22 +94,17 @@ class BertEmbeddings(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size,
-                                            config.hidden_size,
-                                            padding_idx=config.pad_token_id)
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         # ALiBi doesn't use position embeddings
-        self.token_type_embeddings = nn.Embedding(config.type_vocab_size,
-                                                  config.hidden_size)
+        self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model
         # variable name and be able to load any TensorFlow checkpoint file
-        self.LayerNorm = nn.LayerNorm(config.hidden_size,
-                                      eps=config.layer_norm_eps)
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.register_buffer('token_type_ids',
-                             torch.zeros(config.max_position_embeddings,
-                                         dtype=torch.long),
-                             persistent=False)
+        self.register_buffer(
+            "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False
+        )
 
     def forward(
         self,
@@ -135,7 +115,7 @@ class BertEmbeddings(nn.Module):
         past_key_values_length: int = 0,
     ) -> torch.Tensor:
         if (input_ids is not None) == (inputs_embeds is not None):
-            raise ValueError('Must specify either input_ids or input_embeds!')
+            raise ValueError("Must specify either input_ids or input_embeds!")
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -153,16 +133,17 @@ class BertEmbeddings(nn.Module):
         # registered buffer helps users when tracing the model without passing
         # token_type_ids, solves issue #5664
         if token_type_ids is None:
-            if hasattr(self, 'token_type_ids'):
+            if hasattr(self, "token_type_ids"):
                 assert isinstance(self.token_type_ids, torch.LongTensor)
                 buffered_token_type_ids = self.token_type_ids[:, :seq_length]
-                buffered_token_type_ids_expanded = buffered_token_type_ids.expand(
-                    input_shape[0], seq_length)
+                buffered_token_type_ids_expanded = buffered_token_type_ids.expand(input_shape[0], seq_length)
                 token_type_ids = buffered_token_type_ids_expanded  # type: ignore
             else:
-                token_type_ids = torch.zeros(input_shape,  # type: ignore
-                                             dtype=torch.long,
-                                             device=self.word_embeddings.device) # type: ignore  # yapf: disable
+                token_type_ids = torch.zeros(
+                    input_shape,  # type: ignore
+                    dtype=torch.long,
+                    device=self.word_embeddings.device,
+                )  # type: ignore  # yapf: disable
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
@@ -189,30 +170,35 @@ class BertUnpadSelfAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(
-                config, 'embedding_size'):
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
-                f'The hidden size ({config.hidden_size}) is not a multiple of the number of attention '
-                f'heads ({config.num_attention_heads})')
+                f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
+                f"heads ({config.num_attention_heads})"
+            )
 
         self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = int(config.hidden_size /
-                                       config.num_attention_heads)
+        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.p_dropout = config.attention_probs_dropout_prob
         self.Wqkv = nn.Linear(self.all_head_size, 3 * config.hidden_size)
 
         # Warn if defaulting to pytorch because of import issues
-        if flash_attn_qkvpacked_func is None:
+        if not IMPL_USE_FLASH2:
             warnings.warn(
-                'Unable to import Triton; defaulting MosaicBERT attention implementation to pytorch (this will reduce throughput when using this model).'
+                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to pytorch (this will reduce throughput when using this model)."
             )
 
-    def forward(self, hidden_states: torch.Tensor, cu_seqlens: torch.Tensor,
-                max_seqlen_in_batch: int, indices: torch.Tensor,
-                attn_mask: torch.Tensor, bias: torch.Tensor,
-                slopes: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen_in_batch: int,
+        indices: torch.Tensor,
+        attn_mask: torch.Tensor,
+        bias: torch.Tensor,
+        slopes: torch.Tensor,
+    ) -> torch.Tensor:
         """Perform self-attention.
 
         There are three attention implementations supported: vanilla attention with ALiBi,
@@ -236,82 +222,58 @@ class BertUnpadSelfAttention(nn.Module):
         Returns:
             attention: (total_nnz, dim)
         """
+        bs, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
-        qkv = bert_padding_module.pad_input(
-            qkv, indices, cu_seqlens.shape[0] - 1,
-            max_seqlen_in_batch)  # batch, max_seqlen_in_batch, thd
-        qkv = rearrange(qkv,
-                        'b s (t h d) -> b s t h d',
-                        t=3,
-                        h=self.num_attention_heads)
 
-        # Option 1: Vanilla Self Attention with ALiBi
-        if (not IMPL_USE_FLASH2 and
-                self.p_dropout) or flash_attn_qkvpacked_func is None:
+        # Option 1: Flash Attention with ALiBi
+        if IMPL_USE_FLASH2:
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attention_head_size)
+            assert 1 <= len(slopes.shape) <= 2, f"{slopes=}"
+            assert slopes.shape[-1] == self.num_attention_heads, f"{slopes=}"
+
+            convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
+            if convert_dtype:
+                # FA2 implementation only supports fp16 and bf16
+                # If FA2 is supported, bfloat16 must be supported
+                # as of FA2 2.4.2. (Turing GPUs not supported)
+                orig_dtype = qkv.dtype
+                qkv = qkv.to(torch.bfloat16)
+
+                attention = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen_in_batch,
+                    dropout_p=self.p_dropout,
+                    alibi_slopes=slopes,
+                )
+                attention = attention.to(orig_dtype)  # type: ignore
+            else:
+                attention = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen_in_batch,
+                    dropout_p=self.p_dropout,
+                    alibi_slopes=slopes,
+                )
+        else:
+            qkv = bert_padding_module.pad_input(
+                qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen_in_batch
+            )  # batch, max_seqlen_in_batch, thd
+            unpad_bs, *_ = qkv.shape
+            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attention_head_size)
             # if we have nonzero attention dropout (e.g. during fine-tuning) or no Triton, compute attention in PyTorch
             q = qkv[:, :, 0, :, :].permute(0, 2, 1, 3)  # b h s d
             k = qkv[:, :, 1, :, :].permute(0, 2, 3, 1)  # b h d s
             v = qkv[:, :, 2, :, :].permute(0, 2, 1, 3)  # b h s d
-            attention_scores = torch.matmul(q, k) / math.sqrt(
-                self.attention_head_size)
+            attention_scores = torch.matmul(q, k) / math.sqrt(self.attention_head_size)
             attention_scores = attention_scores + bias
             attention_probs = nn.functional.softmax(attention_scores, dim=-1)
             attention_probs = self.dropout(attention_probs)
-            attention = torch.matmul(attention_probs, v).permute(0, 2, 1,
-                                                                 3)  # b s h d
-        else:
-            # Option 2: Flash Attention 2 with ALiBi
-            if IMPL_USE_FLASH2:
-                assert 1 <= len(slopes.shape) <= 2, f'{slopes=}'
-                assert slopes.shape[
-                    -1] == self.num_attention_heads, f'{slopes=}'
+            attention = torch.matmul(attention_probs, v).permute(0, 2, 1, 3)  # b s h d
 
-                convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
-                if convert_dtype:
-                    # FA2 implementation only supports fp16 and bf16
-                    # If FA2 is supported, bfloat16 must be supported
-                    # as of FA2 2.4.2. (Turing GPUs not supported)
-                    orig_dtype = qkv.dtype
-                    qkv = qkv.to(torch.bfloat16)
-                    bias_dtype = bias.dtype
-                    bias = bias.to(torch.bfloat16)
-
-                    attention = flash_attn_qkvpacked_func(
-                        qkv, dropout_p=self.p_dropout, alibi_slopes=slopes)
-                    attention = attention.to(orig_dtype)  # type: ignore
-                    bias = bias.to(bias_dtype)
-                else:
-                    attention = flash_attn_qkvpacked_func(
-                        qkv, dropout_p=self.p_dropout, alibi_slopes=slopes)
-            # Option 3: Triton Implementation of Flash Attention with ALiBi
-            else:
-                # Triton implementation only supports 0 attention dropout
-                if self.p_dropout > 0.0:
-                    raise ValueError(
-                        f'dropout probability of the attention layer is ({self.p_dropout} '
-                        f'the Triton kernel for Flash Attention requires attention_probs_dropout_prob=0'
-                    )
-
-                convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
-                if convert_dtype:
-                    half = _get_half_dtype()
-
-                    # Triton implementation only supports fp16 and bf16
-                    orig_dtype = qkv.dtype
-                    qkv = qkv.to(half)
-                    bias_dtype = bias.dtype
-                    bias = bias.to(half)
-                    attention = flash_attn_qkvpacked_func(qkv, bias)
-                    attention = attention.to(orig_dtype)  # type: ignore
-                    bias = bias.to(bias_dtype)
-                else:
-                    attention = flash_attn_qkvpacked_func(qkv, bias)
-
-        # attn_mask is 1 for attend and 0 for don't attend
-        attention = bert_padding_module.unpad_input_only(
-            attention,  # type: ignore
-            torch.squeeze(attn_mask) == 1)
-        return rearrange(attention, 'nnz h d -> nnz (h d)')
+        if not IMPL_USE_FLASH2:
+            attention = bert_padding_module.unpad_input_only(attention, torch.squeeze(attn_mask) == 1)
+        return attention.view(bs, dim)
 
 
 # Copy of transformer's library BertSelfOutput that will not be caught by surgery methods looking for HF BERT modules.
@@ -329,12 +291,10 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = nn.LayerNorm(config.hidden_size,
-                                      eps=config.layer_norm_eps)
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, hidden_states: torch.Tensor,
-                input_tensor: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
@@ -373,13 +333,13 @@ class BertUnpadAttention(nn.Module):
             bias: None or (batch, heads, max_seqlen_in_batch, max_seqlen_in_batch)
             slopes: None or (batch, heads) or (heads,)
         """
-        assert (bias is None) == (slopes is None), f'{bias=}, {slopes=}'
-        self_output = self.self(input_tensor, cu_seqlens, max_s, indices,
-                                attn_mask, bias, slopes)
+        assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
+        self_output = self.self(input_tensor, cu_seqlens, max_s, indices, attn_mask, bias, slopes)
         if subset_idx is not None:
             return self.output(
                 bert_padding_module.index_first_axis(self_output, subset_idx),
-                bert_padding_module.index_first_axis(input_tensor, subset_idx))
+                bert_padding_module.index_first_axis(input_tensor, subset_idx),
+            )
         else:
             return self.output(self_output, input_tensor)
 
@@ -402,14 +362,11 @@ class BertGatedLinearUnitMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.gated_layers = nn.Linear(config.hidden_size,
-                                      config.intermediate_size * 2,
-                                      bias=False)
-        self.act = nn.GELU(approximate='none')
+        self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
+        self.act = nn.GELU(approximate="none")
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = nn.LayerNorm(config.hidden_size,
-                                      eps=config.layer_norm_eps)
+        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
@@ -421,8 +378,8 @@ class BertGatedLinearUnitMLP(nn.Module):
         residual_connection = hidden_states
         # compute the activation
         hidden_states = self.gated_layers(hidden_states)
-        gated = hidden_states[:, :self.config.intermediate_size]
-        non_gated = hidden_states[:, self.config.intermediate_size:]
+        gated = hidden_states[:, : self.config.intermediate_size]
+        non_gated = hidden_states[:, self.config.intermediate_size :]
         hidden_states = self.act(gated) * non_gated
         hidden_states = self.dropout(hidden_states)
         # multiply by the second matrix
@@ -464,10 +421,10 @@ class BertLayer(nn.Module):
             bias: None or (batch, heads, max_seqlen_in_batch, max_seqlen_in_batch)
             slopes: None or (batch, heads) or (heads,)
         """
-        assert (bias is None) == (slopes is None), f'{bias=}, {slopes=}'
-        attention_output = self.attention(hidden_states, cu_seqlens, seqlen,
-                                          subset_idx, indices, attn_mask, bias,
-                                          slopes)
+        assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
+        attention_output = self.attention(
+            hidden_states, cu_seqlens, seqlen, subset_idx, indices, attn_mask, bias, slopes
+        )
         layer_output = self.mlp(attention_output)
         return layer_output
 
@@ -485,8 +442,7 @@ class BertEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         layer = BertLayer(config)
-        self.layer = nn.ModuleList(
-            [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
         self.num_attention_heads = config.num_attention_heads
 
@@ -495,14 +451,10 @@ class BertEncoder(nn.Module):
         # to a reasonably large size to help pre-allocate CUDA memory.
         # The default `alibi_starting_size` is 512.
         self._current_alibi_size = int(config.alibi_starting_size)
-        self.alibi = torch.zeros(
-            (1, self.num_attention_heads, self._current_alibi_size,
-             self._current_alibi_size))
+        self.alibi = torch.zeros((1, self.num_attention_heads, self._current_alibi_size, self._current_alibi_size))
         self.rebuild_alibi_tensor(size=config.alibi_starting_size)
 
-    def rebuild_alibi_tensor(self,
-                             size: int,
-                             device: Optional[Union[torch.device, str]] = None):
+    def rebuild_alibi_tensor(self, size: int, device: Optional[Union[torch.device, str]] = None):
         # Alibi
         # Following https://github.com/ofirpress/attention_with_linear_biases/issues/5 (Implementation 1)
         # In the causal case, you can exploit the fact that softmax is invariant to a uniform translation
@@ -511,9 +463,8 @@ class BertEncoder(nn.Module):
         n_heads = self.num_attention_heads
 
         def _get_alibi_head_slopes(n_heads: int) -> List[float]:
-
             def get_slopes_power_of_2(n_heads: int) -> List[float]:
-                start = (2**(-2**-(math.log2(n_heads) - 3)))
+                start = 2 ** (-(2 ** -(math.log2(n_heads) - 3)))
                 ratio = start
                 return [start * ratio**i for i in range(n_heads)]
 
@@ -524,18 +475,17 @@ class BertEncoder(nn.Module):
             if math.log2(n_heads).is_integer():
                 return get_slopes_power_of_2(n_heads)
 
-            closest_power_of_2 = 2**math.floor(math.log2(n_heads))
+            closest_power_of_2 = 2 ** math.floor(math.log2(n_heads))
             slopes_a = get_slopes_power_of_2(closest_power_of_2)
             slopes_b = _get_alibi_head_slopes(2 * closest_power_of_2)
-            slopes_b = slopes_b[0::2][:n_heads - closest_power_of_2]
+            slopes_b = slopes_b[0::2][: n_heads - closest_power_of_2]
             return slopes_a + slopes_b
 
         context_position = torch.arange(size, device=device)[:, None]
         memory_position = torch.arange(size, device=device)[None, :]
         relative_position = torch.abs(memory_position - context_position)
         # [n_heads, max_token_length, max_token_length]
-        relative_position = relative_position.unsqueeze(0).expand(
-            n_heads, -1, -1)
+        relative_position = relative_position.unsqueeze(0).expand(n_heads, -1, -1)
         slopes = torch.Tensor(_get_alibi_head_slopes(n_heads)).to(device)
         self.slopes = slopes
         alibi = slopes.unsqueeze(1).unsqueeze(1) * -relative_position
@@ -553,10 +503,8 @@ class BertEncoder(nn.Module):
         output_all_encoded_layers: Optional[bool] = True,
         subset_mask: Optional[torch.Tensor] = None,
     ) -> List[torch.Tensor]:
-
         extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_attention_mask = extended_attention_mask.to(
-            dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         attention_mask_bool = attention_mask.bool()
@@ -566,15 +514,12 @@ class BertEncoder(nn.Module):
         # and ntokens_unpad is total number of non-padded tokens.
         # Then unpadding performs the following compression of the inputs:
         # hidden_states[ntokens,hidden] -> hidden_states[ntokens_unpad,hidden]
-        hidden_states, indices, cu_seqlens, _ = bert_padding_module.unpad_input(
-            hidden_states, attention_mask_bool)
+        hidden_states, indices, cu_seqlens, _ = bert_padding_module.unpad_input(hidden_states, attention_mask_bool)
 
         # Add alibi matrix to extended_attention_mask
         if self._current_alibi_size < seqlen:
             # Rebuild the alibi tensor when needed
-            warnings.warn(
-                f'Increasing alibi size from {self._current_alibi_size} to {seqlen}'
-            )
+            warnings.warn(f"Increasing alibi size from {self._current_alibi_size} to {seqlen}")
             self.rebuild_alibi_tensor(size=seqlen, device=hidden_states.device)
         elif self.alibi.device != hidden_states.device:
             # Device catch-up
@@ -587,14 +532,16 @@ class BertEncoder(nn.Module):
         all_encoder_layers = []
         if subset_mask is None:
             for layer_module in self.layer:
-                hidden_states = layer_module(hidden_states,
-                                             cu_seqlens,
-                                             seqlen,
-                                             None,
-                                             indices,
-                                             attn_mask=attention_mask,
-                                             bias=alibi_attn_mask,
-                                             slopes=self.slopes)
+                hidden_states = layer_module(
+                    hidden_states,
+                    cu_seqlens,
+                    seqlen,
+                    None,
+                    indices,
+                    attn_mask=attention_mask,
+                    bias=alibi_attn_mask,
+                    slopes=self.slopes,
+                )
                 if output_all_encoded_layers:
                     all_encoder_layers.append(hidden_states)
             # Pad inputs and mask. It will insert back zero-padded tokens.
@@ -602,31 +549,33 @@ class BertEncoder(nn.Module):
             # and ntokens_unpad is total number of non-padded tokens.
             # Then padding performs the following de-compression:
             #     hidden_states[ntokens_unpad,hidden] -> hidden_states[ntokens,hidden]
-            hidden_states = bert_padding_module.pad_input(
-                hidden_states, indices, batch, seqlen)
+            hidden_states = bert_padding_module.pad_input(hidden_states, indices, batch, seqlen)
         else:
             for i in range(len(self.layer) - 1):
                 layer_module = self.layer[i]
-                hidden_states = layer_module(hidden_states,
-                                             cu_seqlens,
-                                             seqlen,
-                                             None,
-                                             indices,
-                                             attn_mask=attention_mask,
-                                             bias=alibi_attn_mask,
-                                             slopes=self.slopes)
+                hidden_states = layer_module(
+                    hidden_states,
+                    cu_seqlens,
+                    seqlen,
+                    None,
+                    indices,
+                    attn_mask=attention_mask,
+                    bias=alibi_attn_mask,
+                    slopes=self.slopes,
+                )
                 if output_all_encoded_layers:
                     all_encoder_layers.append(hidden_states)
-            subset_idx = torch.nonzero(subset_mask[attention_mask_bool],
-                                       as_tuple=False).flatten()
-            hidden_states = self.layer[-1](hidden_states,
-                                           cu_seqlens,
-                                           seqlen,
-                                           subset_idx=subset_idx,
-                                           indices=indices,
-                                           attn_mask=attention_mask,
-                                           bias=alibi_attn_mask,
-                                           slopes=self.slopes)
+            subset_idx = torch.nonzero(subset_mask[attention_mask_bool], as_tuple=False).flatten()
+            hidden_states = self.layer[-1](
+                hidden_states,
+                cu_seqlens,
+                seqlen,
+                subset_idx=subset_idx,
+                indices=indices,
+                attn_mask=attention_mask,
+                bias=alibi_attn_mask,
+                slopes=self.slopes,
+            )
 
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
@@ -634,15 +583,12 @@ class BertEncoder(nn.Module):
 
 
 class BertPooler(nn.Module):
-
     def __init__(self, config):
         super(BertPooler, self).__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
 
-    def forward(self,
-                hidden_states: torch.Tensor,
-                pool: Optional[bool] = True) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, pool: Optional[bool] = True) -> torch.Tensor:
         # We "pool" the model by simply taking the hidden state corresponding
         # to the first token.
         first_token_tensor = hidden_states[:, 0] if pool else hidden_states
@@ -652,7 +598,6 @@ class BertPooler(nn.Module):
 
 
 class BertPredictionHeadTransform(nn.Module):
-
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -733,15 +678,14 @@ class BertModel(BertPreTrainedModel):
         position_ids: Optional[torch.Tensor] = None,
         output_all_encoded_layers: Optional[bool] = False,
         masked_tokens_mask: Optional[torch.Tensor] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Union[List[torch.Tensor], torch.Tensor], Optional[torch.Tensor]]:
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
-        embedding_output = self.embeddings(input_ids, token_type_ids,
-                                           position_ids)
+        embedding_output = self.embeddings(input_ids, token_type_ids, position_ids)
 
         subset_mask = []
         first_col_mask = []
@@ -757,21 +701,19 @@ class BertModel(BertPreTrainedModel):
             embedding_output,
             attention_mask,
             output_all_encoded_layers=output_all_encoded_layers,
-            subset_mask=subset_mask)
+            subset_mask=subset_mask,
+        )
 
         if masked_tokens_mask is None:
             sequence_output = encoder_outputs[-1]
-            pooled_output = self.pooler(
-                sequence_output) if self.pooler is not None else None
+            pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
         else:
             # TD [2022-03-01]: the indexing here is very tricky.
             attention_mask_bool = attention_mask.bool()
             subset_idx = subset_mask[attention_mask_bool]  # type: ignore
-            sequence_output = encoder_outputs[-1][
-                masked_tokens_mask[attention_mask_bool][subset_idx]]
+            sequence_output = encoder_outputs[-1][masked_tokens_mask[attention_mask_bool][subset_idx]]
             if self.pooler is not None:
-                pool_input = encoder_outputs[-1][
-                    first_col_mask[attention_mask_bool][subset_idx]]
+                pool_input = encoder_outputs[-1][first_col_mask[attention_mask_bool][subset_idx]]
                 pooled_output = self.pooler(pool_input, pool=False)
             else:
                 pooled_output = None
@@ -789,14 +731,12 @@ class BertModel(BertPreTrainedModel):
 # Bert Heads
 ###################
 class BertLMPredictionHead(nn.Module):
-
     def __init__(self, config, bert_model_embedding_weights):
         super().__init__()
         self.transform = BertPredictionHeadTransform(config)
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
-        self.decoder = nn.Linear(bert_model_embedding_weights.size(1),
-                                 bert_model_embedding_weights.size(0))
+        self.decoder = nn.Linear(bert_model_embedding_weights.size(1), bert_model_embedding_weights.size(0))
         self.decoder.weight = bert_model_embedding_weights
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -806,11 +746,9 @@ class BertLMPredictionHead(nn.Module):
 
 
 class BertOnlyMLMHead(nn.Module):
-
     def __init__(self, config, bert_model_embedding_weights):
         super().__init__()
-        self.predictions = BertLMPredictionHead(config,
-                                                bert_model_embedding_weights)
+        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights)
 
     def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
         prediction_scores = self.predictions(sequence_output)
@@ -818,7 +756,6 @@ class BertOnlyMLMHead(nn.Module):
 
 
 class BertOnlyNSPHead(nn.Module):
-
     def __init__(self, config):
         super().__init__()
         self.seq_relationship = nn.Linear(config.hidden_size, 2)
@@ -834,61 +771,49 @@ class BertOnlyNSPHead(nn.Module):
 
 
 class BertForPreTraining(BertPreTrainedModel):
-    #TBD: Coming in Future Commit
+    # TBD: Coming in Future Commit
     pass
 
 
 class BertLMHeadModel(BertPreTrainedModel):
-    #TBD: Coming in Future Commit
+    # TBD: Coming in Future Commit
     pass
 
 
 class BertForMaskedLM(BertPreTrainedModel):
-
     def __init__(self, config):
         super().__init__(config)
 
         if config.is_decoder:
             warnings.warn(
-                'If you want to use `BertForMaskedLM` make sure `config.is_decoder=False` for '
-                'bi-directional self-attention.')
+                "If you want to use `BertForMaskedLM` make sure `config.is_decoder=False` for "
+                "bi-directional self-attention."
+            )
 
         self.bert = BertModel(config, add_pooling_layer=False)
-        self.cls = BertOnlyMLMHead(config,
-                                   self.bert.embeddings.word_embeddings.weight)
+        self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight)
 
         # Initialize weights and apply final processing
         self.post_init()
 
     @classmethod
-    def from_composer(cls,
-                      pretrained_checkpoint,
-                      state_dict=None,
-                      cache_dir=None,
-                      from_tf=False,
-                      config=None,
-                      *inputs,
-                      **kwargs):
+    def from_composer(
+        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+    ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
         if from_tf:
-            raise ValueError(
-                'Mosaic BERT does not support loading TensorFlow weights.')
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
 
         state_dict = torch.load(pretrained_checkpoint)
         # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
-        consume_prefix_in_state_dict_if_present(state_dict, prefix='model.')
-        missing_keys, unexpected_keys = model.load_state_dict(state_dict,
-                                                              strict=False)
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(
-                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
-            )
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
         if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
-            )
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
 
         return model
 
@@ -925,7 +850,7 @@ class BertForMaskedLM(BertPreTrainedModel):
         # Prediction scores are only computed for masked tokens and the (bs,
         # seqlen) dimensions are flattened
         if (input_ids is not None) == (inputs_embeds is not None):
-            raise ValueError('Must specify either input_ids or input_embeds!')
+            raise ValueError("Must specify either input_ids or input_embeds!")
 
         if labels is None:
             masked_tokens_mask = None
@@ -956,18 +881,16 @@ class BertForMaskedLM(BertPreTrainedModel):
         if labels is not None:
             # Compute loss
             loss_fct = nn.CrossEntropyLoss()
-            masked_token_idx = torch.nonzero(labels.flatten() > 0,
-                                             as_tuple=False).flatten()
-            loss = loss_fct(prediction_scores,
-                            labels.flatten()[masked_token_idx])
+            masked_token_idx = torch.nonzero(labels.flatten() > 0, as_tuple=False).flatten()
+            loss = loss_fct(prediction_scores, labels.flatten()[masked_token_idx])
 
-            assert input_ids is not None, 'Coding error; please open an issue'
+            assert input_ids is not None, "Coding error; please open an issue"
             batch, seqlen = input_ids.shape[:2]
             prediction_scores = rearrange(
-                bert_padding_module.index_put_first_axis(
-                    prediction_scores, masked_token_idx, batch * seqlen),
-                '(b s) d -> b s d',
-                b=batch)
+                bert_padding_module.index_put_first_axis(prediction_scores, masked_token_idx, batch * seqlen),
+                "(b s) d -> b s d",
+                b=batch,
+            )
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
@@ -980,32 +903,25 @@ class BertForMaskedLM(BertPreTrainedModel):
             attentions=None,
         )
 
-    def prepare_inputs_for_generation(self, input_ids: torch.Tensor,
-                                      attention_mask: torch.Tensor,
-                                      **model_kwargs):
+    def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
         input_shape = input_ids.shape
         effective_batch_size = input_shape[0]
 
         #  add a dummy token
         if self.config.pad_token_id is None:
-            raise ValueError('The PAD token should be defined for generation')
+            raise ValueError("The PAD token should be defined for generation")
 
-        attention_mask = torch.cat([
-            attention_mask,
-            attention_mask.new_zeros((attention_mask.shape[0], 1))
-        ],
-                                   dim=-1)
-        dummy_token = torch.full((effective_batch_size, 1),
-                                 self.config.pad_token_id,
-                                 dtype=torch.long,
-                                 device=input_ids.device)
+        attention_mask = torch.cat([attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))], dim=-1)
+        dummy_token = torch.full(
+            (effective_batch_size, 1), self.config.pad_token_id, dtype=torch.long, device=input_ids.device
+        )
         input_ids = torch.cat([input_ids, dummy_token], dim=1)
 
-        return {'input_ids': input_ids, 'attention_mask': attention_mask}
+        return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 
 class BertForNextSentencePrediction(BertPreTrainedModel):
-    #TBD: Push in future commit
+    # TBD: Push in future commit
     pass
 
 
@@ -1022,9 +938,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
         self.config = config
 
         self.bert = BertModel(config)
-        classifier_dropout = (config.classifier_dropout
-                              if config.classifier_dropout is not None else
-                              config.hidden_dropout_prob)
+        classifier_dropout = (
+            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+        )
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1032,34 +948,23 @@ class BertForSequenceClassification(BertPreTrainedModel):
         self.post_init()
 
     @classmethod
-    def from_composer(cls,
-                      pretrained_checkpoint,
-                      state_dict=None,
-                      cache_dir=None,
-                      from_tf=False,
-                      config=None,
-                      *inputs,
-                      **kwargs):
+    def from_composer(
+        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+    ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
         if from_tf:
-            raise ValueError(
-                'Mosaic BERT does not support loading TensorFlow weights.')
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
 
         state_dict = torch.load(pretrained_checkpoint)
         # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
-        consume_prefix_in_state_dict_if_present(state_dict, prefix='model.')
-        missing_keys, unexpected_keys = model.load_state_dict(state_dict,
-                                                              strict=False)
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(
-                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
-            )
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
         if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
-            )
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
 
         return model
 
@@ -1107,24 +1012,22 @@ class BertForSequenceClassification(BertPreTrainedModel):
             # Compute loss
             if self.config.problem_type is None:
                 if self.num_labels == 1:
-                    self.config.problem_type = 'regression'
-                elif self.num_labels > 1 and (labels.dtype == torch.long or
-                                              labels.dtype == torch.int):
-                    self.config.problem_type = 'single_label_classification'
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
                 else:
-                    self.config.problem_type = 'multi_label_classification'
+                    self.config.problem_type = "multi_label_classification"
 
-            if self.config.problem_type == 'regression':
+            if self.config.problem_type == "regression":
                 loss_fct = nn.MSELoss()
                 if self.num_labels == 1:
                     loss = loss_fct(logits.squeeze(), labels.squeeze())
                 else:
                     loss = loss_fct(logits, labels)
-            elif self.config.problem_type == 'single_label_classification':
+            elif self.config.problem_type == "single_label_classification":
                 loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels),
-                                labels.view(-1))
-            elif self.config.problem_type == 'multi_label_classification':
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
                 loss_fct = nn.BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
 
@@ -1141,12 +1044,12 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
 
 class BertForMultipleChoice(BertPreTrainedModel):
-    #TBD: Push in future commit
+    # TBD: Push in future commit
     pass
 
 
 class BertForTokenClassification(BertPreTrainedModel):
-    #TBD: Push in future commit
+    # TBD: Push in future commit
     pass
 
 
@@ -1157,4 +1060,5 @@ class BertForQuestionAnswering(BertPreTrainedModel):
     layers on top of the hidden states' output to compute `span start logits`
     and `span end logits`).
     """
-    #TBD: Push in future commit
+
+    # TBD: Push in future commit

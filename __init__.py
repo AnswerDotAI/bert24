@@ -21,11 +21,6 @@ try:
     from src.bert_padding import (IndexFirstAxis, IndexPutFirstAxis,
                                   index_first_axis, index_put_first_axis,
                                   pad_input, unpad_input, unpad_input_only)
-    if torch.cuda.is_available():
-        from src.flash_attn_triton import \
-            flash_attn_func as flash_attn_func_bert # type: ignore
-        from src.flash_attn_triton import \
-            flash_attn_qkvpacked_func as flash_attn_qkvpacked_func_bert # type: ignore
     from src.hf_bert import create_hf_bert_classification, create_hf_bert_mlm
     from src.mosaic_bert import (create_mosaic_bert_classification,
                                  create_mosaic_bert_mlm)
@@ -67,8 +62,4 @@ __all__ = [
     'create_hf_bert_mlm',
     'create_mosaic_bert_classification',
     'create_mosaic_bert_mlm',
-
-    # These are commented out because they only exist if CUDA is available
-    # 'flash_attn_func_bert',
-    # 'flash_attn_qkvpacked_func_bert'
 ]

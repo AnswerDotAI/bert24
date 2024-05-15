@@ -43,7 +43,7 @@ parameters:
   base_run_name: # If left blank, will be read from top YAML name
 
   default_seed: 19
-  precision: bf16
+  precision: amp_bf16
 
   # Tokenizer for dataset creation
   tokenizer_name: bert-base-uncased
