@@ -74,12 +74,8 @@ def build_algorithm(name, kwargs):
         return algorithms.GradientClipping(**kwargs)
     elif name == "alibi":
         return algorithms.Alibi(**kwargs)
-    elif name == "fused_layernorm":
-        return algorithms.FusedLayerNorm(**kwargs)
     elif name == "gated_linear_units":
         return algorithms.GatedLinearUnits(**kwargs)
-    elif name == "low_precision_layernorm":
-        return algorithms.LowPrecisionLayerNorm(**kwargs)
     else:
         raise ValueError(f"Not sure how to build algorithm: {name}")
 
