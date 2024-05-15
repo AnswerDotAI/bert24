@@ -1,4 +1,13 @@
+# Copyright 2024 **AUTHORS_TODO**
+# License: Apache-2.0
+
+# RMSNorm Implementation: Copyright Meta (from their Llama RMSNorm implementation)
+# License: LLAMA 2 COMMUNITY LICENSE AGREEMENT
+
 # Copyright 2022 MosaicML Examples authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Copyright 2023 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
 # Copyright 2023 MosaicML Examples authors
@@ -76,6 +85,54 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+class RMSNorm(torch.nn.Module):
+    """Llama2 RMSNorm implementation"""
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        """
+        Initialize the RMSNorm normalization layer.
+
+        Args:
+            dim (int): The dimension of the input tensor.
+            eps (float, optional): A small value added to the denominator for numerical stability. Default is 1e-6.
+
+        Attributes:
+            eps (float): A small value added to the denominator for numerical stability.
+            weight (nn.Parameter): Learnable scaling parameter.
+
+        """
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x):
+        """
+        Apply the RMSNorm normalization to the input tensor.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The normalized tensor.
+
+        """
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x):
+        """
+        Forward pass through the RMSNorm layer.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The output tensor after applying RMSNorm.
+
+        """
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
+
+
 class BertEmbeddings(nn.Module):
     """Construct the embeddings for words, ignoring position.
 
@@ -98,9 +155,7 @@ class BertEmbeddings(nn.Module):
         # ALiBi doesn't use position embeddings
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model
-        # variable name and be able to load any TensorFlow checkpoint file
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.register_buffer(
             "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False
@@ -291,7 +346,7 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -363,10 +418,10 @@ class BertGatedLinearUnitMLP(nn.Module):
         super().__init__()
         self.config = config
         self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
-        self.act = nn.GELU(approximate="none")
+        self.act = nn.SiLU()
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
@@ -605,7 +660,7 @@ class BertPredictionHeadTransform(nn.Module):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:
             self.transform_act_fn = config.hidden_act
-        self.LayerNorm = torch.nn.LayerNorm(config.hidden_size, eps=1e-12)
+        self.LayerNorm = RMSNorm(config.hidden_size, eps=1e-12)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)

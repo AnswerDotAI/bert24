@@ -46,8 +46,7 @@ scheduler:
   alpha_f: 0.0
 
 # Algorithms
-algorithms:
-  low_precision_layernorm: {}
+# algorithms:
 
 # Task configuration
 tasks:

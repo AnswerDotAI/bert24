@@ -65,7 +65,7 @@ def create_mosaic_bert_mlm(
         "attention_probs_dropout_prob": 0.0,
         "classifier_dropout": null,
         "gradient_checkpointing": false,
-        "hidden_act": "gelu",
+        "hidden_act": "silu",
         "hidden_dropout_prob": 0.1,
         "hidden_size": 768,
         "initializer_range": 0.02,
@@ -177,7 +177,7 @@ def create_mosaic_bert_classification(
             "attention_probs_dropout_prob": 0.0,
             "classifier_dropout": null,
             "gradient_checkpointing": false,
-            "hidden_act": "gelu",
+            "hidden_act": "silu",
             "hidden_dropout_prob": 0.1,
             "hidden_size": 768,
             "id2label": {
