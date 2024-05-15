@@ -155,8 +155,6 @@ class BertEmbeddings(nn.Module):
         # ALiBi doesn't use position embeddings
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model
-        # variable name and be able to load any TensorFlow checkpoint file
         self.LayerNorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.register_buffer(
@@ -420,7 +418,7 @@ class BertGatedLinearUnitMLP(nn.Module):
         super().__init__()
         self.config = config
         self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
-        self.act = nn.GELU(approximate="none")
+        self.act = nn.SiLU()
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.layernorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
