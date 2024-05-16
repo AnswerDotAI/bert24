@@ -97,7 +97,7 @@ def create_mosaic_bert_mlm(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
-    config = configuration_bert_module.BertConfig.from_pretrained(pretrained_model_name, **model_config)
+    config = configuration_bert_module.MosaicBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:

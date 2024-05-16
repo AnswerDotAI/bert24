@@ -4,7 +4,7 @@
 from transformers import BertConfig as TransformersBertConfig
 
 
-class BertConfig(TransformersBertConfig):
+class MosaicBertConfig(TransformersBertConfig):
     def __init__(
         self,
         alibi_starting_size: int = 512,

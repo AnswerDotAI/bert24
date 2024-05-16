@@ -8,12 +8,12 @@ import sys
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 # yapf: disable
-from bert_layers import (BertEmbeddings, BertEncoder, BertForMaskedLM,
-                         BertForSequenceClassification, BertGatedLinearUnitMLP,
-                         BertLayer, BertLMPredictionHead, BertModel,
+from bert_layers import (BertAlibiEmbeddings, BertAlibiEncoder, BertForMaskedLM,
+                         BertForSequenceClassification, BertResidualGLU,
+                         BertAlibiLayer, BertLMPredictionHead, BertModel,
                          BertOnlyMLMHead, BertOnlyNSPHead, BertPooler,
                          BertPredictionHeadTransform, BertSelfOutput,
-                         BertUnpadAttention, BertUnpadSelfAttention)
+                         BertAlibiUnpadAttention, BertAlibiUnpadSelfAttention)
 # yapf: enable
 from bert_padding import (
     IndexFirstAxis,
@@ -24,19 +24,18 @@ from bert_padding import (
     unpad_input,
     unpad_input_only,
 )
-from configuration_bert import BertConfig
+from configuration_bert import MosaicBertConfig
 
 from hf_bert import create_hf_bert_classification, create_hf_bert_mlm
 from mosaic_bert import create_mosaic_bert_classification, create_mosaic_bert_mlm
 
 __all__ = [
-    "BertConfig",
-    "BertEmbeddings",
-    "BertEncoder",
+    "BertAlibiEmbeddings",
+    "BertAlibiEncoder",
     "BertForMaskedLM",
     "BertForSequenceClassification",
-    "BertGatedLinearUnitMLP",
-    "BertLayer",
+    "BertResidualGLU",
+    "BertAlibiLayer",
     "BertLMPredictionHead",
     "BertModel",
     "BertOnlyMLMHead",
@@ -44,8 +43,9 @@ __all__ = [
     "BertPooler",
     "BertPredictionHeadTransform",
     "BertSelfOutput",
-    "BertUnpadAttention",
-    "BertUnpadSelfAttention",
+    "BertAlibiUnpadAttention",
+    "BertAlibiUnpadSelfAttention",
+    "MosaicBertConfig",
     "IndexFirstAxis",
     "IndexPutFirstAxis",
     "index_first_axis",
