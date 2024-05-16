@@ -31,6 +31,7 @@ def create_mosaic_bert_mlm(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    ablations: dict = {},
 ):
     """Mosaic BERT masked language model based on |:hugging_face:| Transformers.
 
@@ -107,7 +108,7 @@ def create_mosaic_bert_mlm(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.BertForMaskedLM(config)
+        model = bert_layers_module.BertForMaskedLM(config, ablations=ablations)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
