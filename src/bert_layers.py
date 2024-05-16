@@ -372,6 +372,7 @@ class BertUnpadAttention(nn.Module):
         self.self = BertUnpadSelfAttention(config)
         self.output = BertSelfOutput(
             config,
+            use_rmsnorm=use_rmsnorm,
         )
 
     def forward(
