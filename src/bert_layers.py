@@ -149,13 +149,17 @@ class BertEmbeddings(nn.Module):
     This module ignores the `position_ids` input to the `forward` method.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True):
         super().__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         # ALiBi doesn't use position embeddings
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
-        self.LayerNorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = (
+            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+            if use_rmsnorm
+            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        )
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.register_buffer(
             "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False
@@ -343,10 +347,14 @@ class BertSelfOutput(nn.Module):
     BERT modules.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = (
+            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+            if use_rmsnorm
+            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        )
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -359,10 +367,13 @@ class BertSelfOutput(nn.Module):
 class BertUnpadAttention(nn.Module):
     """Chains attention, Dropout, and LayerNorm for Mosaic BERT."""
 
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True):
         super().__init__()
         self.self = BertUnpadSelfAttention(config)
-        self.output = BertSelfOutput(config)
+        self.output = BertSelfOutput(
+            config,
+            use_rmsnorm=use_rmsnorm,
+        )
 
     def forward(
         self,
@@ -414,14 +425,23 @@ class BertGatedLinearUnitMLP(nn.Module):
     parameter size, Mosaic BERT typically offers a net higher throughput than a Hugging Face BERT built from the same `config`.
     """
 
-    def __init__(self, config):
+    def __init__(
+        self,
+        config,
+        use_rmsnorm: bool = True,
+        use_silu: bool = True,
+    ):
         super().__init__()
         self.config = config
         self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
-        self.act = nn.SiLU()
+        self.act = nn.SiLU() if use_silu else nn.GELU()
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = (
+            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
+            if use_rmsnorm
+            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
@@ -447,10 +467,10 @@ class BertGatedLinearUnitMLP(nn.Module):
 class BertLayer(nn.Module):
     """Composes the Mosaic BERT attention and FFN blocks into a single layer."""
 
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True, use_silu: bool = True):
         super(BertLayer, self).__init__()
-        self.attention = BertUnpadAttention(config)
-        self.mlp = BertGatedLinearUnitMLP(config)
+        self.attention = BertUnpadAttention(config, use_rmsnorm=use_rmsnorm)
+        self.mlp = BertGatedLinearUnitMLP(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
 
     def forward(
         self,
@@ -494,9 +514,9 @@ class BertEncoder(nn.Module):
     at padded tokens, and pre-computes attention biases to implement ALiBi.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True, use_silu: bool = True):
         super().__init__()
-        layer = BertLayer(config)
+        layer = BertLayer(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
         self.num_attention_heads = config.num_attention_heads
@@ -653,14 +673,16 @@ class BertPooler(nn.Module):
 
 
 class BertPredictionHeadTransform(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_rmsnorm: bool = True):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         if isinstance(config.hidden_act, str):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:
             self.transform_act_fn = config.hidden_act
-        self.LayerNorm = RMSNorm(config.hidden_size, eps=1e-12)
+        self.LayerNorm = (
+            RMSNorm(config.hidden_size, eps=1e-12) if use_rmsnorm else nn.LayerNorm(config.hidden_size, eps=1e-12)
+        )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
@@ -712,10 +734,16 @@ class BertModel(BertPreTrainedModel):
     ```
     """
 
-    def __init__(self, config, add_pooling_layer=True):
+    def __init__(
+        self,
+        config,
+        add_pooling_layer: bool = True,
+        use_rmsnorm: bool = True,
+        use_silu: bool = True,
+    ):
         super(BertModel, self).__init__(config)
-        self.embeddings = BertEmbeddings(config)
-        self.encoder = BertEncoder(config)
+        self.embeddings = BertEmbeddings(config, use_rmsnorm=use_rmsnorm)
+        self.encoder = BertEncoder(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
         self.pooler = BertPooler(config) if add_pooling_layer else None
         self.post_init()
 
@@ -786,9 +814,9 @@ class BertModel(BertPreTrainedModel):
 # Bert Heads
 ###################
 class BertLMPredictionHead(nn.Module):
-    def __init__(self, config, bert_model_embedding_weights):
+    def __init__(self, config, bert_model_embedding_weights, use_rmsnorm: bool = True):
         super().__init__()
-        self.transform = BertPredictionHeadTransform(config)
+        self.transform = BertPredictionHeadTransform(config, use_rmsnorm=use_rmsnorm)
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
         self.decoder = nn.Linear(bert_model_embedding_weights.size(1), bert_model_embedding_weights.size(0))
@@ -801,9 +829,9 @@ class BertLMPredictionHead(nn.Module):
 
 
 class BertOnlyMLMHead(nn.Module):
-    def __init__(self, config, bert_model_embedding_weights):
+    def __init__(self, config, bert_model_embedding_weights, use_rmsnorm: bool = True):
         super().__init__()
-        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights)
+        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights, use_rmsnorm=use_rmsnorm)
 
     def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
         prediction_scores = self.predictions(sequence_output)
@@ -836,7 +864,7 @@ class BertLMHeadModel(BertPreTrainedModel):
 
 
 class BertForMaskedLM(BertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, ablations: dict = {}):
         super().__init__(config)
 
         if config.is_decoder:
@@ -845,8 +873,16 @@ class BertForMaskedLM(BertPreTrainedModel):
                 "bi-directional self-attention."
             )
 
-        self.bert = BertModel(config, add_pooling_layer=False)
-        self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight)
+        use_rmsnorm = ablations.get("use_rmsnorm", True)
+        use_silu = ablations.get("use_silu", True)
+
+        self.bert = BertModel(
+            config,
+            add_pooling_layer=False,
+            use_rmsnorm=use_rmsnorm,
+            use_silu=use_silu,
+        )
+        self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight, use_rmsnorm=use_rmsnorm)
 
         # Initialize weights and apply final processing
         self.post_init()

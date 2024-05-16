@@ -144,6 +144,7 @@ def build_model(cfg: DictConfig):
             model_config=cfg.get("model_config", None),
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            ablations=cfg.get("ablations", {}),
         )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
