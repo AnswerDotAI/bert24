@@ -428,7 +428,7 @@ class BertGatedLinearUnitMLP(nn.Module):
     def __init__(
         self,
         config,
-        use_rmsnorm,
+        use_rmsnorm: bool = True,
         use_silu: bool = True,
     ):
         super().__init__()
