@@ -112,12 +112,10 @@ class BertModel(BertPreTrainedModel):
         self,
         config,
         add_pooling_layer: bool = True,
-        use_rmsnorm: bool = True,
-        use_silu: bool = True,
     ):
         super(BertModel, self).__init__(config)
-        self.embeddings = BertAlibiEmbeddings(config, use_rmsnorm=use_rmsnorm)
-        self.encoder = BertAlibiEncoder(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
+        self.embeddings = BertAlibiEmbeddings(config)
+        self.encoder = BertAlibiEncoder(config)
         self.pooler = BertPooler(config) if add_pooling_layer else None
         self.post_init()
 
@@ -188,9 +186,9 @@ class BertModel(BertPreTrainedModel):
 # Bert Heads
 ###################
 class BertLMPredictionHead(nn.Module):
-    def __init__(self, config, bert_model_embedding_weights, use_rmsnorm: bool = True):
+    def __init__(self, config, bert_model_embedding_weights):
         super().__init__()
-        self.transform = BertPredictionHeadTransform(config, use_rmsnorm=use_rmsnorm)
+        self.transform = BertPredictionHeadTransform(config)
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
         self.decoder = nn.Linear(bert_model_embedding_weights.size(1), bert_model_embedding_weights.size(0))
@@ -203,9 +201,9 @@ class BertLMPredictionHead(nn.Module):
 
 
 class BertOnlyMLMHead(nn.Module):
-    def __init__(self, config, bert_model_embedding_weights, use_rmsnorm: bool = True):
+    def __init__(self, config, bert_model_embedding_weights):
         super().__init__()
-        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights, use_rmsnorm=use_rmsnorm)
+        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights)
 
     def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
         prediction_scores = self.predictions(sequence_output)
@@ -238,7 +236,7 @@ class BertLMHeadModel(BertPreTrainedModel):
 
 
 class BertForMaskedLM(BertPreTrainedModel):
-    def __init__(self, config, ablations: dict = {}):
+    def __init__(self, config):
         super().__init__(config)
 
         if config.is_decoder:
@@ -247,16 +245,8 @@ class BertForMaskedLM(BertPreTrainedModel):
                 "bi-directional self-attention."
             )
 
-        use_rmsnorm = ablations.get("use_rmsnorm", True)
-        use_silu = ablations.get("use_silu", True)
-
-        self.bert = BertModel(
-            config,
-            add_pooling_layer=False,
-            use_rmsnorm=use_rmsnorm,
-            use_silu=use_silu,
-        )
-        self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight, use_rmsnorm=use_rmsnorm)
+        self.bert = BertModel(config, add_pooling_layer=False)
+        self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight)
 
         # Initialize weights and apply final processing
         self.post_init()

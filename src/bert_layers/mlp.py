@@ -14,7 +14,8 @@
 import torch
 import torch.nn as nn
 
-from .norm import RMSNorm
+from .activation import ACT2FN
+from .normalization import NORM2CLS
 
 
 class BertResidualGLU(nn.Module):
@@ -35,20 +36,14 @@ class BertResidualGLU(nn.Module):
     def __init__(
         self,
         config,
-        use_rmsnorm: bool = True,
-        use_silu: bool = True,
     ):
         super().__init__()
         self.config = config
         self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
-        self.act = nn.SiLU() if use_silu else nn.GELU()
+        self.act = ACT2FN[config.hidden_act]
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = (
-            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
-            if use_rmsnorm
-            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        )
+        self.layernorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.

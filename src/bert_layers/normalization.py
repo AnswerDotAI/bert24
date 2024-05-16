@@ -55,3 +55,9 @@ class RMSNorm(nn.Module):
         """
         output = self._norm(x.float()).type_as(x)
         return output * self.weight
+
+
+NORM2CLS = {
+    "layernorm": nn.LayerNorm,
+    "rmsnorm": RMSNorm,
+}
