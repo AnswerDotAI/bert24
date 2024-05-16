@@ -107,9 +107,6 @@ parameters:
     eps: 1.0e-06
     weight_decay: 1.0e-5 # Amount of weight decay regularization
 
-  # ablations:
-  #   use_rmsnorm: true
-  #   use_silu: true
 
   # algorithms:
 

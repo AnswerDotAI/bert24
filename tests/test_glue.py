@@ -27,8 +27,11 @@ class GlueDirContext(object):
 
 @pytest.mark.parametrize("model_name", ["mosaic_bert", "hf_bert"])
 def test_glue_script(model_name: str):
+    with open("yamls/defaults.yaml") as f:
+        default_cfg = OmegaConf.load(f)
     with open("tests/smoketest_config_glue.yaml") as f:
-        config = OmegaConf.load(f)
+        test_config = OmegaConf.load(f)
+    config = OmegaConf.merge(default_cfg, test_config)
     assert isinstance(config, DictConfig)
     config.model.name = model_name
 

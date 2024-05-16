@@ -31,7 +31,6 @@ def create_mosaic_bert_mlm(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
-    ablations: dict = {},
 ):
     """Mosaic BERT masked language model based on |:hugging_face:| Transformers.
 
@@ -97,7 +96,7 @@ def create_mosaic_bert_mlm(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
-    config = configuration_bert_module.MosaicBertConfig.from_pretrained(pretrained_model_name, **model_config)
+    config = configuration_bert_module.BertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -108,7 +107,7 @@ def create_mosaic_bert_mlm(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.BertForMaskedLM(config, ablations=ablations)
+        model = bert_layers_module.BertForMaskedLM(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore

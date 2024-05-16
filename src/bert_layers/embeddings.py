@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 from typing import Optional
 
-from .norm import RMSNorm
+from .normalization import NORM2CLS
 
 
 class BertAlibiEmbeddings(nn.Module):
@@ -35,17 +35,13 @@ class BertAlibiEmbeddings(nn.Module):
     This module ignores the `position_ids` input to the `forward` method.
     """
 
-    def __init__(self, config, use_rmsnorm: bool = True):
+    def __init__(self, config):
         super().__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         # ALiBi doesn't use position embeddings
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
-        self.LayerNorm = (
-            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
-            if use_rmsnorm
-            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        )
+        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.register_buffer(
             "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False

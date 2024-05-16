@@ -19,21 +19,21 @@ from typing import Optional, Union, List
 
 import torch
 import torch.nn as nn
-from transformers.activations import ACT2FN
 
 import bert_padding
+from .activation import ACT2FN
 from .attention import BertAlibiUnpadAttention
 from .mlp import BertResidualGLU
-from .norm import RMSNorm
+from .normalization import NORM2CLS
 
 
 class BertAlibiLayer(nn.Module):
     """Composes the Mosaic BERT attention and FFN blocks into a single layer."""
 
-    def __init__(self, config, use_rmsnorm: bool = True, use_silu: bool = True):
+    def __init__(self, config):
         super().__init__()
-        self.attention = BertAlibiUnpadAttention(config, use_rmsnorm=use_rmsnorm)
-        self.mlp = BertResidualGLU(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
+        self.attention = BertAlibiUnpadAttention(config)
+        self.mlp = BertResidualGLU(config)
 
     def forward(
         self,
@@ -77,9 +77,9 @@ class BertAlibiEncoder(nn.Module):
     at padded tokens, and pre-computes attention biases to implement ALiBi.
     """
 
-    def __init__(self, config, use_rmsnorm: bool = True, use_silu: bool = True):
+    def __init__(self, config):
         super().__init__()
-        layer = BertAlibiLayer(config, use_rmsnorm=use_rmsnorm, use_silu=use_silu)
+        layer = BertAlibiLayer(config)
         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
         self.num_attention_heads = config.num_attention_heads
@@ -236,16 +236,14 @@ class BertPooler(nn.Module):
 
 
 class BertPredictionHeadTransform(nn.Module):
-    def __init__(self, config, use_rmsnorm: bool = True):
+    def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         if isinstance(config.hidden_act, str):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:
             self.transform_act_fn = config.hidden_act
-        self.LayerNorm = (
-            RMSNorm(config.hidden_size, eps=1e-12) if use_rmsnorm else nn.LayerNorm(config.hidden_size, eps=1e-12)
-        )
+        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)

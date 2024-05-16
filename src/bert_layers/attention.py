@@ -21,7 +21,7 @@ import logging
 import math
 
 import bert_padding
-from .norm import RMSNorm
+from .normalization import NORM2CLS
 
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
@@ -173,14 +173,10 @@ class BertSelfOutput(nn.Module):
     BERT modules.
     """
 
-    def __init__(self, config, use_rmsnorm: bool = True):
+    def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = (
-            RMSNorm(config.hidden_size, eps=config.layer_norm_eps)
-            if use_rmsnorm
-            else nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        )
+        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -193,13 +189,10 @@ class BertSelfOutput(nn.Module):
 class BertAlibiUnpadAttention(nn.Module):
     """Chains attention, Dropout, and LayerNorm for Mosaic BERT."""
 
-    def __init__(self, config, use_rmsnorm: bool = True):
+    def __init__(self, config):
         super().__init__()
         self.self = BertAlibiUnpadSelfAttention(config)
-        self.output = BertSelfOutput(
-            config,
-            use_rmsnorm=use_rmsnorm,
-        )
+        self.output = BertSelfOutput(config)
 
     def forward(
         self,
