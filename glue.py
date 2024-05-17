@@ -446,11 +446,17 @@ def train(config: om.DictConfig) -> None:
 
 if __name__ == "__main__":
     yaml_path, args_list = sys.argv[1], sys.argv[2:]
-    with open("yamls/defaults.yaml") as f:
-        default_cfg = om.OmegaConf.load(f)
+
     with open(yaml_path) as f:
         yaml_cfg = om.OmegaConf.load(f)
+
     cli_cfg = om.OmegaConf.from_cli(args_list)
-    cfg = om.OmegaConf.merge(default_cfg, yaml_cfg, cli_cfg)
+    cfg = om.OmegaConf.merge(yaml_cfg, cli_cfg)
+
+    if cfg.model.name == "mosaic_bert":
+        with open("yamls/defaults.yaml") as f:
+            default_cfg = om.OmegaConf.load(f)
+        cfg = om.OmegaConf.merge(cfg, default_cfg)
+
     assert isinstance(cfg, om.DictConfig)
     train(cfg)

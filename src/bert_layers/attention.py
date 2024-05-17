@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import warnings
 from typing import Optional
-import importlib
+import importlib.metadata
 import logging
 import math
 
