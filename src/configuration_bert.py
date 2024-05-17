@@ -8,6 +8,9 @@ class BertConfig(TransformersBertConfig):
     def __init__(
         self,
         alibi_starting_size: int = 512,
+        position_embed: str = "alibi",
+        mlp: str = "residual_glu",
+        normalization: str = "layernorm",
         attention_probs_dropout_prob: float = 0.0,
         **kwargs,
     ):
@@ -23,3 +26,6 @@ class BertConfig(TransformersBertConfig):
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size
+        self.position_embed = position_embed
+        self.mlp = mlp
+        self.normalization = normalization
