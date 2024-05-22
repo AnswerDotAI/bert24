@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
         triplets_path = f"{cfg.tmp_dir}/triples.train.colbert.jsonl"
         triplets = srsly.read_jsonl(triplets_path)
-        downsampled_triplets = [triplet for i, triplet in enumerate(triplets) if i < 20000]
+        downsampled_triplets = [triplet for i, triplet in enumerate(triplets) if i < 2000]
         srsly.write_jsonl(triplets_path, downsampled_triplets)
 
     checkpoint = colbert_train(
