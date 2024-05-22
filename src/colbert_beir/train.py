@@ -5,7 +5,12 @@ from colbert import Trainer
 
 def colbert_train(model_name_or_path: str, train_params: dict, n_gpu: int, data_path: str):
     with Run().context(
-        RunConfig(nranks=n_gpu, experiment=model_name_or_path), name=train_params["name"], root=train_params["root"]
+        RunConfig(
+            nranks=n_gpu,
+            experiment=model_name_or_path,
+            name=train_params["name"],
+            root=train_params["root"],
+        )
     ):
         config = ColBERTConfig(doc_maxlen=300, **train_params)
         print(config)
