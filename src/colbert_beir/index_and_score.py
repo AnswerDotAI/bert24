@@ -16,7 +16,7 @@ def build_colbert_index(
     tmp_path: str,
 ):
     config = ColBERTConfig(
-        nbits=16,
+        nbits=8,
         root=str(Path(tmp_path) / f"benchmark_{model_name_or_path}"),
         overwrite=True,
         kmeans_niters=10,
@@ -51,7 +51,7 @@ def colbert_score(
         qid_to_query[query.query_id] = query.text
 
     config = ColBERTConfig(
-        nbits=16,
+        nbits=8,
         ncells=8,
         ndocs=8192,
         root=str(Path(tmp_path) / f"benchmark_{model_name_or_path}"),
