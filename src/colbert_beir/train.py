@@ -7,6 +7,7 @@ def colbert_train(model_name_or_path: str, train_params: dict, n_gpu: int, data_
     with Run().context(RunConfig(nranks=n_gpu, experiment=model_name_or_path)):
         config = ColBERTConfig(doc_maxlen=300, **train_params)
         data_path = Path(data_path)
+        print(data_path)
 
         trainer = Trainer(
             triples=str(data_path / "triples.train.colbert.jsonl"),
