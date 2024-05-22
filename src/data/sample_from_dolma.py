@@ -26,12 +26,21 @@ def keep_split_name(split_name):
     return False
     
 
-def folder_exists_in_huggingface_dataset(repo_name, folder_name):
+def folder_exists_in_huggingface_dataset(repo_name, folder_name, shard_id):
     files_info = huggingface_hub.list_repo_tree(repo_name, repo_type="dataset")
     for file_info in files_info:
+        if os.path.isdir(f"tmp{shard_id}/{file_info.path}"):
+            print(f"Removing {file_info.path} since it's uploaded now")
+            os.system(f"rm -rf tmp{shard_id}/{file_info.path}")
+
         # Check if the file path starts with the folder name
         if file_info.path.startswith(folder_name):
             return True
+        
+        elif os.path.isfile(f"tmp{shard_id}/{folder_name}"):
+            print(f"Still uploading, but here")
+            return True
+
     return False
 
 
@@ -41,20 +50,9 @@ def sample_data_from_url(url, sample_fraction=0.2):
     # if the local filename exists due to a previous download, use it
     if not os.path.exists(local_filename) and not os.path.exists(local_filename.replace(".gz", "")):
         print(f"Downloading {url}")
-        response = requests.head(url)
-        total_size = int(response.headers.get('content-length', 0))
-        local_filename = url.split('/')[-1]
-        chunk_size = 1024 * 1024  
-        # Download the file with a progress bar
-        with requests.get(url, stream=True) as r, open(local_filename, 'wb') as f, tqdm.tqdm(
-                total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=local_filename
-        ) as progress_bar:
-            for chunk in r.iter_content(chunk_size=chunk_size):
-                f.write(chunk)
-                progress_bar.update(len(chunk))
-
+        os.system(f"wget {url}")
         # ungz the file from the command line as it's faster than python
-        print(f"gunzip'ing {local_filename}")
+        print(f"un-gunzip'ing {local_filename}")
         os.system(f"gunzip {local_filename}")
 
     sampled_data = []
@@ -72,14 +70,18 @@ def sample_data_from_url(url, sample_fraction=0.2):
     return sampled_data
 
 
-def push_to_hub_incrementally(repo_name, split_name, data):
+def push_to_hub_incrementally(repo_name, split_name, data, shard_id):
     existing_dataset = Dataset.from_list(data)
     dataset_dict = DatasetDict({split_name: existing_dataset})
 
     # Save the dataset to a local directory
-    local_path = os.path.join("tmp", split_name)
+    local_path = os.path.join(f"tmp{shard_id}", split_name)
     os.makedirs(local_path, exist_ok=True)
     dataset_dict.save_to_disk(local_path, max_shard_size="5GB")
+
+    # remove the state.json file
+    os.system(f"rm {local_path}/{split_name}/state.json")
+    os.system(f"rm {local_path}/dataset_dict.json")
 
     # Push to hub with a specified folder
     api = huggingface_hub.HfApi()
@@ -90,6 +92,7 @@ def push_to_hub_incrementally(repo_name, split_name, data):
         folder_path=local_path,
         repo_id=repo_name,
         repo_type="dataset",
+        run_as_future=True,
     )
     # upload the default readme from `readme.md`
     print(f"Uploading README.md to {repo_name}")
@@ -98,9 +101,10 @@ def push_to_hub_incrementally(repo_name, split_name, data):
         path_in_repo="README.md",
         repo_id=repo_name,
         repo_type="dataset",
+        run_as_future=True
     )
     
-    os.system(f"rm -rf tmp")
+    # os.system(f"rm -rf tmp{shard_id}")
     print(f"Pushed {split_name} to {repo_name}")
     
 
@@ -110,11 +114,16 @@ def sample_dolma(percentage: float, repo_name: str, debug: bool = False):
     else:
         urls = DOLMA_URLS
 
+    if args.shard_num is not None:
+        # take the shard_id portion of urls
+        # chunk the urls into the number of shards
+        urls = np.array_split(urls, args.shard_num)[args.shard_id]
+
     for url_i, url in enumerate(tqdm.tqdm(urls, desc="URLs")):
         # if url already exists in the dataset, skip it
         split_name = url.replace("https://olmo-data.org/dolma-v1_7/", "").split("/")[-1].replace(".json.gz", "").replace("-", "_")
         try:
-            if folder_exists_in_huggingface_dataset(repo_name, split_name):
+            if folder_exists_in_huggingface_dataset(repo_name, split_name, args.shard_id):
                 print(f"Split {split_name} already exists in the dataset")
                 continue
         except huggingface_hub.utils._errors.RepositoryNotFoundError:
@@ -130,6 +139,7 @@ def sample_dolma(percentage: float, repo_name: str, debug: bool = False):
             repo_name=args.repo_name,
             split_name=split_name,
             data=sampled_dataset,
+            shard_id=args.shard_id
         )
 
         # remove the downloaded files, since we don't have too much space on the machine
@@ -142,8 +152,11 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--percentage", type=float, default=0.2)
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument("-r", "--repo_name", type=str, required=True)
+    parser.add_argument("-s", "--shard_num", type=int, default=None)
+    parser.add_argument("-i", "--shard_id", type=int, default=0)
     args = parser.parse_args()
 
     sample_dolma(args.percentage, args.repo_name, args.debug)
 
     # example usage: python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 > dolma_sample.log 2>&1
+    # python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 --shard_num 10 --shard_id 9 > dolma_sample_9.log 2>&1
