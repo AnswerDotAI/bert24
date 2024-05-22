@@ -1,4 +1,4 @@
-from .train import train_colbert
+from .train import colbert_train
 from .index_and_score import build_colbert_index, colbert_score
 
 
