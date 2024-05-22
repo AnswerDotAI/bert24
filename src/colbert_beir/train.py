@@ -21,8 +21,7 @@ def colbert_train(model_name_or_path: str, train_params: dict, n_gpu: int, data_
             queries=str(data_path / "queries.train.colbert.tsv"),
             collection=str(data_path / "corpus.train.colbert.tsv"),
             config=config,
-            checkpoint=model_name_or_path,
         )
 
-        trainer.train()
+        trainer.train(checkpoint=model_name_or_path)
         return f"{train_params['root']}/{model_name_or_path}/none/{train_params['name']}/checkpoints/colbert"
