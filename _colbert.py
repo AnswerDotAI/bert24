@@ -77,4 +77,6 @@ if __name__ == "__main__":
         )
         print(f"NDCG@10 for {dataset_name}: {score}")
 
-        shutil.rmtree(cfg.tmp_dir, ignore_errors=True)
+    # Clean up ColBERT artifacts
+    shutil.rmtree("./experiments/default", ignore_errors=True)
+    shutil.rmtree(cfg.tmp_dir, ignore_errors=True)
