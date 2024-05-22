@@ -18,7 +18,7 @@ tmp_dir: ./tmp_colbert
 debug: true
 
 train_params:
-  lr: 1e-5
+  lr: 3e-5
   use_ib_negatives: true
   bsize: 32
 
