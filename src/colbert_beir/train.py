@@ -4,8 +4,16 @@ from colbert import Trainer
 
 
 def colbert_train(model_name_or_path: str, train_params: dict, n_gpu: int, data_path: str):
-    with Run().context(RunConfig(nranks=n_gpu, experiment=model_name_or_path)):
+    with Run().context(
+        RunConfig(
+            nranks=n_gpu,
+            experiment=model_name_or_path,
+            name=train_params["name"],
+            root=train_params["root"],
+        )
+    ):
         config = ColBERTConfig(doc_maxlen=300, **train_params)
+        print(config)
         data_path = Path(data_path)
 
         trainer = Trainer(
@@ -15,4 +23,5 @@ def colbert_train(model_name_or_path: str, train_params: dict, n_gpu: int, data_
             config=config,
         )
 
-        return trainer.train()
+        trainer.train(checkpoint=model_name_or_path)
+        return f"{train_params['root']}/{model_name_or_path}/none/{train_params['name']}/checkpoints/colbert"

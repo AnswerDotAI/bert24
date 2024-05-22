@@ -15,16 +15,17 @@ model_name_or_path: bert-base-uncased
 train_dataset_id: bclavie/msmarco-2m-triplets-colbert-format
 n_gpu: 1
 tmp_dir: ./tmp_colbert
+debug: true
 
 train_params:
-  lr: 1e-5
+  lr: 3e-5
   use_ib_negatives: true
   bsize: 32
 
 eval_datasets:
   - "beir/scifact/test"
-  - "beir/nfcorpus/test"
-  - "beir/fiqa/test"
-  - "beir/scidocs"
-  - "beir/trec-covid"
-  - "beir/webis-touche2020/v2"
+  # - "beir/nfcorpus/test"
+  # - "beir/fiqa/test"
+  # - "beir/scidocs"
+  # - "beir/trec-covid"
+  # - "beir/webis-touche2020/v2"

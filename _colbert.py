@@ -26,13 +26,29 @@ if __name__ == "__main__":
 
     assert isinstance(cfg, om.DictConfig)
 
-    huggingface_hub.snapshot_download(repo_id=cfg.train_dataset_id, repo_type="dataset", local_dir=cfg.tmp_dir)
+    data_dir = f"{cfg.tmp_dir}/data"
+    huggingface_hub.snapshot_download(repo_id=cfg.train_dataset_id, repo_type="dataset", local_dir=data_dir)
+
+    if cfg.debug:
+        import srsly
+
+        triplets_path = f"{data_dir}/triples.train.colbert.jsonl"
+        triplets = srsly.read_jsonl(triplets_path)
+        downsampled_triplets = [triplet for i, triplet in enumerate(triplets) if i < 2000]
+        srsly.write_jsonl(triplets_path, downsampled_triplets)
+
+    model_name = cfg.model_name_or_path.split("/")[-1] if "/" in cfg.model_name_or_path else cfg.model_name_or_path
+    model_name += "_colbert"
+
+    train_params = cfg.train_params
+    train_params["root"] = cfg.tmp_dir
+    train_params["name"] = model_name
 
     checkpoint = colbert_train(
         model_name_or_path=cfg.model_name_or_path,
-        train_params=cfg.train_params,
+        train_params=train_params,
         n_gpu=cfg.n_gpu,
-        data_path=cfg.tmp_dir,
+        data_path=data_dir,
     )
 
     for dataset_name in cfg.eval_datasets:
@@ -61,4 +77,6 @@ if __name__ == "__main__":
         )
         print(f"NDCG@10 for {dataset_name}: {score}")
 
-        shutil.rmtree(cfg.tmp_dir, ignore_errors=True)
+    # Clean up ColBERT artifacts
+    shutil.rmtree("./experiments/default", ignore_errors=True)
+    shutil.rmtree(cfg.tmp_dir, ignore_errors=True)
