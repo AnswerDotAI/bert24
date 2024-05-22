@@ -13,6 +13,7 @@ import numpy as np
 import huggingface_hub
 
 set_seed(11111111)
+FILES_REMOTE = None
 
 
 KEEP_COLUMNS = ["id", "text", "added", "created", "source"]
@@ -27,8 +28,11 @@ def keep_split_name(split_name):
     
 
 def folder_exists_in_huggingface_dataset(repo_name, folder_name, shard_id):
-    files_info = huggingface_hub.list_repo_tree(repo_name, repo_type="dataset")
-    for file_info in files_info:
+    global FILES_REMOTE
+    if FILES_REMOTE is None: # do this only once to cut down on API requests and 429s
+        FILES_REMOTE = list(huggingface_hub.list_repo_tree(repo_name, repo_type="dataset"))
+    
+    for file_info in FILES_REMOTE:
         if os.path.isdir(f"tmp{shard_id}/{file_info.path}"):
             print(f"Removing {file_info.path} since it's uploaded now")
             os.system(f"rm -rf tmp{shard_id}/{file_info.path}")
@@ -149,4 +153,4 @@ if __name__ == "__main__":
     sample_dolma(args.percentage, args.repo_name, args.debug)
 
     # example usage: python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 > dolma_sample.log 2>&1
-    # python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 --shard_num 10 --shard_id 9 > dolma_sample_9.log 2>&1
+    # python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 --shard_num 3 --shard_id 2 > dolma_sample_2.log 2>&1
