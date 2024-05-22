@@ -79,7 +79,7 @@ def push_to_hub_incrementally(repo_name, split_name, data, shard_id):
     os.makedirs(local_path, exist_ok=True)
     dataset_dict.save_to_disk(local_path, max_shard_size="5GB")
 
-    # remove the state.json file
+    # remove the state.json file that confuses it on read
     os.system(f"rm {local_path}/{split_name}/state.json")
     os.system(f"rm {local_path}/dataset_dict.json")
 
@@ -92,19 +92,9 @@ def push_to_hub_incrementally(repo_name, split_name, data, shard_id):
         folder_path=local_path,
         repo_id=repo_name,
         repo_type="dataset",
-        run_as_future=True,
-    )
-    # upload the default readme from `readme.md`
-    print(f"Uploading README.md to {repo_name}")
-    api.upload_file(
-        path_or_fileobj="README.md",
-        path_in_repo="README.md",
-        repo_id=repo_name,
-        repo_type="dataset",
-        run_as_future=True
     )
     
-    # os.system(f"rm -rf tmp{shard_id}")
+    os.system(f"rm -rf tmp{shard_id}")
     print(f"Pushed {split_name} to {repo_name}")
     
 
