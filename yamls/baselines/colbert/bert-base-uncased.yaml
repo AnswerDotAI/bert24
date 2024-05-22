@@ -24,8 +24,8 @@ train_params:
 
 eval_datasets:
   - "beir/scifact/test"
-  - "beir/nfcorpus/test"
-  - "beir/fiqa/test"
-  - "beir/scidocs"
-  - "beir/trec-covid"
-  - "beir/webis-touche2020/v2"
+  # - "beir/nfcorpus/test"
+  # - "beir/fiqa/test"
+  # - "beir/scidocs"
+  # - "beir/trec-covid"
+  # - "beir/webis-touche2020/v2"
