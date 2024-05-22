@@ -15,6 +15,7 @@ model_name_or_path: bert-base-uncased
 train_dataset_id: bclavie/msmarco-2m-triplets-colbert-format
 n_gpu: 1
 tmp_dir: ./tmp_colbert
+debug: true
 
 train_params:
   lr: 1e-5
