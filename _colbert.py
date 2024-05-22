@@ -29,12 +29,11 @@ if __name__ == "__main__":
     huggingface_hub.snapshot_download(repo_id=cfg.train_dataset_id, repo_type="dataset", local_dir=cfg.tmp_dir)
 
     if cfg.debug:
-        import random
         import srsly
 
         triplets_path = f"{cfg.tmp_dir}/triples.train.colbert.jsonl"
         triplets = srsly.read_jsonl(triplets_path)
-        downsampled_triplets = random.sample(triplets, int(0.01 * len(triplets)))
+        downsampled_triplets = [triplet for i, triplet in enumerate(triplets) if i < 20000]
         srsly.write_jsonl(triplets_path, downsampled_triplets)
 
     checkpoint = colbert_train(
