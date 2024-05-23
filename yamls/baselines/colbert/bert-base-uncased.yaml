@@ -12,7 +12,7 @@ run_name: finetune-hf-bert
 
 seed: 42
 model_name_or_path: bert-base-uncased
-train_dataset_id: bclavie/msmarco-2m-triplets-colbert-format
+train_dataset_id: bclavie/msmarco-500k-triplets-colbert-format
 n_gpu: 1
 tmp_dir: ./tmp_colbert
 debug: false
