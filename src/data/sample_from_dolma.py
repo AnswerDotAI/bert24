@@ -12,13 +12,13 @@ import gzip
 import numpy as np
 import huggingface_hub
 
+
 set_seed(11111111)
+FILES_INFO = None
 
 
 KEEP_COLUMNS = ["id", "text", "added", "created", "source"]
 PARTITIONS_TO_KEEP_ALL = ["wiki"]
-
-FILES_INFO = None
 
 
 def keep_split_name(split_name):
