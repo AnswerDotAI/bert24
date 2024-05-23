@@ -18,6 +18,8 @@ set_seed(11111111)
 KEEP_COLUMNS = ["id", "text", "added", "created", "source"]
 PARTITIONS_TO_KEEP_ALL = ["wiki"]
 
+FILES_INFO = None
+
 
 def keep_split_name(split_name):
     for partition in PARTITIONS_TO_KEEP_ALL:
@@ -27,8 +29,12 @@ def keep_split_name(split_name):
     
 
 def folder_exists_in_huggingface_dataset(repo_name, folder_name, shard_id):
-    files_info = huggingface_hub.list_repo_tree(repo_name, repo_type="dataset")
-    for file_info in files_info:
+    global FILES_INFO
+    if FILES_INFO is None: # really only need to do this once, will help prevent 429's
+        FILES_INFO = list(huggingface_hub.list_repo_tree(repo_name, repo_type="dataset"))
+        print(len(FILES_INFO), "is the number of files in the dataset")
+
+    for file_info in FILES_INFO:
         if os.path.isdir(f"tmp{shard_id}/{file_info.path}"):
             print(f"Removing {file_info.path} since it's uploaded now")
             os.system(f"rm -rf tmp{shard_id}/{file_info.path}")
@@ -63,7 +69,8 @@ def sample_data_from_url(url, sample_fraction=0.2):
         for i, line in enumerate(tqdm.tqdm(fin, desc="Sampling")):
             if random.random() < sample_fraction:
                 inst = json.loads(line)
-                inst = {k: inst[k] for k in KEEP_COLUMNS}
+                inst = {k: str(inst[k]) if k in inst else "" for k in KEEP_COLUMNS}
+
                 assert len(inst) == len(KEEP_COLUMNS), f"Instance {i} has missing columns: {inst}"
                 sampled_data.append(inst)
 
@@ -137,16 +144,18 @@ def sample_dolma(percentage: float, repo_name: str, debug: bool = False):
         os.system(f"rm {url.split('/')[-1].replace('.gz', '')}")
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--percentage", type=float, default=0.2)
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument("-r", "--repo_name", type=str, required=True)
-    parser.add_argument("-s", "--shard_num", type=int, default=None)
+    parser.add_argument("-s", "--shard_num", type=int, default=1)
     parser.add_argument("-i", "--shard_id", type=int, default=0)
     args = parser.parse_args()
 
     sample_dolma(args.percentage, args.repo_name, args.debug)
 
-    # example usage: python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 > dolma_sample.log 2>&1
-    # python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 --shard_num 10 --shard_id 9 > dolma_sample_9.log 2>&1
+    # example usage: 
+    #   python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 > dolma_sample.log 2>&1
+    #   python -u sample_from_dolma.py --repo_name orionweller/dolma_20_percent_sample --percentage 0.2 --shard_num 10 --shard_id 9 > dolma_sample_9.log 2>&1
