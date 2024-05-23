@@ -34,6 +34,7 @@ class BertAlibiLayer(nn.Module):
         super().__init__()
         self.attention = BertAlibiUnpadAttention(config)
         self.mlp = BertResidualGLU(config)
+        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(
         self,
@@ -60,10 +61,17 @@ class BertAlibiLayer(nn.Module):
             slopes: None or (batch, heads) or (heads,)
         """
         assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
-        attention_output = self.attention(
-            hidden_states, cu_seqlens, seqlen, subset_idx, indices, attn_mask, bias, slopes
+        # Parralel attention is using pre-norm
+        normalized_hidden_states = self.LayerNorm(hidden_states)
+        attention_output, intermediate_ff = self.attention(
+            normalized_hidden_states, cu_seqlens, seqlen, subset_idx, indices, attn_mask, bias, slopes
         )
-        layer_output = self.mlp(attention_output)
+        
+        # Compute the FFN output and add residual connection
+        if subset_idx is not None:
+            layer_output = bert_padding.index_first_axis(hidden_states, subset_idx) + attention_output + self.mlp(bert_padding.index_first_axis(intermediate_ff, subset_idx))
+        else:
+            layer_output = hidden_states + attention_output + self.mlp(intermediate_ff)
         return layer_output
 
 

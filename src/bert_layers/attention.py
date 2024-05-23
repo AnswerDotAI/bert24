@@ -42,8 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 class BertAlibiUnpadSelfAttention(nn.Module):
-    """Performs multi-headed self attention on a batch of unpadded sequences.
-
+    """Computes the output of the multi-headed self parralel attention on a batch of unpadded sequences
     If Flash Attention 2 is installed, this module uses Flash Attention to greatly improve throughput.
     The Flash Attention implementation used in MosaicBERT supports arbitrary attention biases (which
     we use to implement ALiBi), but does not support attention dropout. If either Flash Attention 2 is
@@ -66,8 +65,10 @@ class BertAlibiUnpadSelfAttention(nn.Module):
         self.all_head_size = self.num_attention_heads * self.attention_head_size
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.p_dropout = config.attention_probs_dropout_prob
-        self.Wqkv = nn.Linear(self.all_head_size, 3 * config.hidden_size)
-
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(self.all_head_size, 3 * config.hidden_size + 2 * config.intermediate_size)
+        # self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2:
             warnings.warn(
@@ -108,7 +109,10 @@ class BertAlibiUnpadSelfAttention(nn.Module):
             attention: (total_nnz, dim)
         """
         bs, dim = hidden_states.shape
-        qkv = self.Wqkv(hidden_states)
+        # Compute QKV and FF outputs at once and split them
+        qkvff = self.Wqkvff(hidden_states)
+        qkv = qkvff[:, :3*dim]
+        ff = qkvff[:, 3*dim:]
 
         # Option 1: Flash Attention with ALiBi
         if IMPL_USE_FLASH2:
@@ -158,7 +162,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
 
         if not IMPL_USE_FLASH2:
             attention = bert_padding.unpad_input_only(attention, torch.squeeze(attn_mask) == 1)
-        return attention.view(bs, dim)
+        return attention.view(bs, dim), ff
 
 
 # Copy of transformer's library BertSelfOutput that will not be caught by surgery methods looking for HF BERT modules.
@@ -176,13 +180,14 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        # self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        # For parralel attention, there is no residual there and we do pre-norm
+        # hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
 
@@ -219,11 +224,11 @@ class BertAlibiUnpadAttention(nn.Module):
             slopes: None or (batch, heads) or (heads,)
         """
         assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
-        self_output = self.self(input_tensor, cu_seqlens, max_s, indices, attn_mask, bias, slopes)
+        self_output, intermediate_ff = self.self(input_tensor, cu_seqlens, max_s, indices, attn_mask, bias, slopes)
         if subset_idx is not None:
             return self.output(
                 bert_padding.index_first_axis(self_output, subset_idx),
                 bert_padding.index_first_axis(input_tensor, subset_idx),
-            )
+            ), intermediate_ff
         else:
-            return self.output(self_output, input_tensor)
+            return self.output(self_output, input_tensor), intermediate_ff

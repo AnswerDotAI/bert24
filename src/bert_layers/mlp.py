@@ -39,28 +39,27 @@ class BertResidualGLU(nn.Module):
     ):
         super().__init__()
         self.config = config
-        self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
+        # self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
         self.act = ACT2FN[config.hidden_act]
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        # self.layernorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, intermediate_ff: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
 
         Args:
             hidden_states (torch.Tensor): The (unpadded) hidden states from
                 the attention layer [nnz, dim].
         """
-        residual_connection = hidden_states
-        # compute the activation
-        hidden_states = self.gated_layers(hidden_states)
-        gated = hidden_states[:, : self.config.intermediate_size]
-        non_gated = hidden_states[:, self.config.intermediate_size :]
-        hidden_states = self.act(gated) * non_gated
-        hidden_states = self.dropout(hidden_states)
+        # Activation is already computed in the attention layer
+        # hidden_states = self.gated_layers(hidden_states)
+        gated = intermediate_ff[:, : self.config.intermediate_size]
+        non_gated = intermediate_ff[:, self.config.intermediate_size :]
+        ff = self.act(gated) * non_gated
+        ff = self.dropout(ff)
         # multiply by the second matrix
-        hidden_states = self.wo(hidden_states)
-        # add the residual connection and post-LN
-        hidden_states = self.layernorm(hidden_states + residual_connection)
-        return hidden_states
+        ff = self.wo(ff)
+        # For parralel attention, we do pre norm
+        # ff = self.layernorm(ff + residual_connection)
+        return ff
