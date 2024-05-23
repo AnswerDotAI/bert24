@@ -1,6 +1,20 @@
-from .attention import BertAlibiUnpadAttention, BertAlibiUnpadSelfAttention, BertSelfOutput
-from .embeddings import BertAlibiEmbeddings
-from .layers import BertAlibiEncoder, BertAlibiLayer, BertResidualGLU
+from .attention import (
+    BertAlibiUnpadAttention,
+    BertAlibiUnpadSelfAttention,
+    BertSelfOutput,
+    FlexBertPaddedAttention,
+    FlexBertUnpadAttention,
+)
+from .embeddings import BertAlibiEmbeddings, FlexBertAbsoluteEmbeddings, FlexBertBaseEmbeddings
+from .layers import (
+    BertAlibiEncoder,
+    BertAlibiLayer,
+    BertResidualGLU,
+    FlexBertPaddedPreNormLayer,
+    FlexBertPaddedPostNormLayer,
+    FlexBertUnpadPostNormLayer,
+    FlexBertUnpadPreNormLayer,
+)
 from .model import (
     BertLMPredictionHead,
     BertModel,
@@ -10,6 +24,8 @@ from .model import (
     BertOnlyNSPHead,
     BertPooler,
     BertPredictionHeadTransform,
+    FlexBertModel,
+    FlexBertForMaskedLM,
 )
 
 
@@ -29,4 +45,14 @@ __all__ = [
     "BertSelfOutput",
     "BertAlibiUnpadAttention",
     "BertAlibiUnpadSelfAttention",
+    "FlexBertPaddedAttention",
+    "FlexBertUnpadAttention",
+    "FlexBertAbsoluteEmbeddings",
+    "FlexBertBaseEmbeddings",
+    "FlexBertPaddedPreNormLayer",
+    "FlexBertPaddedPostNormLayer",
+    "FlexBertUnpadPostNormLayer",
+    "FlexBertUnpadPreNormLayer",
+    "FlexBertModel",
+    "FlexBertForMaskedLM",
 ]

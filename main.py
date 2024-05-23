@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
+import src.flex_bert as flex_bert_module
 import src.text_data as text_data_module
 from composer import Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
@@ -139,6 +140,14 @@ def build_model(cfg: DictConfig):
         )
     elif cfg.name == "mosaic_bert":
         return mosaic_bert_module.create_mosaic_bert_mlm(
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+        )
+    elif cfg.name == "flex_bert":
+        return flex_bert_module.create_flex_bert_mlm(
             pretrained_model_name=cfg.pretrained_model_name,
             pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
             model_config=cfg.get("model_config", None),

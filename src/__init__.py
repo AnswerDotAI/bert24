@@ -24,7 +24,7 @@ from bert_padding import (
     unpad_input,
     unpad_input_only,
 )
-from configuration_bert import BertConfig
+from src.bert_layers.configuration_bert import BertConfig
 
 from hf_bert import create_hf_bert_classification, create_hf_bert_mlm
 from mosaic_bert import create_mosaic_bert_classification, create_mosaic_bert_mlm

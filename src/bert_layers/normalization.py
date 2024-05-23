@@ -5,8 +5,13 @@
 # License: LLAMA 2 COMMUNITY LICENSE AGREEMENT
 
 
+from typing import Optional
+import inspect
+import warnings
 import torch
 import torch.nn as nn
+
+from .configuration_bert import FlexBertConfig
 
 
 class RMSNorm(nn.Module):
@@ -61,3 +66,16 @@ NORM2CLS = {
     "layernorm": nn.LayerNorm,
     "rmsnorm": RMSNorm,
 }
+
+
+def get_norm_layer(config: FlexBertConfig) -> nn.Module:
+    try:
+        norm_class = NORM2CLS[config.normalization]
+        signature = inspect.signature(norm_class)
+        if hasattr(config, "norm_kwargs"):
+            norm_kwargs = {k: v for k, v in config.norm_kwargs.items() if k in signature.parameters}
+        else:
+            norm_kwargs = {}
+        return norm_class(config.hidden_size, **norm_kwargs)
+    except KeyError:
+        raise ValueError(f"Invalid normalization layer type: {config.normalization}, must be one of {NORM2CLS.keys()}.")

@@ -1,0 +1,7 @@
+model:
+  name: mosaic_bert
+  model_config:
+    normalization: layernorm
+    hidden_act: gelu
+    position_embed: alibi # TODO: use in model building
+    mlp: residual_glu # TODO: use in model building

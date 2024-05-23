@@ -14,6 +14,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import warnings
 from typing import Optional
 import importlib
@@ -21,7 +22,9 @@ import logging
 import math
 
 import bert_padding
-from .normalization import NORM2CLS
+from .configuration_bert import FlexBertConfig, maybe_add_padding
+from .activation import get_act_fn
+from .normalization import get_norm_layer
 
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
@@ -33,10 +36,8 @@ try:
         raise ImportError("newer version of flash_attn required (>= 2.5.7)")
     IMPL_USE_FLASH2 = True
     flash_attn_qkvpacked_func = None
-except ImportError as e:
-    warnings.warn(
-        f"Failed to import flash_attn. Will use slow and memory hungry PyTorch native implementation: {e}", stacklevel=2
-    )
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,10 @@ class BertAlibiUnpadSelfAttention(nn.Module):
 
     If Flash Attention 2 is installed, this module uses Flash Attention to greatly improve throughput.
     The Flash Attention implementation used in MosaicBERT supports arbitrary attention biases (which
-    we use to implement ALiBi), but does not support attention dropout. If either Flash Attention 2 is
-    not installed or `config.attention_probs_dropout_prob > 0`, the implementation will default to a
-    math-equivalent pytorch version, which is much slower.
+    we use to implement ALiBi). If either Flash Attention 2 is not installed the implementation will
+    default to a math-equivalent pytorch version, which is much slower.
 
-    See `forward` method for additional detail.
+    See `forward` method for additional details.
     """
 
     def __init__(self, config):
@@ -71,14 +71,15 @@ class BertAlibiUnpadSelfAttention(nn.Module):
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2:
             warnings.warn(
-                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to pytorch (this will reduce throughput when using this model)."
+                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to "
+                "vanilla PyTorch (this will reduce throughput when using this model)."
             )
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         cu_seqlens: torch.Tensor,
-        max_seqlen_in_batch: int,
+        max_seqlen: int,
         indices: torch.Tensor,
         attn_mask: torch.Tensor,
         bias: torch.Tensor,
@@ -86,22 +87,20 @@ class BertAlibiUnpadSelfAttention(nn.Module):
     ) -> torch.Tensor:
         """Perform self-attention.
 
-        There are three attention implementations supported: vanilla attention with ALiBi,
-        Triton Flash Attention with ALibi, and Flash Attention 2 with ALiBi
+        There are two attention implementations: vanilla attention with ALiBi, and Flash Attention 2 with ALiBi
 
-        In order to use the Triton kernel, dropout must be zero (i.e. attention_probs_dropout_prob = 0)
-
-        The arguments are unpadded, and our implementations of attention require padded arguments,
-        so we first call `pad_input`. Once we compute attention, we re-unpad our outputs for the other layers.
-        The pad/unpad operations add overhead, but not sending pad tokens through ffs saves compute.
+        The arguments are unpadded. The vanilla implementation of attention requires padded arguments while the
+        Flash Attention implementation does not. If using vanilla we first call `pad_input`. Once we compute
+        attention, we re-unpad our outputs for the other layers. The pad/unpad operations add overhead, but not
+        sending pad tokens through ffs saves compute.
 
         Args:
             hidden_states: (total_nnz, dim)
             cu_seqlens: (batch + 1,)
-            max_seqlen_in_batch: int
+            max_seqlen: int
             indices: (total_nnz,)
-            attn_mask: (batch, max_seqlen_in_batch)
-            bias: (batch, heads, max_seqlen_in_batch, max_seqlen_in_batch)
+            attn_mask: (batch, max_seqlen)
+            bias: (batch, heads, max_seqlen, max_seqlen)
             slopes: (heads) or (batch, heads)
 
         Returns:
@@ -127,7 +126,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                 attention = flash_attn_varlen_qkvpacked_func(
                     qkv,
                     cu_seqlens=cu_seqlens,
-                    max_seqlen=max_seqlen_in_batch,
+                    max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     alibi_slopes=slopes,
                 )
@@ -136,14 +135,12 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                 attention = flash_attn_varlen_qkvpacked_func(
                     qkv,
                     cu_seqlens=cu_seqlens,
-                    max_seqlen=max_seqlen_in_batch,
+                    max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     alibi_slopes=slopes,
                 )
         else:
-            qkv = bert_padding.pad_input(
-                qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen_in_batch
-            )  # batch, max_seqlen_in_batch, thd
+            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, *_ = qkv.shape
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attention_head_size)
             # if we have nonzero attention dropout (e.g. during fine-tuning) or no Triton, compute attention in PyTorch
@@ -156,8 +153,8 @@ class BertAlibiUnpadSelfAttention(nn.Module):
             attention_probs = self.dropout(attention_probs)
             attention = torch.matmul(attention_probs, v).permute(0, 2, 1, 3)  # b s h d
 
-        if not IMPL_USE_FLASH2:
             attention = bert_padding.unpad_input_only(attention, torch.squeeze(attn_mask) == 1)
+
         return attention.view(bs, dim)
 
 
@@ -176,7 +173,7 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = get_norm_layer(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -214,8 +211,8 @@ class BertAlibiUnpadAttention(nn.Module):
             subset_idx: () set of indices whose values we care about at the end of the layer
                         (e.g., the masked tokens, if this is the final layer).
             indices: None or (total_nnz,)
-            attn_mask: None or (batch, max_seqlen_in_batch)
-            bias: None or (batch, heads, max_seqlen_in_batch, max_seqlen_in_batch)
+            attn_mask: None or (batch, max_seqlen)
+            bias: None or (batch, heads, max_seqlen, max_seqlen)
             slopes: None or (batch, heads) or (heads,)
         """
         assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
@@ -227,3 +224,199 @@ class BertAlibiUnpadAttention(nn.Module):
             )
         else:
             return self.output(self_output, input_tensor)
+
+
+class FlexBertAttentionBase(nn.Module):
+    """A FlexBERT attention base class for type hints."""
+
+    def forward(self, hidden_states: torch.Tensor, attn_mask: torch.Tensor, **kwargs) -> torch.Tensor:
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+
+class FlexBertUnpadAttention(FlexBertAttentionBase):
+    """Performs multi-headed self attention on a batch of unpadded sequences.
+
+    If Flash Attention 2 is installed, this module uses Flash Attention to improve throughput.
+    If Flash Attention 2 is not installed, the implementation will use PyTorch's SDPA kernel,
+    which requires padding and unpadding inputs, adding some overhead.
+
+    See `forward` method for additional detail.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
+            raise ValueError(
+                f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
+                f"heads ({config.num_attention_heads})"
+            )
+
+        self.num_attention_heads = config.num_attention_heads
+        self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
+        self.all_head_size = self.num_attention_heads * self.attn_head_size
+        self.p_dropout = config.attention_probs_dropout_prob
+        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size, bias=config.attn_qkv_bias)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
+        self.out_drop = (
+            nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
+        )
+
+        # Warn if defaulting to pytorch because of import issues
+        if not IMPL_USE_FLASH2:
+            warnings.warn(
+                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+                " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
+            )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: torch.Tensor,
+        attn_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Perform self-attention.
+
+        There are two attention implementations supported: PyTorch's SDPA attention and Flash Attention 2.
+
+        The arguments are unpadded. The SDPA implementation of attention requires padded arguments while the
+        Flash Attention implementation does not. If using SDPA we first call `pad_input`. Once we compute
+        attention, we re-unpad our outputs for the other layers. The pad/unpad operations add overhead, but not
+        sending pad tokens through ffs saves compute.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            cu_seqlens: (batch + 1,)
+            max_seqlen: int
+            indices: (total_nnz,)
+            attn_mask: (batch, max_seqlen)
+
+        Returns:
+            attention: (total_nnz, dim)
+        """
+        bs, dim = hidden_states.shape
+        qkv = self.Wqkv(hidden_states)
+
+        if IMPL_USE_FLASH2:
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+
+            convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
+            if convert_dtype:
+                # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
+                # bfloat16 must be supported as of FA2 2.5.7. (Turing GPUs not supported)
+                orig_dtype = qkv.dtype
+                qkv = qkv.to(torch.bfloat16)
+
+                attn = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen,
+                    dropout_p=self.p_dropout,
+                )
+                attn = attn.to(orig_dtype)  # type: ignore
+            else:
+                attn = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen,
+                    dropout_p=self.p_dropout,
+                )
+        else:
+            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
+            unpad_bs, *_ = qkv.shape
+
+            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
+            q, k, v = qkv.transpose(3, 1).unbind(dim=2)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+
+            attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
+
+        return self.out_drop(self.Wo(attn.view(bs, dim)))
+
+
+class FlexBertPaddedAttention(FlexBertAttentionBase):
+    """Performs multi-headed self attention on a batch of padded sequences.
+
+    This module supports two attention implementations:
+    1. Flash Attention 2 (if installed), which improves throughput.
+    2. PyTorch's scaled_dot_product_attention.
+
+    See `forward` method for additional detail.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
+            raise ValueError(
+                f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
+                f"heads ({config.num_attention_heads})"
+            )
+
+        self.num_attention_heads = config.num_attention_heads
+        self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
+        self.all_head_size = self.num_attention_heads * self.attn_head_size
+        self.p_dropout = config.attention_probs_dropout_prob
+        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size)
+        self.out_drop = (
+            nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Perform self-attention.
+
+        There are two attention implementations supported:
+        Flash Attention 2 and PyTorch's scaled_dot_product_attention.
+
+        Args:
+            hidden_states: (batch, seqlen, dim)
+            attn_mask: (batch, seqlen)
+
+        Returns:
+            attention: (batch, seqlen, dim)
+        """
+        batch_size, seqlen, dim = hidden_states.shape
+        qkv = self.Wqkv(hidden_states)
+
+        if IMPL_USE_FLASH2:
+            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+
+            convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
+            if convert_dtype:
+                # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
+                # bfloat16 must be supported as of FA2 2.5.7. (Turing GPUs not supported)
+                orig_dtype = qkv.dtype
+                qkv = qkv.to(torch.bfloat16)
+
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = attn.to(orig_dtype)  # type: ignore
+            else:
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+        else:
+            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            q, k, v = qkv.transpose(2, 3).unbind(dim=2)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+
+        attn = attn.view(batch_size, seqlen, dim)
+        return self.out_drop(self.Wo(attn))
+
+
+ATTN2CLS = {
+    "unpadded_base": FlexBertUnpadAttention,
+    "padded_base": FlexBertPaddedAttention,
+}
+
+
+def get_attention_layer(config: FlexBertConfig) -> FlexBertAttentionBase:
+    try:
+        return ATTN2CLS[maybe_add_padding(config, config.attention_layer)](config)
+    except KeyError:
+        raise ValueError(
+            f"Invalid attention layer type: {config.attention_layer=}, must be one of {ATTN2CLS.keys()}. "
+            f"{config.padding=} will be automatically prepended to `config.attention_layer` if unspecified."
+        )
