@@ -3,7 +3,7 @@
 
 import pytest
 from omegaconf import DictConfig, OmegaConf
-from ..sequence_classification import main
+from ..sequence_classification import train
 
 
 @pytest.mark.parametrize("model_name", ["mosaic_bert", "hf_bert", "flex_bert"])
@@ -18,4 +18,4 @@ def test_classification_script(model_name):
     assert isinstance(config, DictConfig)
 
     # The test is that `main` runs successfully
-    main(config)
+    train(config)

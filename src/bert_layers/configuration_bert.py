@@ -40,6 +40,7 @@ class FlexBertConfig(TransformersBertConfig):
         attn_out_dropout_prob: float = 0.0,
         attn_qkv_bias: bool = False,
         bert_layer: str = "prenorm",
+        decoder_bias: bool = True,
         embed_dropout_prob: float = 0.0,
         embed_norm: bool = True,
         embedding_layer: str = "absolute",
@@ -53,7 +54,15 @@ class FlexBertConfig(TransformersBertConfig):
         norm_kwargs: dict = {},
         normalization: str = "rmsnorm",
         padding: str = "unpadded",
-        sparse_prediction: bool = False,
+        head_class_act: str = "silu",
+        head_class_bias: bool = False,
+        head_class_dropout: float = 0.0,
+        head_class_norm: str = False,
+        head_pred_act: str = "silu",
+        head_pred_bias: bool = False,
+        head_pred_dropout: float = 0.0,
+        head_pred_norm: bool = True,
+        pooling_type: str = "mean",
         **kwargs,
     ):
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -63,6 +72,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.attn_out_dropout_prob = attn_out_dropout_prob
         self.attn_qkv_bias = attn_qkv_bias
         self.bert_layer = bert_layer
+        self.decoder_bias = decoder_bias
         self.embed_dropout_prob = embed_dropout_prob
         self.embed_norm = embed_norm
         self.embedding_layer = embedding_layer
@@ -76,7 +86,15 @@ class FlexBertConfig(TransformersBertConfig):
         self.norm_kwargs = norm_kwargs
         self.normalization = normalization
         self.padding = padding
-        self.sparse_prediction = sparse_prediction
+        self.head_class_act = head_class_act
+        self.head_class_bias = head_class_bias
+        self.head_class_dropout = head_class_dropout
+        self.head_class_norm = head_class_norm
+        self.head_pred_act = head_pred_act
+        self.head_pred_bias = head_pred_bias
+        self.head_pred_dropout = head_pred_dropout
+        self.head_pred_norm = head_pred_norm
+        self.pooling_type = pooling_type
 
 
 PADDING = ["unpadded", "padded"]

@@ -8,6 +8,8 @@ from .configuration_bert import FlexBertConfig
 
 LOSS2CLS = {
     "cross_entropy": nn.CrossEntropyLoss,
+    "binary_cross_entropy": nn.BCEWithLogitsLoss,
+    "mean_squared_error": nn.MSELoss,
 }
 
 

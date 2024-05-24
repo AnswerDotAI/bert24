@@ -102,7 +102,7 @@ def create_flex_bert_mlm(
         pretrained_model_name = "bert-base-uncased"
 
     if isinstance(model_config, DictConfig):
-        model_config = OmegaConf.to_container(model_config)
+        model_config = OmegaConf.to_container(model_config, resolve=True)
 
     config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
@@ -245,11 +245,10 @@ def create_flex_bert_classification(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
-    config, unused_kwargs = transformers.AutoConfig.from_pretrained(
-        pretrained_model_name, return_unused_kwargs=True, **model_config
-    )
-    # This lets us use non-standard config fields (e.g. `starting_alibi_size`)
-    config.update(unused_kwargs)
+    if isinstance(model_config, DictConfig):
+        model_config = OmegaConf.to_container(model_config, resolve=True)
+
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
