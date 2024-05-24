@@ -139,8 +139,8 @@ class FlexBertAbsoluteEmbeddings(FlexBertEmbeddingsBase):
         return self.drop(embeddings)
 
 
-class FlexBertBaseEmbeddings(FlexBertEmbeddingsBase):
-    """Construct the embeddings from token embeddings."""
+class FlexBertSansPositionEmbeddings(FlexBertEmbeddingsBase):
+    """Construct the embeddings from token embeddings without any positional embeddings."""
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
@@ -154,8 +154,8 @@ class FlexBertBaseEmbeddings(FlexBertEmbeddingsBase):
 
 
 EBB2CLS = {
-    "absolute": FlexBertAbsoluteEmbeddings,
-    "base": FlexBertBaseEmbeddings,
+    "absolute_pos": FlexBertAbsoluteEmbeddings,
+    "sans_pos": FlexBertSansPositionEmbeddings,
 }
 
 
