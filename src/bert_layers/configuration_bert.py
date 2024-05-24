@@ -43,7 +43,7 @@ class FlexBertConfig(TransformersBertConfig):
         decoder_bias: bool = True,
         embed_dropout_prob: float = 0.0,
         embed_norm: bool = True,
-        embedding_layer: str = "absolute",
+        embedding_layer: str = "absolute_pos",
         encoder_layer: str = "base",
         loss_function: str = "cross_entropy",
         loss_kwargs: dict = {},
