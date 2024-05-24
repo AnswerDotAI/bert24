@@ -7,7 +7,7 @@ data_local: ./my-copy-c4
 data_remote: # If blank, files must be present in data_local
 
 max_seq_len: 128
-tokenizer_name: meta-llama/Llama-2-7b-hf
+tokenizer_name: bert-base-uncased # switch to bert tokenizer until we add [MASK] token to the llama tokenizer meta-llama/Llama-2-7b-hf
 mlm_probability: 0.3 # FlexBERT should use 30% masking for optimal performance
 
 # Run Name
