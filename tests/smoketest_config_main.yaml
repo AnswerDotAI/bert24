@@ -7,7 +7,6 @@ run_name: test
 
 # Model
 model:
-  name:
   use_pretrained: false
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
