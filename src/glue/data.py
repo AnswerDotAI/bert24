@@ -76,7 +76,6 @@ def create_glue_dataset(
         num_proc=None if num_workers == 0 else num_workers,
         batch_size=1000,
         remove_columns=columns_to_remove,
-        new_fingerprint=f"{task}-{safe_name}-tokenization-{split}",
         load_from_cache_file=True,
     )
     return dataset

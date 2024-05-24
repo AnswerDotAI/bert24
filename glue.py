@@ -31,6 +31,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
+from src.scheduler import WarmupStableDecayScheduler
 from composer.utils import reproducibility
 from composer.utils.file_helpers import get_file
 from composer.utils.object_store import S3ObjectStore
@@ -92,6 +93,8 @@ def build_scheduler(cfg):
         return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+    elif cfg.name == "warmup_stable_decay":
+        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -456,11 +459,17 @@ def train(config: om.DictConfig) -> None:
 
 if __name__ == "__main__":
     yaml_path, args_list = sys.argv[1], sys.argv[2:]
-    with open("yamls/defaults.yaml") as f:
-        default_cfg = om.OmegaConf.load(f)
+
     with open(yaml_path) as f:
         yaml_cfg = om.OmegaConf.load(f)
+
     cli_cfg = om.OmegaConf.from_cli(args_list)
-    cfg = om.OmegaConf.merge(default_cfg, yaml_cfg, cli_cfg)
+    cfg = om.OmegaConf.merge(yaml_cfg, cli_cfg)
+
+    if cfg.model.name == "mosaic_bert":
+        with open("yamls/defaults.yaml") as f:
+            default_cfg = om.OmegaConf.load(f)
+        cfg = om.OmegaConf.merge(cfg, default_cfg)
+
     assert isinstance(cfg, om.DictConfig)
     train(cfg)

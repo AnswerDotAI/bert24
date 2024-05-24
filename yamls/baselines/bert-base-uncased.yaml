@@ -1,11 +1,8 @@
-# Note that some of the fields in this template haven't been filled in yet.
-# Please resolve any `null` fields before launching!
-
 # Whether to run the various GLUE jobs serially or in parallel (use parallel=True to take advantage of multiple GPUs)
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name: hf-bert-base-uncased-glue-finetuning # Determines how runs are saved and logged in W&B
+base_run_name: bert-base-uncased-glue-finetuning
 default_seed: 19
 precision: amp_bf16
 
@@ -15,23 +12,19 @@ tokenizer_name: bert-base-uncased
 # Base model config
 model:
   name: hf_bert
+  use_pretrained: true
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
 
-# Loading
-starting_checkpoint_load_path:      # Fill this in with the composer checkpoint from the end of pre-training a HF BERT
-local_pretrain_checkpoint_folder: ./local-bert-checkpoints/
-
 # Saving
-save_finetune_checkpoint_prefix: ./local-finetune-checkpoints/ # (local)
-# save_finetune_checkpoint_prefix: s3://<bucket>/remote-finetune-checkpoints # (remote)
+save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
 save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
 
 # (Optional) W&B logging
 # loggers:
-#   wandb:
-#     project:      # Fill this in if using W&B
-#     entity:      # Fill this in if using W&B
+  # wandb:
+    # project: # Fill this in if using W&B
+    # entity: # Fill this in if using W&B
 
 # Callbacks
 callbacks:

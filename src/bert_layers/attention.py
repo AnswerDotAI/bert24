@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import warnings
 from typing import Optional
-import importlib
+import importlib.metadata
 import logging
 import math
 
