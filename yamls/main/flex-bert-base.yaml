@@ -32,7 +32,7 @@ model:
     bert_layer: prenorm
     embed_dropout_prob: 0.0
     embed_norm: True
-    embedding_layer: absolute
+    embedding_layer: absolute_pos
     loss_function: cross_entropy
     loss_kwargs:
       reduction: mean
