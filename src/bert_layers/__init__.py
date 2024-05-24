@@ -5,7 +5,7 @@ from .attention import (
     FlexBertPaddedAttention,
     FlexBertUnpadAttention,
 )
-from .embeddings import BertAlibiEmbeddings, FlexBertAbsoluteEmbeddings, FlexBertBaseEmbeddings
+from .embeddings import BertAlibiEmbeddings, FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings
 from .layers import (
     BertAlibiEncoder,
     BertAlibiLayer,
@@ -49,7 +49,7 @@ __all__ = [
     "FlexBertPaddedAttention",
     "FlexBertUnpadAttention",
     "FlexBertAbsoluteEmbeddings",
-    "FlexBertBaseEmbeddings",
+    "FlexBertSansPositionEmbeddings",
     "FlexBertPaddedPreNormLayer",
     "FlexBertPaddedPostNormLayer",
     "FlexBertUnpadPostNormLayer",
