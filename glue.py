@@ -30,6 +30,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
+from src.scheduler import WarmupStableDecayScheduler
 from composer.utils import reproducibility
 from composer.utils.file_helpers import get_file
 from composer.utils.object_store import S3ObjectStore
@@ -91,6 +92,8 @@ def build_scheduler(cfg):
         return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+    elif cfg.name == "warmup_stable_decay":
+        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
