@@ -58,6 +58,7 @@ def create_glue_dataset(
 
         first_half = inp[text_column_names[0]]
         second_half = inp[text_column_names[1]] if text_column_names[1] in inp else None
+        # a [SEP] is added between first_half and second_half
         return tokenizer(
             text=first_half,
             text_pair=second_half,
