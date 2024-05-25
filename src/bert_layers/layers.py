@@ -292,6 +292,32 @@ class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
         return attn_out + self.mlp(self.mlp_norm(attn_out))
 
 
+class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT parallel attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out, intermediate_ff = self.attn(self.norm(hidden_states), cu_seqlens, max_seqlen, indices, attn_mask)
+        return hidden_states + attn_out + self.mlp(intermediate_ff)
+
 class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
@@ -375,6 +401,7 @@ class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
 
 LAYER2CLS = {
     "unpadded_prenorm": FlexBertUnpadPreNormLayer,
+    "unpadded_parallel_prenorm": FlexBertUnpadParallelPreNormLayer,
     "unpadded_postnorm": FlexBertUnpadPostNormLayer,
     "padded_prenorm": FlexBertPaddedPreNormLayer,
     "padded_postnorm": FlexBertPaddedPostNormLayer,

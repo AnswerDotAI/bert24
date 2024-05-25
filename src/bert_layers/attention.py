@@ -298,10 +298,13 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             attn_mask: (batch, max_seqlen)
 
         Returns:
-            attention: (total_nnz, dim)
+            attention: (total_nnz, dim), intermediate_ff (total_nnz, 2 * intermediate_dim)
         """
         bs, dim = hidden_states.shape
-        qkv = self.Wqkv(hidden_states)
+        # Compute QKV and FF outputs at once and split them
+        qkvff = self.Wqkvff(hidden_states)
+        qkv = qkvff[:, :3*dim]
+        intermediate_ff = qkvff[:, 3*dim:]
 
         if self.attn_use_fa2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
@@ -339,6 +342,113 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
         return self.out_drop(self.Wo(attn))
+
+
+class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
+    """Computes the output of the multi-headed self parallel attention on a batch of unpadded sequences
+
+    If Flash Attention 2 is installed, this module uses Flash Attention to improve throughput.
+    If Flash Attention 2 is not installed, the implementation will use PyTorch's SDPA kernel,
+    which requires padding and unpadding inputs, adding some overhead.
+
+    See `forward` method for additional detail.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
+            raise ValueError(
+                f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
+                f"heads ({config.num_attention_heads})"
+            )
+
+        self.num_attention_heads = config.num_attention_heads
+        self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
+        self.all_head_size = self.num_attention_heads * self.attn_head_size
+        self.p_dropout = config.attention_probs_dropout_prob
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, 3 * self.all_head_size + config.intermediate_size, bias=config.attn_qkv_bias)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
+        self.out_drop = (
+            nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
+        )
+
+        # Warn if defaulting to pytorch because of import issues
+        if not IMPL_USE_FLASH2:
+            warnings.warn(
+                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+                " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
+            )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: torch.Tensor,
+        attn_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Perform self-attention.
+
+        There are two attention implementations supported: PyTorch's SDPA attention and Flash Attention 2.
+
+        The arguments are unpadded. The SDPA implementation of attention requires padded arguments while the
+        Flash Attention implementation does not. If using SDPA we first call `pad_input`. Once we compute
+        attention, we re-unpad our outputs for the other layers. The pad/unpad operations add overhead, but not
+        sending pad tokens through ffs saves compute.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            cu_seqlens: (batch + 1,)
+            max_seqlen: int
+            indices: (total_nnz,)
+            attn_mask: (batch, max_seqlen)
+
+        Returns:
+            attention: (total_nnz, dim), intermediate_ff (total_nnz, 2 * intermediate_dim)
+        """
+        bs, dim = hidden_states.shape
+        # Compute QKV and FF outputs at once and split them
+        qkvff = self.Wqkvff(hidden_states)
+        qkv = qkvff[:, :3*dim]
+        intermediate_ff = qkvff[:, 3*dim:]
+
+        if IMPL_USE_FLASH2:
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+
+            convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
+            if convert_dtype:
+                # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
+                # bfloat16 must be supported as of FA2 2.5.7. (Turing GPUs not supported)
+                orig_dtype = qkv.dtype
+                qkv = qkv.to(torch.bfloat16)
+
+                attn = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen,
+                    dropout_p=self.p_dropout,
+                )
+                attn = attn.to(orig_dtype)  # type: ignore
+            else:
+                attn = flash_attn_varlen_qkvpacked_func(
+                    qkv,
+                    cu_seqlens=cu_seqlens,
+                    max_seqlen=max_seqlen,
+                    dropout_p=self.p_dropout,
+                )
+        else:
+            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
+            unpad_bs, *_ = qkv.shape
+
+            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
+            q, k, v = qkv.transpose(3, 1).unbind(dim=2)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+
+            attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
+
+        return self.out_drop(self.Wo(attn.view(bs, dim))), intermediate_ff
+        
 
 
 class FlexBertPaddedAttention(FlexBertAttentionBase):
@@ -635,6 +745,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
 
 ATTN2CLS = {
     "unpadded_base": FlexBertUnpadAttention,
+    "unpadded_parallel": FlexBertUnpadParallelAttention,
     "padded_base": FlexBertPaddedAttention,
     "unpadded_rope": FlexBertUnpadRopeAttention,
     "padded_rope": FlexBertPaddedRopeAttention,
