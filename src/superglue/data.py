@@ -1,0 +1,101 @@
+# Copyright 2024 Bert24 authors
+# SPDX-License-Identifier: Apache-2.0
+
+"""from https://arxiv.org/pdf/1905.00537
+For classification tasks with sentence-pair inputs (BoolQ, CB, RTE, WiC), we concatenate the
+sentences with a [SEP] token, feed the fused input to BERT, and use a logistic regression classifier
+that sees the representation corresponding to [CLS]. For WiC, we also concatenate the representation
+of the marked word. For COPA, MultiRC, and ReCoRD, for each answer choice, we similarly
+concatenate the context with that answer choice and feed the resulting sequence into BERT to produce
+an answer representation. For COPA, we project these representations into a scalar, and take as the
+answer the choice with the highest associated scalar. For MultiRC, because each question can have
+more than one correct answer, we feed each answer representation into a logistic regression classifier.
+For ReCoRD, we also evaluate the probability of each candidate independent of other candidates,
+and take the most likely candidate as the model’s prediction. For WSC, which is a span-based task,
+we use a model inspired by Tenney et al. (2019). Given the BERT representation for each word in the
+original sentence, we get span representations of the pronoun and noun phrase via a self-attention
+span-pooling operator (Lee et al., 2017), before feeding it into a logistic regression classifier.
+"""
+
+
+import logging
+
+from composer.utils import MissingConditionalImportError, dist
+
+_task_column_names = {
+    "boolq": ("question", "passage"),
+    "cb": ("premise", "hypothesis"),
+    #"copa": #("sentence1", "sentence2"), # ['premise', 'choice1', 'choice2', 'question
+    #"multirc": ("paragraph", "sentence"), #  paragraph question answer
+    #"record": ("question1", "question2"), ['passage', 'query', 'entities', 'entity_spans', 'answers', 'idx'
+    "rte": ("premise", "hypothesis"),
+    "wic": ("sentence1", "sentence2"), #'word','sentence1'  'sentence2',  'start1',  'start2',  'end1',  'end2',
+    #"wsc": ("sentence1", "sentence2"), #'text','span1_index',  'span2_index',  'span1_text',  'span2_text',
+    #"wsc.fixed": ("sentence1", "sentence2"), #'text','span1_index',  'span2_index',  'span1_text',  'span2_text',
+    #"axb": ("sentence1", "sentence2"),
+    #"axg": ("premise", "hypothesis"),
+}
+
+log = logging.getLogger(__name__)
+
+
+def create_superglue_dataset(
+    task: str,
+    tokenizer_name: str,
+    split: str,
+    max_seq_length: int = 256,
+    max_retries: int = 10,
+    num_workers: int = 0,
+):
+    try:
+        import datasets
+        import transformers
+    except ImportError as e:
+        raise MissingConditionalImportError(extra_deps_group="nlp", conda_package="transformers") from e
+
+    if task not in _task_column_names:
+        raise ValueError(f"task ({task}) must be one of {_task_column_names.keys()}")
+
+    if (max_seq_length % 8) != 0:
+        log.warning("For performance, a max_seq_length as a multiple of 8 is recommended.")
+
+    tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)  # type: ignore (thirdparty)
+
+    log.info(f"Loading {task.upper()} on rank {dist.get_global_rank()}")
+    download_config = datasets.DownloadConfig(max_retries=max_retries)
+    dataset = datasets.load_dataset(
+        "aps/super_glue",
+        task,
+        split=split,
+        download_config=download_config,
+    )
+
+    log.info(f"Starting tokenization by preprocessing over {num_workers} threads!")
+    text_column_names = _task_column_names[task]
+
+    def tokenize_function(inp):
+        # truncates sentences to max_length or pads them to max_length
+
+        first_half = inp[text_column_names[0]]
+        second_half = inp[text_column_names[1]] if text_column_names[1] in inp else None
+        return tokenizer(
+            text=first_half,
+            text_pair=second_half,
+            padding="max_length",
+            max_length=max_seq_length,
+            truncation=True,
+        )
+
+    columns_to_remove = ["idx"] + [i for i in text_column_names if i is not None]
+
+    assert isinstance(dataset, datasets.Dataset)
+    safe_name = tokenizer_name.replace("/", ",")
+    dataset = dataset.map(
+        tokenize_function,
+        batched=True,
+        num_proc=None if num_workers == 0 else num_workers,
+        batch_size=1000,
+        remove_columns=columns_to_remove,
+        load_from_cache_file=True,
+    )
+    return dataset
