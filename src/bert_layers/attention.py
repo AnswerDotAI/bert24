@@ -410,8 +410,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         bs, dim = hidden_states.shape
         # Compute QKV and FF outputs at once and split them
         qkvff = self.Wqkvff(hidden_states)
-        qkv = qkvff[:, :3*dim]
-        intermediate_ff = qkvff[:, 3*dim:]
+        qkv, intermediate_ff = torch.split(qkvff, [3*dim, qkvff.size(1) - 3*dim], dim=1)
 
         if IMPL_USE_FLASH2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
