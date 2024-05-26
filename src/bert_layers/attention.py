@@ -364,10 +364,8 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
 
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attn_head_size
+        self.hidden_size = config.hidden_size
         self.p_dropout = config.attention_probs_dropout_prob
-        # Compute QKV and FF outputs at once
-        self.Wqkvff = nn.Linear(config.hidden_size, 3 * self.all_head_size + config.intermediate_size, bias=config.attn_qkv_bias)
         self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
@@ -382,7 +380,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        qkv: torch.Tensor,
         cu_seqlens: torch.Tensor,
         max_seqlen: int,
         indices: torch.Tensor,
@@ -398,20 +396,17 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         sending pad tokens through ffs saves compute.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            qkv: (total_nnz, 3 * dim)
             cu_seqlens: (batch + 1,)
             max_seqlen: int
             indices: (total_nnz,)
             attn_mask: (batch, max_seqlen)
 
         Returns:
-            attention: (total_nnz, dim), intermediate_ff (total_nnz, 2 * intermediate_dim)
+            attention: (total_nnz, dim)
         """
-        bs, dim = hidden_states.shape
-        # Compute QKV and FF outputs at once and split them
-        qkvff = self.Wqkvff(hidden_states)
-        qkv, intermediate_ff = torch.split(qkvff, [3*dim, qkvff.size(1) - 3*dim], dim=1)
-
+        bs = qkv.shape[0]
+        dim = self.hidden_size
         if IMPL_USE_FLASH2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
 
@@ -446,7 +441,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
 
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
-        return self.out_drop(self.Wo(attn.view(bs, dim))), intermediate_ff
+        return self.out_drop(self.Wo(attn.view(bs, dim)))
         
 
 

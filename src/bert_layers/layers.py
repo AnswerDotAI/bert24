@@ -297,6 +297,10 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
+        self.attn_size = config.hidden_size * 3
+        self.mlp_size = config.intermediate_size
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
         self.attn = get_attention_layer(config)
         self.mlp = get_mlp_layer(config)
@@ -315,8 +319,9 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
             hidden_states: (total_nnz, dim)
             attn_mask: None or (batch, max_seqlen)
         """
-        attn_out, intermediate_ff = self.attn(self.norm(hidden_states), cu_seqlens, max_seqlen, indices, attn_mask)
-        return hidden_states + attn_out + self.mlp(intermediate_ff)
+        # Compute QKV and FF outputs at once and split them
+        qkv, intermediate_ff = self.Wqkvff(self.norm(hidden_states)).split([self.attn_size, self.mlp_size], dim=1)
+        return hidden_states + self.attn(qkv, cu_seqlens, max_seqlen, indices, attn_mask) + self.mlp(intermediate_ff)
 
 class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
