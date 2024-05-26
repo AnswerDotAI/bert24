@@ -23,15 +23,14 @@ import math
 
 import bert_padding
 from .configuration_bert import FlexBertConfig, maybe_add_padding
-from .activation import get_act_fn
 from .normalization import get_norm_layer
 
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
 try:
     from flash_attn import flash_attn_varlen_qkvpacked_func  # type: ignore
-    from flash_attn import flash_attn_qkvpacked_func # type: ignore
-    
+    from flash_attn import flash_attn_qkvpacked_func  # type: ignore
+
     installed_version = importlib.metadata.version("flash_attn")  # type: ignore
     if installed_version < "2.5.7":
         raise ImportError("newer version of flash_attn required (>= 2.5.7)")
@@ -41,7 +40,7 @@ except ImportError:
 
 try:
     from flash_attn.layers.rotary import RotaryEmbedding  # type: ignore
-except ImportError as e:
+except ImportError:
     RotaryEmbedding = None
 
 logger = logging.getLogger(__name__)
@@ -438,15 +437,16 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        
+
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
             config.rotary_emb_dim,
             base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base, # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
-            device=config.device)
-        
+            device=config.device,
+        )
+
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2:
             warnings.warn(
@@ -483,45 +483,20 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         """
         bs, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
-        
+
         # only needed for inference when we have KV cache
         seqlen_offset = 0
-        
-        # print(f"cu_seqlens {cu_seqlens.shape=}")
-        # print(f"cu_seqlens {cu_seqlens=}")
-        
+
         if IMPL_USE_FLASH2:
-            
-            # print(f"start {qkv.shape=}")
-            # # Reshape to (batch, seqlen, 3, nheads, headdim) 
-            # # qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            # qkv = qkv.view(bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-            # print(f"after reshape for rope {qkv.shape=}")
-            # # Apply RoPE
-            # qkv = self.rotary_emb(
-            #     qkv, seqlen_offset=cu_seqlens[1:], max_seqlen=None
-            #     )
-            # print(f"after app rope {qkv.shape=}")
-            
-            # print(f"before padding {qkv.shape=}")
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            # print(f"after padding {qkv.shape=}")
-            # Reshape to (batch, seqlen, 3, nheads, headdim) 
+
+            # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            # print(f"after reshape for rope {qkv.shape=}")
+
             # Apply RoPE
-            qkv = self.rotary_emb(
-                qkv, seqlen_offset=seqlen_offset, max_seqlen=None
-                )
-            # print(f"after app rope {qkv.shape=}")
-            # print(f"attn {attn_mask.shape=}")
-            # print(f"attn {attn_mask=}")
+            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             qkv = bert_padding.unpad_input_only(qkv, torch.squeeze(attn_mask) == 1)
-            # print(f"after unpadding {qkv.shape=}")
-            
-            # qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
-            # print(f"after reshape {qkv.shape=}")
-            
+
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
@@ -547,21 +522,20 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, *_ = qkv.shape
 
-            # Reshape to (batch, seqlen, 3, nheads, headdim) 
+            # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attention_head_size)
 
             # Apply RoPE
-            qkv = self.rotary_emb(
-                qkv, seqlen_offset=seqlen_offset, max_seqlen=None
-                )
-            
+            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
+
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
 
+            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
-        return self.out_drop(self.Wo(attn.view(bs, dim)))
+        return self.out_drop(self.Wo(attn))
 
 
 class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
@@ -591,14 +565,15 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        
+
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
             config.rotary_emb_dim,
             base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base, # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
-            device=config.device)
+            device=config.device,
+        )
 
     def forward(
         self,
@@ -621,16 +596,13 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         qkv = self.Wqkv(hidden_states)
 
         seqlen_offset = 0
-        
+
         if IMPL_USE_FLASH2:
-            # Reshape to (batch, seqlen, 3, nheads, headdim) 
+            # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            # print(f"after reshape {qkv.shape=}")
+
             # Apply RoPE
-            qkv = self.rotary_emb(
-                qkv, seqlen_offset=seqlen_offset, max_seqlen=None
-                )
-            # print(f"after app rope {qkv.shape=}")
+            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
@@ -645,17 +617,15 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
         else:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            qkv = self.rotary_emb(
-                qkv, seqlen_offset=seqlen_offset, max_seqlen=None
-                )
+            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
 
-        attn = attn.contiguous().view(batch_size, seqlen, dim)
+        attn = attn.view(batch_size, seqlen, dim).transpose(1, 2)
         return self.out_drop(self.Wo(attn))
-    
-    
+
+
 ATTN2CLS = {
     "unpadded_base": FlexBertUnpadAttention,
     "padded_base": FlexBertPaddedAttention,
