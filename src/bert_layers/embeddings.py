@@ -149,7 +149,10 @@ class FlexBertSansPositionEmbeddings(FlexBertEmbeddingsBase):
         self.norm = get_norm_layer(config) if config.embed_norm else nn.Identity()
         self.drop = nn.Dropout(config.embed_dropout_prob) if config.embed_dropout_prob > 0.0 else nn.Identity()
 
-    def forward(self, input_ids: torch.LongTensor, **kwargs) -> torch.Tensor:
+    def forward(self, 
+                input_ids: torch.LongTensor, 
+                position_ids: Optional[torch.LongTensor] = None
+                ) -> torch.Tensor:
         return self.drop(self.norm(self.tok_embeddings(input_ids)))
 
 
