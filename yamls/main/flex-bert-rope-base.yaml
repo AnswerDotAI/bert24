@@ -6,25 +6,25 @@
 data_local: ./my-copy-c4
 data_remote: # If blank, files must be present in data_local
 
-max_seq_len: 128
+max_seq_len: 512
 tokenizer_name: bert-base-uncased # switch to bert tokenizer until we add [MASK] token to the llama tokenizer meta-llama/Llama-2-7b-hf
 mlm_probability: 0.3 # FlexBERT should use 30% masking for optimal performance
 
 # Run Name
-run_name: flex-bert-base
+run_name: flex-bert-rope-base
 
 # Model
 model:
   name: flex_bert
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
-  # FlexBERT 'base' generally uses the default architecture values for from the Hugging Face BertConfig object
+  # FlexBERT 'base' generally uses the default architecture values from the Hugging Face BertConfig object
   # Note: if using the pretrained_checkpoint argument to create a model from an existing checkpoint, make sure
   # the model_config settings match the architecture of the existing model
   model_config:
     num_attention_heads: 12 # bert-base default
     num_hidden_layers: 12 # bert-base default
-    attention_layer: base
+    attention_layer: rope
     attention_probs_dropout_prob: 0.0
     attn_out_bias: false
     attn_out_dropout_prob: 0.0
@@ -32,7 +32,7 @@ model:
     bert_layer: prenorm
     embed_dropout_prob: 0.0
     embed_norm: true
-    embedding_layer: absolute_pos
+    embedding_layer: sans_pos
     loss_function: cross_entropy
     loss_kwargs:
       reduction: mean
@@ -40,11 +40,16 @@ model:
     mlp_in_bias: false
     mlp_layer: mlp
     mlp_out_bias: false
+    normalization: rmsnorm
     norm_kwargs:
       eps: 1e-6
-    normalization: rmsnorm
     padding: unpadded
     sparse_prediction: false
+    device: "cuda"
+    rotary_emb_dim: 64 # rotary_dim must be <= headdim
+    rotary_emb_base: 10000.0
+    rotary_emb_scale_base: null
+    rotary_emb_interleaved: false
 
 # Dataloaders
 train_loader:
@@ -108,14 +113,14 @@ console_log_interval: 1ba
 
 callbacks:
   speed_monitor:
-    window_size: 500
+    window_size: 10
   lr_monitor: {}
 
 # (Optional) W&B logging
 # loggers:
 #   wandb:
 #     project:      # Fill this in
-#     entity:      # Fill this in
+#     entity:       # Fill this in
 
 # (Optional) Checkpoint to local filesystem or remote object store
 # save_interval: 3500ba
