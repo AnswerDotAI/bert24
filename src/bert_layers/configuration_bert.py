@@ -39,6 +39,7 @@ class FlexBertConfig(TransformersBertConfig):
         attn_out_bias: bool = False,
         attn_out_dropout_prob: float = 0.0,
         attn_qkv_bias: bool = False,
+        attn_use_fa2: bool = True,
         bert_layer: str = "prenorm",
         decoder_bias: bool = True,
         embed_dropout_prob: float = 0.0,
@@ -71,6 +72,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.attn_out_bias = attn_out_bias
         self.attn_out_dropout_prob = attn_out_dropout_prob
         self.attn_qkv_bias = attn_qkv_bias
+        self.attn_use_fa2 = attn_use_fa2
         self.bert_layer = bert_layer
         self.decoder_bias = decoder_bias
         self.embed_dropout_prob = embed_dropout_prob

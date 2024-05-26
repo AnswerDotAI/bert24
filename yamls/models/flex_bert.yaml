@@ -7,6 +7,7 @@ model:
     attn_out_bias: False
     attn_out_dropout_prob: 0.0
     attn_qkv_bias: False
+    attn_use_fa2: True
     bert_layer: prenorm
     decoder_bias: True
     embed_dropout_prob: 0.0
