@@ -102,9 +102,9 @@ class FlexBertConfig(TransformersBertConfig):
         self.pooling_type = pooling_type
         self.device = device
         self.rotary_emb_dim = rotary_emb_dim
-        self.rotary_emb_base = rotary_emb_base,
-        self.rotary_emb_scale_base = rotary_emb_scale_base,
-        self.rotary_emb_interleaved = rotary_emb_interleaved,
+        self.rotary_emb_base = rotary_emb_base
+        self.rotary_emb_scale_base = rotary_emb_scale_base
+        self.rotary_emb_interleaved = rotary_emb_interleaved
 
 
 PADDING = ["unpadded", "padded"]
