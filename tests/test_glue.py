@@ -1,13 +1,19 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+import sys
+import os
 import shutil
 import tempfile
 from typing import Any
 
 import pytest
 
-from ..glue import train
+# Add tests folder root to path to allow us to use relative imports regardless of what directory the script is run from
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from glue import train
 from omegaconf import DictConfig, OmegaConf
 
 
@@ -36,6 +42,13 @@ def test_glue_script(model_name: str):
     config = OmegaConf.merge(default_cfg, model_cfg, test_config)
     assert isinstance(config, DictConfig)
     config.model.name = model_name
+
+    if (
+        model_name == "flex_bert"
+        and not config.model.model_config.attn_use_fa2
+        and config.model.model_config.padding == "unpadded"
+    ):
+        pytest.skip("SDPA call currently errors with Glue test on unpadded inputs")
 
     # The test is that `train` runs successfully
     with GlueDirContext() as local_save_dir:
