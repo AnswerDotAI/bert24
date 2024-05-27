@@ -63,7 +63,6 @@ class FlexBertConfig(TransformersBertConfig):
         head_pred_dropout: float = 0.0,
         head_pred_norm: bool = True,
         pooling_type: str = "mean",
-        device: str = "cuda",
         rotary_emb_dim: int = 64,
         rotary_emb_base: float = 10000.0,
         rotary_emb_scale_base=None,
@@ -100,7 +99,6 @@ class FlexBertConfig(TransformersBertConfig):
         self.head_pred_dropout = head_pred_dropout
         self.head_pred_norm = head_pred_norm
         self.pooling_type = pooling_type
-        self.device = device
         self.rotary_emb_dim = rotary_emb_dim
         self.rotary_emb_base = rotary_emb_base
         self.rotary_emb_scale_base = rotary_emb_scale_base
