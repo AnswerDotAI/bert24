@@ -28,8 +28,7 @@ from .normalization import get_norm_layer
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
 try:
-    from flash_attn import flash_attn_varlen_qkvpacked_func  # type: ignore
-    from flash_attn import flash_attn_qkvpacked_func  # type: ignore
+    from flash_attn import flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func  # type: ignore
 
     installed_version = importlib.metadata.version("flash_attn")  # type: ignore
     if installed_version < "2.5.7":
@@ -264,13 +263,15 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
+        self.attn_use_fa2 = config.attn_use_fa2
 
         # Warn if defaulting to pytorch because of import issues
-        if not IMPL_USE_FLASH2:
+        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
             warnings.warn(
                 "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
                 " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
             )
+            self.attn_use_fa2 = False
 
     def forward(
         self,
@@ -302,7 +303,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         bs, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
-        if IMPL_USE_FLASH2:
+        if self.attn_use_fa2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -326,17 +327,18 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                 )
+            attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, *_ = qkv.shape
 
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-            q, k, v = qkv.transpose(3, 1).unbind(dim=2)
+            q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
-
+            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
-        return self.out_drop(self.Wo(attn.view(bs, dim)))
+        return self.out_drop(self.Wo(attn))
 
 
 class FlexBertPaddedAttention(FlexBertAttentionBase):
@@ -366,6 +368,9 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
+        self.attn_use_fa2 = config.attn_use_fa2
+        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
+            self.attn_use_fa2 = False
 
     def forward(
         self,
@@ -387,7 +392,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         batch_size, seqlen, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
-        if IMPL_USE_FLASH2:
+        if self.attn_use_fa2:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -403,6 +408,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
         else:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
 
@@ -531,8 +537,8 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             # Apply RoPE
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
-            q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
 
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)

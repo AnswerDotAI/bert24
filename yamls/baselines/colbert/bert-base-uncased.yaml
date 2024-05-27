@@ -1,0 +1,31 @@
+# This YAML is built to work with the `sequence_classification.py` starter script!
+#
+#   Follow the instructions in that script to modify the `build_my_dataloader` function
+#   and fine-tune a BERT model on your own dataset!
+#
+#
+#   Note that some of the fields in this template haven't been filled in yet.
+#   Please resolve any empty fields before launching!
+
+# Run Name
+run_name: finetune-hf-bert
+
+seed: 42
+model_name_or_path: bert-base-uncased
+train_dataset_id: bclavie/msmarco-500k-triplets-colbert-format
+n_gpu: 1
+tmp_dir: ./tmp_colbert
+debug: false
+
+train_params:
+  lr: 3e-5
+  use_ib_negatives: true
+  bsize: 32
+
+eval_datasets:
+  - "beir/scifact/test"
+  - "beir/nfcorpus/test"
+  - "beir/fiqa/test"
+  - "beir/scidocs"
+  - "beir/trec-covid"
+  - "beir/webis-touche2020/v2"
