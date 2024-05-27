@@ -5,7 +5,9 @@
 # License: Apache-2.0
 
 from collections import OrderedDict
+from typing import Union
 import torch.nn as nn
+from .configuration_bert import FlexBertConfig
 
 
 class ClassInstantier(OrderedDict):
@@ -44,3 +46,14 @@ ACT2CLS = {
     "threshold": nn.Threshold,
 }
 ACT2FN = ClassInstantier(ACT2CLS)
+
+
+def get_act_fn(config: Union[FlexBertConfig, str]) -> nn.Module:
+    try:
+        if isinstance(config, str):
+            return ACT2FN[config]
+        return ACT2FN[config.activation_function]
+    except KeyError:
+        raise ValueError(
+            f"Invalid activation function type: {config.activation_function}, must be one of {ACT2FN.keys()}."
+        )

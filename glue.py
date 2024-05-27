@@ -21,6 +21,7 @@ import omegaconf as om
 import src.glue.finetuning_jobs as finetuning_jobs_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
+import src.flex_bert as flex_bert_module
 import torch
 from composer import algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
@@ -30,6 +31,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
+from src.scheduler import WarmupStableDecayScheduler
 from composer.utils import reproducibility
 from composer.utils.file_helpers import get_file
 from composer.utils.object_store import S3ObjectStore
@@ -91,6 +93,8 @@ def build_scheduler(cfg):
         return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+    elif cfg.name == "warmup_stable_decay":
+        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -107,6 +111,15 @@ def build_model(cfg: DictConfig, num_labels: int):
         )
     elif cfg.name == "mosaic_bert":
         return mosaic_bert_module.create_mosaic_bert_classification(
+            num_labels=num_labels,
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+        )
+    elif cfg.name == "flex_bert":
+        return flex_bert_module.create_flex_bert_classification(
             num_labels=num_labels,
             pretrained_model_name=cfg.pretrained_model_name,
             pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),

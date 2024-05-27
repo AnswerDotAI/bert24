@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import src.glue.data as data_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
+import src.flex_bert as flex_bert_module
 import transformers
 from composer import Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
@@ -24,6 +25,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
+from src.scheduler import WarmupStableDecayScheduler
 from composer.utils import dist, reproducibility
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
@@ -113,6 +115,8 @@ def build_scheduler(cfg):
         return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+    elif cfg.name == "warmup_stable_decay":
+        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -207,11 +211,20 @@ def build_model(cfg: DictConfig):
             tokenizer_name=cfg.get("tokenizer_name"),
             gradient_checkpointing=cfg.get("gradient_checkpointing"),
         )
+    elif cfg.name == "flex_bert":
+        return flex_bert_module.create_flex_bert_classification(
+            num_labels=cfg.num_labels,
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint"),
+            model_config=cfg.get("model_config"),
+            tokenizer_name=cfg.get("tokenizer_name"),
+            gradient_checkpointing=cfg.get("gradient_checkpointing"),
+        )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 
 
-def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
+def train(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
     print("Training using config: ")
     print(om.to_yaml(cfg))
     reproducibility.seed_all(cfg.seed)
@@ -306,4 +319,4 @@ if __name__ == "__main__":
     cli_cfg = om.from_cli(args_list)
     cfg = om.merge(default_cfg, yaml_cfg, cli_cfg)
     cfg = cast(DictConfig, cfg)  # for type checking
-    main(cfg)
+    train(cfg)

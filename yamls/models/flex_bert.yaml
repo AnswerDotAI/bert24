@@ -1,0 +1,35 @@
+model:
+  name: flex_bert
+  model_config:
+    activation_function: silu
+    attention_layer: base
+    attention_probs_dropout_prob: 0.0
+    attn_out_bias: False
+    attn_out_dropout_prob: 0.0
+    attn_qkv_bias: False
+    bert_layer: prenorm
+    decoder_bias: True
+    embed_dropout_prob: 0.0
+    embed_norm: True
+    embedding_layer: absolute_pos
+    encoder_layer: base
+    loss_function: cross_entropy
+    loss_kwargs:
+      reduction: mean
+    mlp_dropout_prob: 0.0
+    mlp_in_bias: False
+    mlp_layer: mlp
+    mlp_out_bias: False
+    norm_kwargs:
+      eps: 1e-6
+    normalization: rmsnorm
+    padding: unpadded
+    head_class_act: silu
+    head_class_bias: False
+    head_class_dropout: 0.0
+    head_class_norm: False
+    head_pred_act: silu
+    head_pred_bias: False
+    head_pred_dropout: 0.0
+    head_pred_norm: True
+    pooling_type: mean

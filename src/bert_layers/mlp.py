@@ -14,8 +14,9 @@
 import torch
 import torch.nn as nn
 
-from .activation import ACT2FN
-from .normalization import NORM2CLS
+from .configuration_bert import FlexBertConfig, maybe_add_padding
+from .activation import get_act_fn
+from .normalization import get_norm_layer
 
 
 class BertResidualGLU(nn.Module):
@@ -40,10 +41,10 @@ class BertResidualGLU(nn.Module):
         super().__init__()
         self.config = config
         self.gated_layers = nn.Linear(config.hidden_size, config.intermediate_size * 2, bias=False)
-        self.act = ACT2FN[config.hidden_act]
+        self.act = get_act_fn(config.hidden_act)
         self.wo = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.layernorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = get_norm_layer(config)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
@@ -64,3 +65,66 @@ class BertResidualGLU(nn.Module):
         # add the residual connection and post-LN
         hidden_states = self.layernorm(hidden_states + residual_connection)
         return hidden_states
+
+
+class FlexBertMLPBase(nn.Module):
+    """A FlexBERT MLP base class for type hints."""
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+
+class FlexBertMLP(FlexBertMLPBase):
+    """Applies the MLP at the end of each FlexBERT layer.
+
+    Compared to the default BERT architecture, this block replaces :class:`~transformers.model.bert.modeling_bert.BertIntermediate`
+    and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.Wi = nn.Linear(config.hidden_size, config.intermediate_size, bias=config.mlp_in_bias)
+        self.act = get_act_fn(config)
+        self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
+        self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """Compute new hidden states from current hidden states.
+
+        Args:
+            hidden_states (torch.Tensor): The (unpadded) hidden states from
+                the attention layer [nnz, dim].
+        """
+        return self.Wo(self.drop(self.act(self.Wi(hidden_states))))
+
+
+class FlexBertGLU(FlexBertMLPBase):
+    """Applies the GLU at the end of each FlexBERT layer.
+
+    Compared to the default BERT architecture, this block replaces :class:`~transformers.model.bert.modeling_bert.BertIntermediate`
+    and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size), bias=config.mlp_in_bias)
+        self.act = get_act_fn(config)
+        self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
+        self.Wo = nn.Linear(config.intermediate_size // 2, config.hidden_size, bias=config.mlp_out_bias)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        input, gate = self.Wi(hidden_states).chunk(2, dim=-1)
+        return self.Wo(self.drop(self.act(input) * gate))
+
+
+MLP2CLS = {
+    "mlp": FlexBertMLP,
+    "glu": FlexBertGLU,
+}
+
+
+def get_mlp_layer(config: FlexBertConfig) -> FlexBertMLPBase:
+    try:
+        return MLP2CLS[config.mlp_layer](config)
+    except KeyError:
+        raise ValueError(f"Invalid MLP layer type: {config.mlp_layer=}, must be one of {MLP2CLS.keys()}.")

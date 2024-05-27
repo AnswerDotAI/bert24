@@ -6,7 +6,6 @@ run_name: test
 
 # Model
 model:
-  name: mosaic_bert
   num_labels: 2
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}

@@ -16,7 +16,8 @@ import torch
 import torch.nn as nn
 from typing import Optional
 
-from .normalization import NORM2CLS
+from .configuration_bert import FlexBertConfig
+from .normalization import get_norm_layer
 
 
 class BertAlibiEmbeddings(nn.Module):
@@ -26,7 +27,7 @@ class BertAlibiEmbeddings(nn.Module):
     embeddings.
 
     This module is modeled after the Hugging Face BERT's
-    :class:`~transformers.model.bert.modeling_bert.BertAlibiEmbeddings`, but is
+    :class:`~transformers.model.bert.modeling_bert.BertEmbeddings`, but is
     modified as part of Mosaic BERT's ALiBi implementation. The key change is
     that position embeddings are removed. Position information instead comes
     from attention biases that scale linearly with the position distance
@@ -39,13 +40,18 @@ class BertAlibiEmbeddings(nn.Module):
         super().__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         # ALiBi doesn't use position embeddings
-        self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
+        if getattr(config, "token_type_embeddings", True):
+            self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
+            self.use_token_type_embeddings = True
+        else:
+            self.use_token_type_embeddings = False
 
-        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = get_norm_layer(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.register_buffer(
-            "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False
-        )
+        if self.use_token_type_embeddings:
+            self.register_buffer(
+                "token_type_ids", torch.zeros(config.max_position_embeddings, dtype=torch.long), persistent=False
+            )
 
     def forward(
         self,
@@ -73,25 +79,88 @@ class BertAlibiEmbeddings(nn.Module):
         # where it is all zeros, which usually occurs when it's auto-generated;
         # registered buffer helps users when tracing the model without passing
         # token_type_ids, solves issue #5664
-        if token_type_ids is None:
+        if self.use_token_type_embeddings and token_type_ids is None:
             if hasattr(self, "token_type_ids"):
-                assert isinstance(self.token_type_ids, torch.LongTensor)
                 buffered_token_type_ids = self.token_type_ids[:, :seq_length]
                 buffered_token_type_ids_expanded = buffered_token_type_ids.expand(input_shape[0], seq_length)
-                token_type_ids = buffered_token_type_ids_expanded  # type: ignore
+                token_type_ids = buffered_token_type_ids_expanded
             else:
-                token_type_ids = torch.zeros(
-                    input_shape,  # type: ignore
-                    dtype=torch.long,
-                    device=self.word_embeddings.device,
-                )  # type: ignore  # yapf: disable
+                token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=input_ids.device)
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
-        embeddings = inputs_embeds + token_type_embeddings
+        if self.use_token_type_embeddings:
+            token_type_embeddings = self.token_type_embeddings(token_type_ids)
+            embeddings = inputs_embeds + token_type_embeddings
+        else:
+            embeddings = inputs_embeds
+
         # no position embeddings! ALiBi
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
+
+
+class FlexBertEmbeddingsBase(nn.Module):
+    """A FlexBERT embeddings base class for type hints."""
+
+    def forward(self, input_ids: torch.LongTensor, position_ids: Optional[torch.LongTensor] = None) -> torch.Tensor:
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+
+class FlexBertAbsoluteEmbeddings(FlexBertEmbeddingsBase):
+    """Construct the embeddings with absolute positional embeddings."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.tok_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
+
+        self.norm = get_norm_layer(config) if config.embed_norm else nn.Identity()
+        self.drop = nn.Dropout(config.embed_dropout_prob) if config.embed_dropout_prob > 0.0 else nn.Identity()
+
+        self.register_buffer(
+            "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)), persistent=False
+        )
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor,
+        position_ids: Optional[torch.LongTensor] = None,
+    ) -> torch.Tensor:
+        if position_ids is None:
+            position_ids = self.position_ids[:, 0 : input_ids.shape[1]]
+
+        embeddings = self.tok_embeddings(input_ids)
+        position_embeddings = self.position_embeddings(position_ids)
+
+        embeddings = self.norm(embeddings + position_embeddings)
+        return self.drop(embeddings)
+
+
+class FlexBertSansPositionEmbeddings(FlexBertEmbeddingsBase):
+    """Construct the embeddings from token embeddings without any positional embeddings."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.tok_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+
+        self.norm = get_norm_layer(config) if config.embed_norm else nn.Identity()
+        self.drop = nn.Dropout(config.embed_dropout_prob) if config.embed_dropout_prob > 0.0 else nn.Identity()
+
+    def forward(self, input_ids: torch.LongTensor, **kwargs) -> torch.Tensor:
+        return self.drop(self.norm(self.tok_embeddings(input_ids)))
+
+
+EBB2CLS = {
+    "absolute_pos": FlexBertAbsoluteEmbeddings,
+    "sans_pos": FlexBertSansPositionEmbeddings,
+}
+
+
+def get_embedding_layer(config: FlexBertConfig) -> FlexBertEmbeddingsBase:
+    try:
+        return EBB2CLS[config.embedding_layer](config)
+    except KeyError:
+        raise ValueError(f"Invalid embeddings layer type: {config.embedding_layer=}, must be one of {EBB2CLS.keys()}.")
