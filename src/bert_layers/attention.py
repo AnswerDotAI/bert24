@@ -527,6 +527,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                 )
+            attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, *_ = qkv.shape
