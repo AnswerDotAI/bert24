@@ -298,13 +298,10 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             attn_mask: (batch, max_seqlen)
 
         Returns:
-            attention: (total_nnz, dim), intermediate_ff (total_nnz, 2 * intermediate_dim)
+            attention: (total_nnz, dim)
         """
         bs, dim = hidden_states.shape
-        # Compute QKV and FF outputs at once and split them
-        qkvff = self.Wqkvff(hidden_states)
-        qkv = qkvff[:, :3*dim]
-        intermediate_ff = qkvff[:, 3*dim:]
+        qkv = self.Wqkv(hidden_states)
 
         if self.attn_use_fa2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
