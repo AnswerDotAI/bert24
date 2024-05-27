@@ -446,7 +446,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
-            
+
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
             config.rotary_emb_dim,
@@ -501,7 +501,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
             # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            
+
             # Apply RoPE
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             qkv = bert_padding.unpad_input_only(qkv, torch.squeeze(attn_mask) == 1)
@@ -538,12 +538,11 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
-
-            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
-        
-        return self.out_drop(self.Wo(attn.view(bs, dim)))
+
+        return self.out_drop(self.Wo(attn))
 
 
 class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
@@ -576,7 +575,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
 
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
-            
+
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
             config.rotary_emb_dim,
@@ -630,10 +629,9 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
-            
-        # attn = attn.transpose(1, 2).view(batch_size, seqlen, dim).contiguous()
-        attn = attn.contiguous().view(batch_size, seqlen, dim)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
+
+        attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
