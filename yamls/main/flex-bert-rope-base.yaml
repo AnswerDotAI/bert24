@@ -45,8 +45,7 @@ model:
       eps: 1e-6
     padding: unpadded
     sparse_prediction: false
-    device: "cuda"
-    rotary_emb_dim: 64 # rotary_dim must be <= headdim
+    rotary_emb_dim: null # will be set to headdim by default
     rotary_emb_base: 10000.0
     rotary_emb_scale_base: null
     rotary_emb_interleaved: false
