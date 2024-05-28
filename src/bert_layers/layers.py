@@ -292,6 +292,38 @@ class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
         return attn_out + self.mlp(self.mlp_norm(attn_out))
 
 
+class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT parallel attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_size = config.hidden_size * 3
+        self.mlp_size = config.intermediate_size
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
+        self.norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        # Compute QKV and FF outputs at once and split them
+        qkv, intermediate_ff = self.Wqkvff(self.norm(hidden_states)).split([self.attn_size, self.mlp_size], dim=1)
+        return hidden_states + self.attn(qkv, cu_seqlens, max_seqlen, indices, attn_mask) + self.mlp(intermediate_ff)
+
+
 class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
@@ -315,6 +347,35 @@ class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
         """
         attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), attn_mask)
         return attn_out + self.mlp(self.mlp_norm(attn_out))
+
+
+class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_size = config.hidden_size * 3
+        self.mlp_size = config.intermediate_size
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
+        self.norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        # Compute QKV and FF outputs at once and split them
+        qkv, intermediate_ff = self.Wqkvff(self.norm(hidden_states)).split([self.attn_size, self.mlp_size], dim=2)
+        return hidden_states + self.attn(qkv, attn_mask) + self.mlp(intermediate_ff)
 
 
 class FlexBertUnpadPostNormLayer(FlexBertLayerBase):
@@ -375,8 +436,10 @@ class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
 
 LAYER2CLS = {
     "unpadded_prenorm": FlexBertUnpadPreNormLayer,
+    "unpadded_parallel_prenorm": FlexBertUnpadParallelPreNormLayer,
     "unpadded_postnorm": FlexBertUnpadPostNormLayer,
     "padded_prenorm": FlexBertPaddedPreNormLayer,
+    "padded_parallel_prenorm": FlexBertPaddedParallelPreNormLayer,
     "padded_postnorm": FlexBertPaddedPostNormLayer,
 }
 

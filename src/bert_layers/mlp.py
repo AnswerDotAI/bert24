@@ -117,9 +117,28 @@ class FlexBertGLU(FlexBertMLPBase):
         return self.Wo(self.drop(self.act(input) * gate))
 
 
+class FlexBertParallelGLU(FlexBertMLPBase):
+    """Applies the GLU at the end of each FlexBERT layer using intermediate_ff computed in parallel of the attention.
+
+    Compared to the default BERT architecture, this block replaces :class:`~transformers.model.bert.modeling_bert.BertIntermediate`
+    and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.act = get_act_fn(config)
+        self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
+        self.Wo = nn.Linear(config.intermediate_size // 2, config.hidden_size, bias=config.mlp_out_bias)
+
+    def forward(self, intermediate_ff: torch.Tensor) -> torch.Tensor:
+        input, gate = intermediate_ff.chunk(2, dim=-1)
+        return self.Wo(self.drop(self.act(input) * gate))
+
+
 MLP2CLS = {
     "mlp": FlexBertMLP,
     "glu": FlexBertGLU,
+    "parallel_glu": FlexBertParallelGLU,
 }
 
 
