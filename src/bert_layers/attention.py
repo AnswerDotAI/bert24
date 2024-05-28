@@ -410,9 +410,9 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
 
-        attn = attn.contiguous().view(batch_size, seqlen, dim)
+        attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
@@ -606,10 +606,10 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
 
         seqlen_offset = 0
 
+        # Reshape to (batch, seqlen, 3, nheads, headdim)
+        qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            
         if IMPL_USE_FLASH2:
-            # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
-
             # Apply RoPE
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
@@ -625,7 +625,6 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             else:
                 attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
         else:
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
