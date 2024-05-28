@@ -64,6 +64,10 @@ class FlexBertConfig(TransformersBertConfig):
         head_pred_dropout: float = 0.0,
         head_pred_norm: bool = True,
         pooling_type: str = "mean",
+        rotary_emb_dim: int | None = None,
+        rotary_emb_base: float = 10000.0,
+        rotary_emb_scale_base=None,
+        rotary_emb_interleaved: bool = False,
         **kwargs,
     ):
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -97,6 +101,10 @@ class FlexBertConfig(TransformersBertConfig):
         self.head_pred_dropout = head_pred_dropout
         self.head_pred_norm = head_pred_norm
         self.pooling_type = pooling_type
+        self.rotary_emb_dim = rotary_emb_dim
+        self.rotary_emb_base = rotary_emb_base
+        self.rotary_emb_scale_base = rotary_emb_scale_base
+        self.rotary_emb_interleaved = rotary_emb_interleaved
 
 
 PADDING = ["unpadded", "padded"]
