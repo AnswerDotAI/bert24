@@ -344,12 +344,18 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, *_ = qkv.shape
+            unpad_bs, seqlen, _ = qkv.shape
 
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
@@ -462,12 +468,18 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
             attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, *_ = qkv.shape
+            unpad_bs, seqlen, _ = qkv.shape
 
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
@@ -529,11 +541,11 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         Returns:
             attention: (batch, seqlen, dim)
         """
-        batch_size, seqlen, dim = hidden_states.shape
+        bs, seqlen, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
         if self.use_fa2:
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
@@ -547,14 +559,20 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
             else:
                 attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
         else:
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             ).transpose(1, 2)
 
-        attn = attn.view(batch_size, seqlen, dim)
+        attn = attn.view(bs, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
@@ -685,7 +703,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, *_ = qkv.shape
+            unpad_bs, seqlen, _ = qkv.shape
 
             # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
@@ -695,7 +713,13 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
@@ -767,13 +791,13 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         Returns:
             attention: (batch, seqlen, dim)
         """
-        batch_size, seqlen, dim = hidden_states.shape
+        bs, seqlen, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
         seqlen_offset = 0
 
         # Reshape to (batch, seqlen, 3, nheads, headdim)
-        qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
         if IMPL_USE_FLASH2:
             # Apply RoPE
@@ -794,10 +818,16 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             ).transpose(1, 2)
 
-        attn = attn.view(batch_size, seqlen, dim)
+        attn = attn.view(bs, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
@@ -927,7 +957,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
             attn = attn.view(bs, dim)
         else:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, *_ = qkv.shape
+            unpad_bs, seqlen, _ = qkv.shape
 
             # Reshape to (batch, seqlen, 3, nheads, headdim)
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
@@ -937,7 +967,13 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
@@ -1011,13 +1047,13 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         Returns:
             attention: (batch, seqlen, dim)
         """
-        batch_size, seqlen, _ = qkv.shape
+        bs, seqlen, _ = qkv.shape
         dim = self.hidden_size
 
         seqlen_offset = 0
 
         # Reshape to (batch, seqlen, 3, nheads, headdim)
-        qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
         if self.use_fa2:
             # Apply RoPE
@@ -1038,10 +1074,16 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             ).transpose(1, 2)
 
-        attn = attn.view(batch_size, seqlen, dim)
+        attn = attn.view(bs, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
@@ -1099,11 +1141,11 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         Returns:
             attention: (batch, seqlen, dim)
         """
-        batch_size, seqlen, _ = qkv.shape
+        bs, seqlen, _ = qkv.shape
         dim = self.hidden_size
 
         if self.use_fa2:
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
@@ -1117,13 +1159,19 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
             else:
                 attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
         else:
-            qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+                q,
+                k,
+                v,
+                dropout_p=self.p_dropout,
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                if self.use_sdpa_attn_mask
+                else None,
             ).transpose(1, 2)
 
-        attn = attn.view(batch_size, seqlen, dim)
+        attn = attn.view(bs, seqlen, dim)
         return self.out_drop(self.Wo(attn))
 
 
