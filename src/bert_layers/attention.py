@@ -453,7 +453,6 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             base=config.rotary_emb_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
-            device="cuda" if torch.cuda.is_available() else "cpu",
         )
 
         # Warn if defaulting to pytorch because of import issues
@@ -583,7 +582,6 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             base=config.rotary_emb_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
-            device="cuda" if torch.cuda.is_available() else "cpu",
         )
 
     def forward(
