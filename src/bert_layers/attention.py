@@ -442,7 +442,6 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
         return self.out_drop(self.Wo(attn.view(bs, dim)))
-        
 
 
 class FlexBertPaddedAttention(FlexBertAttentionBase):
@@ -735,7 +734,8 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
-    
+
+
 class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
     """Performs multi-headed self attention on a batch of unpadded sequences.
 
@@ -863,6 +863,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
 
         return self.out_drop(self.Wo(attn))
 
+
 class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
     """Performs multi-headed self attention on a batch of padded sequences.
 
@@ -948,6 +949,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
+
 
 class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
     """Performs multi-headed self attention on a batch of padded sequences.

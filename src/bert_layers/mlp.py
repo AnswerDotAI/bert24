@@ -134,6 +134,7 @@ class FlexBertParallelGLU(FlexBertMLPBase):
         input, gate = intermediate_ff.chunk(2, dim=-1)
         return self.Wo(self.drop(self.act(input) * gate))
 
+
 MLP2CLS = {
     "mlp": FlexBertMLP,
     "glu": FlexBertGLU,
