@@ -608,7 +608,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
 
         # Reshape to (batch, seqlen, 3, nheads, headdim)
         qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
-            
+
         if IMPL_USE_FLASH2:
             # Apply RoPE
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
