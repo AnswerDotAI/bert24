@@ -24,6 +24,7 @@ import math
 import bert_padding
 from .configuration_bert import FlexBertConfig, maybe_add_padding
 from .normalization import get_norm_layer
+import src.utils  # noqa: F401
 
 IMPL_USE_FLASH2 = False
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
@@ -263,15 +264,28 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        self.attn_use_fa2 = config.attn_use_fa2
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
-        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
-            warnings.warn(
-                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            logger.warn_once(
+                "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
                 " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
             )
-            self.attn_use_fa2 = False
+            self.use_fa2 = False
+        if not self.use_fa2:
+            if not self.use_sdpa_attn_mask:
+                logger.warn_once(
+                    "SDPA attention is being used without an attention mask. Including padding in the "
+                    " attention calculation may cause differences from the Flash Attention implementation."
+                )
+            else:
+                logger.warn_once(
+                    "SDPA attention with an attention mask doesn't use the Flash Attention kernel and will"
+                    " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
+                    " with sequence length."
+                )
 
     def forward(
         self,
@@ -303,7 +317,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         bs, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
-        if self.attn_use_fa2:
+        if self.use_fa2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -334,7 +348,9 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
 
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
@@ -367,15 +383,28 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        self.attn_use_fa2 = config.attn_use_fa2
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
-        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
-            warnings.warn(
-                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            logger.warn_once(
+                "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
                 " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
             )
-            self.attn_use_fa2 = False
+            self.use_fa2 = False
+        if not self.use_fa2:
+            if not self.use_sdpa_attn_mask:
+                logger.warn_once(
+                    "SDPA attention is being used without an attention mask. Including padding in the "
+                    " attention calculation may cause differences from the Flash Attention implementation."
+                )
+            else:
+                logger.warn_once(
+                    "SDPA attention with an attention mask doesn't use the Flash Attention kernel and will"
+                    " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
+                    " with sequence length."
+                )
 
     def forward(
         self,
@@ -406,7 +435,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         """
         bs = qkv.shape[0]
         dim = self.hidden_size
-        if self.attn_use_fa2:
+        if self.use_fa2:
             qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -437,7 +466,9 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
 
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
@@ -471,9 +502,15 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        self.attn_use_fa2 = config.attn_use_fa2
-        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
-            self.attn_use_fa2 = False
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            self.use_fa2 = False
+        if self.use_fa2 and self.use_sdpa_attn_mask:
+            logger.warn_once(
+                "Flash Attention 2 does not support attention masks. Use unpadded attention "
+                "the equivalent functionality of masking out padding tokens."
+            )
 
     def forward(
         self,
@@ -495,7 +532,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         batch_size, seqlen, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
 
-        if self.attn_use_fa2:
+        if self.use_fa2:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -513,7 +550,9 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            ).transpose(1, 2)
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
@@ -558,12 +597,26 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             interleaved=config.rotary_emb_interleaved,
         )
 
-        # Warn if defaulting to pytorch because of import issues
-        if not IMPL_USE_FLASH2:
-            warnings.warn(
-                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            logger.warn_once(
+                "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
                 " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
             )
+            self.use_fa2 = False
+        if not self.use_fa2:
+            if not self.use_sdpa_attn_mask:
+                logger.warn_once(
+                    "SDPA attention is being used without an attention mask. Including padding in the "
+                    " attention calculation may cause differences from the Flash Attention implementation."
+                )
+            else:
+                logger.warn_once(
+                    "SDPA attention with an attention mask doesn't use the Flash Attention kernel and will"
+                    " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
+                    " with sequence length."
+                )
 
     def forward(
         self,
@@ -641,7 +694,9 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
@@ -676,6 +731,9 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
 
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
@@ -686,6 +744,11 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
         )
+        if self.use_fa2 and self.use_sdpa_attn_mask:
+            logger.warn_once(
+                "Flash Attention 2 does not support attention masks. Use unpadded attention "
+                "the equivalent functionality of masking out padding tokens."
+            )
 
     def forward(
         self,
@@ -730,7 +793,9 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            ).transpose(1, 2)
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
@@ -774,12 +839,26 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
             interleaved=config.rotary_emb_interleaved,
         )
 
-        # Warn if defaulting to pytorch because of import issues
-        if not IMPL_USE_FLASH2:
-            warnings.warn(
-                "Unable to import flash_attn; defaulting MosaicBERT attention implementation to PyTorch's"
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            logger.warn_once(
+                "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
                 " SDPA kernel. This requires padding and unpadding inputs, which will add some overhead."
             )
+            self.use_fa2 = False
+        if not self.use_fa2:
+            if not self.use_sdpa_attn_mask:
+                logger.warn_once(
+                    "SDPA attention is being used without an attention mask. Including padding in the "
+                    " attention calculation may cause differences from the Flash Attention implementation."
+                )
+            else:
+                logger.warn_once(
+                    "SDPA attention with an attention mask doesn't use the Flash Attention kernel and will"
+                    " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
+                    " with sequence length."
+                )
 
     def forward(
         self,
@@ -814,7 +893,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         # only needed for inference when we have KV cache
         seqlen_offset = 0
 
-        if IMPL_USE_FLASH2:
+        if self.use_fa2:
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
 
             # Reshape to (batch, seqlen, 3, nheads, headdim)
@@ -857,7 +936,9 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            )
             attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
             attn = bert_padding.unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
 
@@ -891,6 +972,11 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
 
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            self.use_fa2 = False
+
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
@@ -901,6 +987,12 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
         )
+
+        if self.use_fa2 and self.use_sdpa_attn_mask:
+            logger.warn_once(
+                "Flash Attention 2 does not support attention masks. Use unpadded attention "
+                "the equivalent functionality of masking out padding tokens."
+            )
 
     def forward(
         self,
@@ -927,7 +1019,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         # Reshape to (batch, seqlen, 3, nheads, headdim)
         qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
-        if IMPL_USE_FLASH2:
+        if self.use_fa2:
             # Apply RoPE
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
 
@@ -945,7 +1037,9 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            ).transpose(1, 2)
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))
@@ -977,9 +1071,16 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
-        self.attn_use_fa2 = config.attn_use_fa2
-        if not IMPL_USE_FLASH2 and self.attn_use_fa2:
-            self.attn_use_fa2 = False
+        self.use_fa2 = config.use_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            self.use_fa2 = False
+
+        if self.use_fa2 and self.use_sdpa_attn_mask:
+            logger.warn_once(
+                "Flash Attention 2 does not support attention masks. Use unpadded attention "
+                "the equivalent functionality of masking out padding tokens."
+            )
 
     def forward(
         self,
@@ -1001,7 +1102,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         batch_size, seqlen, _ = qkv.shape
         dim = self.hidden_size
 
-        if self.attn_use_fa2:
+        if self.use_fa2:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
@@ -1018,7 +1119,9 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         else:
             qkv = qkv.view(batch_size, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.p_dropout).transpose(1, 2)
+            attn = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.p_dropout, attn_mask=attn_mask if self.use_sdpa_attn_mask else None
+            ).transpose(1, 2)
 
         attn = attn.view(batch_size, seqlen, dim)
         return self.out_drop(self.Wo(attn))

@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import main
-from utils import SynthTextDirectory
+from test_utils import SynthTextDirectory
 
 IMPL_USE_FLASH2 = False
 try:
@@ -25,11 +25,9 @@ except ImportError:
     pass
 
 
+@pytest.mark.skipif(not IMPL_USE_FLASH2, reason="Flash Attention is not installed")
 @pytest.mark.parametrize("padding", ["padded", "unpadded"])
 def test_trainer(padding: str):
-    if not IMPL_USE_FLASH2:
-        pytest.skip("Flash Attention 2 not installed")
-
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -43,7 +41,10 @@ def test_trainer(padding: str):
     config.model.model_config.padding = padding
 
     with SynthTextDirectory() as tmp_datadir:
-        config.model.model_config.attn_use_fa2 = False
+        if padding == "unpadded":
+            config.model.model_config.use_sdpa_attn_mask = True
+        else:
+            config.model.model_config.use_sdpa_attn_mask = False
         config.train_loader.dataset.remote = tmp_datadir
         config.train_loader.dataset.local = os.path.join(tmp_datadir, "tr-local1")
         config.eval_loader.dataset.remote = tmp_datadir
@@ -54,7 +55,7 @@ def test_trainer(padding: str):
         assert trainer1 is not None
         model1 = trainer1.state.model.model
 
-        config.model.model_config.attn_use_fa2 = True
+        config.model.model_config.use_fa2 = True
         config.train_loader.dataset.local = os.path.join(tmp_datadir, "tr-local2")
         config.eval_loader.dataset.local = os.path.join(tmp_datadir, "ev-local2")
 
@@ -64,7 +65,4 @@ def test_trainer(padding: str):
         model2 = trainer2.state.model.model
 
     for param1, param2 in zip(model1.parameters(), model2.parameters()):
-        idx = torch.isclose(param1, param2, rtol=1e-2, atol=1e-3)
-        error_count = (idx == 0).sum().item()
-        if error_count > math.prod([dim for dim in param1.shape]) * 0.01:
-            torch.testing.assert_close(param1, param2, rtol=1e-2, atol=1e-3)
+        torch.testing.assert_close(param1, param2, rtol=1e-5, atol=1e-6)
