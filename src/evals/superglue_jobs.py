@@ -161,7 +161,7 @@ class CBJob(ClassificationJob):
         cb_evaluator = Evaluator(
             label="superglue_cb",
             dataloader=_build_dataloader(cb_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy"],
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         self.evaluators = [cb_evaluator]
 
@@ -236,6 +236,6 @@ class WiCJob(ClassificationJob):
         wic_evaluator = Evaluator(
             label="superglue_wic",
             dataloader=_build_dataloader(wic_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
+            metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [wic_evaluator]
