@@ -107,10 +107,10 @@ class FlexBertGLU(FlexBertMLPBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size), bias=config.mlp_in_bias)
+        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size) * 2 , bias=config.mlp_in_bias)
         self.act = get_act_fn(config)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
-        self.Wo = nn.Linear(config.intermediate_size // 2, config.hidden_size, bias=config.mlp_out_bias)
+        self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         input, gate = self.Wi(hidden_states).chunk(2, dim=-1)
@@ -128,7 +128,7 @@ class FlexBertParallelGLU(FlexBertMLPBase):
         super().__init__()
         self.act = get_act_fn(config)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
-        self.Wo = nn.Linear(config.intermediate_size // 2, config.hidden_size, bias=config.mlp_out_bias)
+        self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
 
     def forward(self, intermediate_ff: torch.Tensor) -> torch.Tensor:
         input, gate = intermediate_ff.chunk(2, dim=-1)

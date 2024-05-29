@@ -298,7 +298,7 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.attn_size = config.hidden_size * 3
-        self.mlp_size = config.intermediate_size
+        self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
@@ -355,7 +355,7 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.attn_size = config.hidden_size * 3
-        self.mlp_size = config.intermediate_size
+        self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
