@@ -21,9 +21,9 @@ save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
 save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
 
 # (Optional) W&B logging
-loggers:
-  wandb:
-    project: bert24-superglue # Fill this in if using W&B
+# loggers:
+#   wandb:
+    # project: # Fill this in if using W&B
     # entity: # Fill this in if using W&B
 
 # Callbacks
