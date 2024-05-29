@@ -1,6 +1,23 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+
+"""from https://arxiv.org/pdf/1905.00537
+For classification tasks with sentence-pair inputs (BoolQ, CB, RTE, WiC), we concatenate the
+sentences with a [SEP] token, feed the fused input to BERT, and use a logistic regression classifier
+that sees the representation corresponding to [CLS]. For WiC, we also concatenate the representation
+of the marked word. For COPA, MultiRC, and ReCoRD, for each answer choice, we similarly
+concatenate the context with that answer choice and feed the resulting sequence into BERT to produce
+an answer representation. For COPA, we project these representations into a scalar, and take as the
+answer the choice with the highest associated scalar. For MultiRC, because each question can have
+more than one correct answer, we feed each answer representation into a logistic regression classifier.
+For ReCoRD, we also evaluate the probability of each candidate independent of other candidates,
+and take the most likely candidate as the model’s prediction. For WSC, which is a span-based task,
+we use a model inspired by Tenney et al. (2019). Given the BERT representation for each word in the
+original sentence, we get span representations of the pronoun and noun phrase via a self-attention
+span-pooling operator (Lee et al., 2017), before feeding it into a logistic regression classifier.
+"""
+
 import logging
 
 from composer.utils import MissingConditionalImportError, dist
