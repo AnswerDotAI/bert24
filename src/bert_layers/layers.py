@@ -342,7 +342,7 @@ class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), attn_mask)
@@ -370,7 +370,7 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         # Compute QKV and FF outputs at once and split them
@@ -427,7 +427,7 @@ class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         attn_out = self.attn_norm(hidden_states + self.attn(hidden_states, attn_mask))
