@@ -298,7 +298,7 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.attn_size = config.hidden_size * 3
-        self.mlp_size = config.intermediate_size
+        self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
@@ -342,7 +342,7 @@ class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), attn_mask)
@@ -355,7 +355,7 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.attn_size = config.hidden_size * 3
-        self.mlp_size = config.intermediate_size
+        self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
@@ -370,7 +370,7 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         # Compute QKV and FF outputs at once and split them
@@ -427,7 +427,7 @@ class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
         """Forward pass for a BERT layer, including both attention and MLP.
 
         Args:
-            hidden_states: (total_nnz, dim)
+            hidden_states: (batch, max_seqlen, dim)
             attn_mask: None or (batch, max_seqlen)
         """
         attn_out = self.attn_norm(hidden_states + self.attn(hidden_states, attn_mask))
