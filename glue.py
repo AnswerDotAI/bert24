@@ -18,12 +18,19 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import numpy as np
 import omegaconf as om
-import src.glue.finetuning_jobs as finetuning_jobs_module
+import src.evals.glue_jobs as glue_jobs_module
+import src.evals.superglue_jobs as superglue_jobs_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import torch
 from composer import algorithms
-from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
+from composer.callbacks import (
+    LRMonitor,
+    MemoryMonitor,
+    OptimizerMonitor,
+    RuntimeEstimator,
+    SpeedMonitor,
+)
 from composer.loggers import WandBLogger
 from composer.optim.scheduler import (
     ConstantWithWarmupScheduler,
@@ -36,15 +43,21 @@ from composer.utils.object_store import S3ObjectStore
 from omegaconf import DictConfig
 
 TASK_NAME_TO_CLASS = {
-    "mnli": finetuning_jobs_module.MNLIJob,
-    "rte": finetuning_jobs_module.RTEJob,
-    "mrpc": finetuning_jobs_module.MRPCJob,
-    "qnli": finetuning_jobs_module.QNLIJob,
-    "qqp": finetuning_jobs_module.QQPJob,
-    "sst2": finetuning_jobs_module.SST2Job,
-    "stsb": finetuning_jobs_module.STSBJob,
-    "cola": finetuning_jobs_module.COLAJob,
+    "mnli": glue_jobs_module.MNLIJob,
+    "rte": glue_jobs_module.RTEJob,
+    "mrpc": glue_jobs_module.MRPCJob,
+    "qnli": glue_jobs_module.QNLIJob,
+    "qqp": glue_jobs_module.QQPJob,
+    "sst2": glue_jobs_module.SST2Job,
+    "stsb": glue_jobs_module.STSBJob,
+    "cola": glue_jobs_module.COLAJob,
+    "boolq": superglue_jobs_module.BoolQJob,
+    "cb": superglue_jobs_module.CBJob,
+    "wic": superglue_jobs_module.WiCJob,
 }
+
+GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
+SUPERGLUE_TASKS = {"boolq", "cb", "rte", "wic"}
 
 
 def build_algorithm(name, kwargs):
@@ -65,7 +78,8 @@ def build_callback(name, kwargs):
         return MemoryMonitor()
     elif name == "speed_monitor":
         return SpeedMonitor(
-            window_size=kwargs.get("window_size", 1), gpu_flops_available=kwargs.get("gpu_flops_available", None)
+            window_size=kwargs.get("window_size", 1),
+            gpu_flops_available=kwargs.get("gpu_flops_available", None),
         )
     elif name == "runtime_estimator":
         return RuntimeEstimator()
@@ -88,7 +102,9 @@ def build_scheduler(cfg):
     if cfg.name == "constant_with_warmup":
         return ConstantWithWarmupScheduler(t_warmup=cfg.t_warmup)
     elif cfg.name == "cosine_with_warmup":
-        return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+        return CosineAnnealingWithWarmupScheduler(
+            t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f
+        )
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
@@ -139,7 +155,9 @@ def get_checkpoint_name_from_path(path: str) -> str:
     return path.lstrip("/").replace("/", "|")
 
 
-def download_starting_checkpoint(starting_checkpoint_load_path: str, local_pretrain_checkpoints_folder: str) -> str:
+def download_starting_checkpoint(
+    starting_checkpoint_load_path: str, local_pretrain_checkpoints_folder: str
+) -> str:
     """Downloads the pretrained checkpoints to start from.
 
     Currently only supports S3 and URLs
@@ -149,12 +167,22 @@ def download_starting_checkpoint(starting_checkpoint_load_path: str, local_pretr
     if parsed_path.scheme == "s3":
         load_object_store = S3ObjectStore(bucket=parsed_path.netloc)
 
-    download_path = parsed_path.path if parsed_path.scheme == "s3" else starting_checkpoint_load_path
+    download_path = (
+        parsed_path.path
+        if parsed_path.scheme == "s3"
+        else starting_checkpoint_load_path
+    )
     os.makedirs(local_pretrain_checkpoints_folder, exist_ok=True)
-    local_path = os.path.join(local_pretrain_checkpoints_folder, get_checkpoint_name_from_path(parsed_path.path))
+    local_path = os.path.join(
+        local_pretrain_checkpoints_folder,
+        get_checkpoint_name_from_path(parsed_path.path),
+    )
     if not os.path.exists(local_path):
         get_file(
-            destination=local_path, path=download_path.lstrip("/"), object_store=load_object_store, progress_bar=True
+            destination=local_path,
+            path=download_path.lstrip("/"),
+            object_store=load_object_store,
+            progress_bar=True,
         )
 
     return local_path
@@ -171,7 +199,11 @@ def _setup_gpu_queue(num_gpus: int, manager: SyncManager):
     return gpu_queue
 
 
-def create_job_configs(main_config: om.DictConfig, tasks_to_run: Set[str], pretrained_checkpoint_path: Optional[str]):
+def create_job_configs(
+    main_config: om.DictConfig,
+    tasks_to_run: Set[str],
+    pretrained_checkpoint_path: Optional[str],
+):
     configs = []
     for task_name, task_config in main_config.tasks.items():
         if main_config.get("base_run_name") is None:
@@ -179,7 +211,9 @@ def create_job_configs(main_config: om.DictConfig, tasks_to_run: Set[str], pretr
         if task_name not in tasks_to_run:
             continue
         for task_seed in task_config.get("seeds", [main_config.default_seed]):
-            run_name = f"{main_config.base_run_name}_task={task_name}_seed={str(task_seed)}"
+            run_name = (
+                f"{main_config.base_run_name}_task={task_name}_seed={str(task_seed)}"
+            )
             logger_configs = copy.deepcopy(main_config.get("loggers", {}))
             for logger_name, logger_config in logger_configs.items():
                 if logger_name == "wandb":
@@ -197,7 +231,9 @@ def create_job_configs(main_config: om.DictConfig, tasks_to_run: Set[str], pretr
                     "scheduler": main_config.scheduler,
                     "load_path": pretrained_checkpoint_path,
                     "save_folder": os.path.join(
-                        main_config.save_finetune_checkpoint_folder, f"task={task_name}", f"seed={task_seed}"
+                        main_config.save_finetune_checkpoint_folder,
+                        f"task={task_name}",
+                        f"seed={task_seed}",
                     ),
                     "loggers": logger_configs,
                     "callbacks": main_config.get("callbacks", {}),
@@ -212,25 +248,33 @@ def create_job_configs(main_config: om.DictConfig, tasks_to_run: Set[str], pretr
 
 
 def run_job_worker(
-    config: om.DictConfig, gpu_queue: Optional[mp.Queue] = None, process_to_gpu: Optional[DictProxy] = None
+    config: om.DictConfig,
+    gpu_queue: Optional[mp.Queue] = None,
+    process_to_gpu: Optional[DictProxy] = None,
 ) -> Any:
     """Instantiates the job object and runs it."""
     # need to set seed before model initialization for determinism
     reproducibility.seed_all(config.seed)
-    instantiated_job = TASK_NAME_TO_CLASS[config.task](
+    task_cls = TASK_NAME_TO_CLASS[config.task]
+    instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,
-        model=build_model(config.model, finetuning_jobs_module.TASK_NAME_TO_NUM_LABELS[config.task]),
+        model=build_model(config.model, task_cls.num_labels),
         tokenizer_name=config.tokenizer_name,
         scheduler=build_scheduler(config.scheduler),
         load_path=config.load_path,
         save_folder=config.save_folder,
-        loggers=[build_logger(name, logger_config) for name, logger_config in config.get("loggers", {}).items()],
+        loggers=[
+            build_logger(name, logger_config)
+            for name, logger_config in config.get("loggers", {}).items()
+        ],
         callbacks=[
-            build_callback(name, callback_config) for name, callback_config in config.get("callbacks", {}).items()
+            build_callback(name, callback_config)
+            for name, callback_config in config.get("callbacks", {}).items()
         ],
         algorithms=[
-            build_algorithm(name, algorithm_config) for name, algorithm_config in config.get("algorithms", {}).items()
+            build_algorithm(name, algorithm_config)
+            for name, algorithm_config in config.get("algorithms", {}).items()
         ],
         precision=config.precision,
         **config.trainer_kwargs,
@@ -278,7 +322,10 @@ def run_jobs_parallel(configs: Sequence[om.DictConfig]) -> Dict[str, Any]:
     finished_results = {}
     for result in results:
         job_name = result["job_name"]
-        finished_results[job_name] = {"result": result, "config": job_name_to_config[job_name]}
+        finished_results[job_name] = {
+            "result": result,
+            "config": job_name_to_config[job_name],
+        }
 
     return finished_results
 
@@ -372,14 +419,22 @@ def train(config: om.DictConfig) -> None:
     # the different tasks don't all try to download it at the same time
     if config.get("starting_checkpoint_load_path", None):
         local_pretrain_checkpoint_path = download_starting_checkpoint(
-            config.starting_checkpoint_load_path, config.local_pretrain_checkpoint_folder
+            config.starting_checkpoint_load_path,
+            config.local_pretrain_checkpoint_folder,
         )
     else:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    round_1_task_names = {"cola", "sst2", "qqp", "qnli", "mnli"}
-    round_1_job_configs = create_job_configs(config, round_1_task_names, local_pretrain_checkpoint_path)
+    round_1_task_names = {
+        # glue:
+        *{"cola", "sst2", "qqp", "qnli", "mnli"},
+        # superglue:
+        *{"boolq", "cb", "wic"},
+    }
+    round_1_job_configs = create_job_configs(
+        config, round_1_task_names, local_pretrain_checkpoint_path
+    )
 
     round_1_results = {}
     if len(round_1_job_configs) > 0:
@@ -404,9 +459,13 @@ def train(config: om.DictConfig) -> None:
     # Builds round 2 configs and runs them
     round_2_task_names = {"rte", "mrpc", "stsb"}
     round_2_starting_checkpoint_path = (
-        mnli_checkpoint_path if mnli_checkpoint_path is not None else local_pretrain_checkpoint_path
+        mnli_checkpoint_path
+        if mnli_checkpoint_path is not None
+        else local_pretrain_checkpoint_path
     )
-    round_2_job_configs = create_job_configs(config, round_2_task_names, round_2_starting_checkpoint_path)
+    round_2_job_configs = create_job_configs(
+        config, round_2_task_names, round_2_starting_checkpoint_path
+    )
 
     round_2_results = {}
     if len(round_2_job_configs) > 0:
@@ -434,14 +493,35 @@ def train(config: om.DictConfig) -> None:
         for _, eval_results in result["result"]["metrics"].items():
             for _, metric in eval_results.items():
                 glue_results[job_values["task"]].append(metric * 100)
-    glue_results_mean: Dict[str, float] = {key: float(np.mean(values)) for key, values in glue_results.items()}
+    results_mean: Dict[str, float] = {
+        key: float(np.mean(values)) for key, values in glue_results.items()
+    }
 
     overall_glue = []
-    for _, average_metric in glue_results_mean.items():
-        overall_glue.append(average_metric)
-    glue_results_mean["glue"] = float(np.mean(overall_glue))
+    overall_superglue = []
+    for task_name, average_metric in results_mean.items():
+        if task_name in GLUE_TASKS:
+            overall_glue.append(average_metric)
+        if task_name in SUPERGLUE_TASKS:
+            overall_superglue.append(average_metric)
 
-    _print_averaged_glue_results([(key, value) for key, value in glue_results_mean.items()])
+    if len(overall_glue) > 0:
+        glue_results_mean = {
+            **{k: v for k, v in results_mean.items() if k in GLUE_TASKS},
+            "glue": float(np.mean(overall_glue)),
+        }
+        _print_averaged_glue_results(
+            [(key, value) for key, value in glue_results_mean.items()]
+        )
+
+    if len(overall_superglue) > 0:
+        superglue_results_mean = {
+            **{k: v for k, v in results_mean.items() if k in SUPERGLUE_TASKS},
+            "superglue": float(np.mean(overall_superglue)),
+        }
+        _print_averaged_glue_results(
+            [(key, value) for key, value in superglue_results_mean.items()]
+        )
 
 
 if __name__ == "__main__":
