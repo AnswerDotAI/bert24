@@ -971,7 +971,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                 k,
                 v,
                 dropout_p=self.p_dropout,
-                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(bs, 1, seqlen, seqlen)
+                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
                 if self.use_sdpa_attn_mask
                 else None,
             )
@@ -1177,11 +1177,11 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
 
 ATTN2CLS = {
     "unpadded_base": FlexBertUnpadAttention,
-    "unpadded_parallel": FlexBertUnpadParallelAttention,
     "padded_base": FlexBertPaddedAttention,
+    "unpadded_parallel": FlexBertUnpadParallelAttention,
+    "padded_parallel": FlexBertPaddedParallelAttention,
     "unpadded_rope": FlexBertUnpadRopeAttention,
     "padded_rope": FlexBertPaddedRopeAttention,
-    "padded_parallel": FlexBertPaddedParallelAttention,
     "unpadded_rope_parallel": FlexBertUnpadRopeParallelAttention,
     "padded_rope_parallel": FlexBertPaddedRopeParallelAttention,
 }
