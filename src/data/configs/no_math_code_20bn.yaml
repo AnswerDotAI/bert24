@@ -22,7 +22,7 @@ sources:
   - name: tulu_flan
     source_coefficient: 1
   - name: stackexchange
-    source_coefficient: 0  # TODO Does this count in math / code bucket
+    source_coefficient: 0
   - name: cc_news
     source_coefficient: 1
   - name: open_web_math_train

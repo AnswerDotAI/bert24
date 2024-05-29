@@ -175,7 +175,9 @@ def main(args):
     updated_stats["original_num_tokens"] = updated_stats["source"].map(src_cts)
     updated_stats["percent_of_original"] = 100 * updated_stats["num_tokens"] / updated_stats["original_num_tokens"]
 
-    out_stats_fn = in_fn.replace('.yaml', '_stats.csv')
+    # Extract the stem (file name without extension) and parent directory
+    out_stats_fn = in_fn.parent / f"{in_fn.stem}_stats.csv"
+
     print(f"Saving updated source-level token count statistics to {out_stats_fn}")
     updated_stats.to_csv(out_stats_fn, index=False)
 

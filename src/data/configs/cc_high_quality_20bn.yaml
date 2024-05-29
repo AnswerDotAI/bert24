@@ -2,13 +2,13 @@ sources:
   - name: cc_en_middle
     source_coefficient: 0  # Remove all middle quality CC
   - name: falcon
-    source_coefficient: 1
+    source_coefficient: 0
   - name: cc_en_tail
     source_coefficient: 0  # Remove all low quality CC
   - name: cc_en_head
-    source_coefficient: 1  # TODO: Do we want to upsample cc_en_head to make sure CC fraction is same as with stratified?
+    source_coefficient: 3.0  # Keep high quality CC and oversample
   - name: c4
-    source_coefficient: 1
+    source_coefficient: 0
   - name: starcoder
     source_coefficient: 1
   - name: reddit
@@ -32,7 +32,7 @@ sources:
   - name: books
     source_coefficient: 1
   - name: megawika
-    source_coefficient: 1
+    source_coefficient: 0
 source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
 hf_out_path: answerdotai/dolma_20bn_cc_high_quality
