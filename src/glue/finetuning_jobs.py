@@ -24,7 +24,7 @@ from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from composer.trainer.trainer import Trainer
 from composer.utils import dist, reproducibility
-from data import create_glue_dataset
+from src.glue.data import create_glue_dataset
 from torch.utils.data import DataLoader
 
 

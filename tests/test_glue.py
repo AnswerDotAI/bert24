@@ -45,7 +45,7 @@ def test_glue_script(model_name: str):
 
     if (
         model_name == "flex_bert"
-        and not config.model.model_config.attn_use_fa2
+        and not config.model.model_config.use_fa2
         and config.model.model_config.padding == "unpadded"
     ):
         pytest.skip("SDPA call currently errors with Glue test on unpadded inputs")

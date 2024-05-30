@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import main
-from utils import SynthTextDirectory
+from test_utils import SynthTextDirectory
 
 
 @pytest.mark.parametrize("model_name,seed", [("mosaic_bert", 17), ("hf_bert", 18), ("flex_bert", 42)])
