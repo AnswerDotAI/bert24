@@ -13,16 +13,18 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import main
-from utils import SynthTextDirectory
+from test_utils import SynthTextDirectory
 
 
-@pytest.mark.parametrize("model_name,seed", [("mosaic_bert", 17), ("hf_bert", 18)])
+@pytest.mark.parametrize("model_name,seed", [("mosaic_bert", 17), ("hf_bert", 18), ("flex_bert", 42)])
 def test_trainer(model_name: str, seed: int):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
+    with open(f"yamls/models/{model_name}.yaml") as f:
+        model_cfg = OmegaConf.load(f)
     with open("tests/smoketest_config_main.yaml") as f:
         test_config = OmegaConf.load(f)
-    config = OmegaConf.merge(default_cfg, test_config)
+    config = OmegaConf.merge(default_cfg, model_cfg, test_config)
     assert isinstance(config, DictConfig)
     config.model.name = model_name
     config.seed = seed

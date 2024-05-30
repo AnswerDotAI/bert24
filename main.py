@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
+import src.flex_bert as flex_bert_module
 import src.text_data as text_data_module
 from composer import Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
@@ -20,6 +21,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
+from src.scheduler import WarmupStableDecayScheduler
 from composer.utils import dist, reproducibility
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
@@ -108,6 +110,8 @@ def build_scheduler(cfg):
         return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+    elif cfg.name == "warmup_stable_decay":
+        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -139,6 +143,14 @@ def build_model(cfg: DictConfig):
         )
     elif cfg.name == "mosaic_bert":
         return mosaic_bert_module.create_mosaic_bert_mlm(
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+        )
+    elif cfg.name == "flex_bert":
+        return flex_bert_module.create_flex_bert_mlm(
             pretrained_model_name=cfg.pretrained_model_name,
             pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
             model_config=cfg.get("model_config", None),

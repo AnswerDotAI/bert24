@@ -21,10 +21,12 @@ import torch
 import torch.nn as nn
 
 import bert_padding
-from .activation import ACT2FN
-from .attention import BertAlibiUnpadAttention
-from .mlp import BertResidualGLU
-from .normalization import NORM2CLS
+
+from .activation import get_act_fn
+from .attention import BertAlibiUnpadAttention, get_attention_layer
+from .mlp import BertResidualGLU, get_mlp_layer
+from .configuration_bert import FlexBertConfig, maybe_add_padding
+from .normalization import get_norm_layer
 
 
 class BertAlibiLayer(nn.Module):
@@ -240,13 +242,302 @@ class BertPredictionHeadTransform(nn.Module):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         if isinstance(config.hidden_act, str):
-            self.transform_act_fn = ACT2FN[config.hidden_act]
+            self.transform_act_fn = get_act_fn(config.hidden_act)
         else:
             self.transform_act_fn = config.hidden_act
-        self.LayerNorm = NORM2CLS[config.normalization](config.hidden_size, eps=config.layer_norm_eps)
+        self.LayerNorm = get_norm_layer(config)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.transform_act_fn(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
+
+
+class FlexBertLayerBase(nn.Module):
+    """A FlexBERT Layer base class for type hints."""
+
+    def forward(self, hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+
+class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp_norm = get_norm_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            cu_seqlens: (batch + 1,)
+            max_seqlen: int
+            indices: None or (total_nnz,)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), cu_seqlens, max_seqlen, indices, attn_mask)
+        return attn_out + self.mlp(self.mlp_norm(attn_out))
+
+
+class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT parallel attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_size = config.hidden_size * 3
+        self.mlp_size = config.intermediate_size * 2
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
+        self.norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        # Compute QKV and FF outputs at once and split them
+        qkv, intermediate_ff = self.Wqkvff(self.norm(hidden_states)).split([self.attn_size, self.mlp_size], dim=1)
+        return hidden_states + self.attn(qkv, cu_seqlens, max_seqlen, indices, attn_mask) + self.mlp(intermediate_ff)
+
+
+class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp_norm = get_norm_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (batch, max_seqlen, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), attn_mask)
+        return attn_out + self.mlp(self.mlp_norm(attn_out))
+
+
+class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn_size = config.hidden_size * 3
+        self.mlp_size = config.intermediate_size * 2
+        # Compute QKV and FF outputs at once
+        self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
+        self.norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config)
+        self.mlp = get_mlp_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (batch, max_seqlen, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        # Compute QKV and FF outputs at once and split them
+        qkv, intermediate_ff = self.Wqkvff(self.norm(hidden_states)).split([self.attn_size, self.mlp_size], dim=2)
+        return hidden_states + self.attn(qkv, attn_mask) + self.mlp(intermediate_ff)
+
+
+class FlexBertUnpadPostNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using post-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn = get_attention_layer(config)
+        self.attn_norm = get_norm_layer(config)
+        self.mlp = get_mlp_layer(config)
+        self.mlp_norm = get_norm_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            cu_seqlens: (batch + 1,)
+            max_seqlen: int
+            indices: None or (total_nnz,)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out = self.attn_norm(hidden_states + self.attn(hidden_states, cu_seqlens, max_seqlen, indices, attn_mask))
+        return self.mlp_norm(attn_out + self.mlp(attn_out))
+
+
+class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using post-normalization."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.attn = get_attention_layer(config)
+        self.attn_norm = get_norm_layer(config)
+        self.mlp = get_mlp_layer(config)
+        self.mlp_norm = get_norm_layer(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (batch, max_seqlen, dim)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out = self.attn_norm(hidden_states + self.attn(hidden_states, attn_mask))
+        return self.mlp_norm(attn_out + self.mlp(attn_out))
+
+
+LAYER2CLS = {
+    "unpadded_prenorm": FlexBertUnpadPreNormLayer,
+    "unpadded_parallel_prenorm": FlexBertUnpadParallelPreNormLayer,
+    "unpadded_postnorm": FlexBertUnpadPostNormLayer,
+    "padded_prenorm": FlexBertPaddedPreNormLayer,
+    "padded_parallel_prenorm": FlexBertPaddedParallelPreNormLayer,
+    "padded_postnorm": FlexBertPaddedPostNormLayer,
+}
+
+
+def get_bert_layer(config) -> FlexBertLayerBase:
+    try:
+        return LAYER2CLS[maybe_add_padding(config, config.bert_layer)](config)
+    except KeyError:
+        raise ValueError(
+            f"Invalid BERT layer type: {config.bert_layer=}, must be one of {LAYER2CLS.keys()}. "
+            f"{config.padding=} will be automatically prepended to `config.bert_layer` if unspecified."
+        )
+
+
+class FlexBertEncoderBase(nn.Module):
+    """A FlexBERT base class for type hints."""
+
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+
+class FlexBertUnpadEncoder(FlexBertEncoderBase):
+    """A stack of BERT layers providing the backbone of FlexBERT.
+
+    This module is modeled after the Hugging Face BERT's :class:`~transformers.model.bert.modeling_bert.BertAlibiEncoder`,
+    but with substantial modifications to implement unpadding and ALiBi.
+
+    Compared to the analogous Hugging Face BERT module, this module handles unpadding to reduce unnecessary computation
+    at padded tokens, and pre-computes attention biases to implement ALiBi.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.layers = nn.ModuleList([get_bert_layer(config) for _ in range(config.num_hidden_layers)])
+        self.num_attention_heads = config.num_attention_heads
+
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+
+        attention_mask_bool = attention_mask.bool()
+        batch, seqlen = hidden_states.shape[:2]
+        # Unpad inputs and mask. It will remove tokens that are padded. Assume ntokens is total number
+        # of tokens (padded and non-padded) and ntokens_unpad is total number of non-padded tokens.
+        # Then unpadding performs the following compression of the inputs:
+        #     hidden_states[ntokens,hidden] -> hidden_states[ntokens_unpad,hidden]
+        hidden_states, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(hidden_states, attention_mask_bool)
+
+        for layer_module in self.layers:
+            hidden_states = layer_module(
+                hidden_states,
+                cu_seqlens,
+                max_seqlen,
+                indices,
+                attn_mask=attention_mask,
+            )
+
+        # Pad inputs and mask. It will insert back zero-padded tokens. Assume ntokens is total number
+        # of tokens (padded and non-padded) and ntokens_unpad is total number of non-padded tokens.
+        # Then padding performs the following de-compression:
+        #     hidden_states[ntokens_unpad,hidden] -> hidden_states[ntokens,hidden]
+        return bert_padding.pad_input(hidden_states, indices, batch, seqlen)
+
+
+class FlexBertPaddedEncoder(FlexBertEncoderBase):
+    """A stack of BERT layers providing the backbone of FlexBERT.
+
+    This module is modeled after the Hugging Face BERT's :class:`~transformers.model.bert.modeling_bert.BertAlibiEncoder`,
+    but with substantial modifications to implement unpadding and ALiBi.
+
+    Compared to the analogous Hugging Face BERT module, this module handles unpadding to reduce unnecessary computation
+    at padded tokens, and pre-computes attention biases to implement ALiBi.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.layers = nn.ModuleList([get_bert_layer(config) for _ in range(config.num_hidden_layers)])
+        self.num_attention_heads = config.num_attention_heads
+
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        for layer_module in self.layers:
+            hidden_states = layer_module(hidden_states, attn_mask=attention_mask)
+
+        return hidden_states
+
+
+ENC2CLS = {
+    "unpadded_base": FlexBertUnpadEncoder,
+    "padded_base": FlexBertPaddedEncoder,
+}
+
+
+def get_encoder_layer(config: FlexBertConfig) -> FlexBertEncoderBase:
+    try:
+        return ENC2CLS[maybe_add_padding(config, config.encoder_layer)](config)
+    except KeyError:
+        raise ValueError(
+            f"Invalid encoder layer type: {config.encoder_layer=}, must be one of {ENC2CLS.keys()}. "
+            f"{config.padding=} will be automatically prepended to `config.encoder_layer` if unspecified."
+        )
