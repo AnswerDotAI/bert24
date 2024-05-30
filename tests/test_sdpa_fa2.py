@@ -3,7 +3,6 @@
 
 import os
 import sys
-import math
 
 import pytest
 import torch
@@ -25,9 +24,20 @@ except ImportError:
     pass
 
 
+layer_combinations = [
+    ("prenorm", "absolute_pos", "base", "mlp"),
+    ("postnorm", "absolute_pos", "base", "glu"),
+    ("prenorm", "sans_pos", "rope", "mlp"),
+    ("postnorm", "sans_pos", "rope", "glu"),
+    ("parallel_prenorm", "absolute_pos", "parallel", "parallel_glu"),
+    ("parallel_prenorm", "sans_pos", "rope_parallel", "parallel_glu"),
+]
+
+
 @pytest.mark.skipif(not IMPL_USE_FLASH2, reason="Flash Attention is not installed")
 @pytest.mark.parametrize("padding", ["padded", "unpadded"])
-def test_trainer(padding: str):
+@pytest.mark.parametrize("layer,embedding,attention,mlp", layer_combinations)
+def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -39,6 +49,10 @@ def test_trainer(padding: str):
     config.model.name = "flex_bert"
     config.seed = 42
     config.model.model_config.padding = padding
+    config.model.model_config.bert_layer = layer
+    config.model.model_config.embedding_layer = embedding
+    config.model.model_config.attention_layer = attention
+    config.model.model_config.mlp_layer = mlp
 
     with SynthTextDirectory() as tmp_datadir:
         config.model.model_config.use_fa2 = False
