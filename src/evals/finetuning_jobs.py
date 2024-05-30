@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import torch
+import transformers
 from composer import ComposerModel
 from composer.core import Callback
 from composer.core.types import Dataset
@@ -26,15 +27,46 @@ from composer.utils import dist, reproducibility
 from torch.utils.data import DataLoader
 
 
-def _build_dataloader(dataset, **kwargs):
-    import transformers
+def multiple_choice_collate_fn(features):
+    label_name = "label" if "label" in features[0].keys() else "labels"
+    labels = [feature.pop(label_name) for feature in features]
+    batch_size = len(features)
+    num_choices = len(features[0]["input_ids"])
+    flattened_features = [
+        [
+            {k: v[i] for k, v in feature.items() if type(v) == list}
+            for i in range(num_choices)
+        ]
+        for feature in features
+    ]
+    flattened_features = sum(flattened_features, [])
 
+    batch = {
+        "input_ids": [],
+        "attention_mask": [],
+        "token_type_ids": [],
+    }
+
+    for feature in flattened_features:
+        for k, v in feature.items():
+            batch[k].append(v)
+
+    batch = {
+        k: torch.tensor(v).view(batch_size, num_choices, -1) for k, v in batch.items()
+    }
+    batch["labels"] = torch.tensor(labels, dtype=torch.int64)
+    return batch
+
+
+def build_dataloader(dataset, collate_fn=None, **kwargs):
     dataset = cast(Dataset, dataset)
 
     return DataLoader(
         dataset=dataset,
         sampler=dist.get_sampler(dataset, drop_last=False, shuffle=False),
-        collate_fn=transformers.default_data_collator,
+        collate_fn=(
+            transformers.default_data_collator if collate_fn is None else collate_fn
+        ),
         **kwargs,
     )
 
@@ -170,6 +202,9 @@ class FineTuneJob:
 
 
 class ClassificationJob(FineTuneJob):
+
+    model_type = "sequence_classification"
+
     def __init__(
         self,
         model: ComposerModel,
@@ -191,7 +226,7 @@ class ClassificationJob(FineTuneJob):
     ):
         if task_name is None:
             raise ValueError(
-                "GlueClassificationJob should not be instantiated directly. Please instantiate a specific glue job type instead (e.g. MNLIJob)."
+                "ClassificationJob should not be instantiated directly. Please instantiate a specific glue job type instead (e.g. MNLIJob)."
             )
         super().__init__(job_name, load_path, save_folder, seed, **kwargs)
 

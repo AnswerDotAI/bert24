@@ -36,7 +36,7 @@ _glue_task_column_names = {
 _superglue_task_column_names = {
     "boolq": ("question", "passage"),
     "cb": ("premise", "hypothesis"),
-    # "copa": #("sentence1", "sentence2"), # ['premise', 'choice1', 'choice2', 'question
+    "copa": ("premise", "choice1", "choice2", "question"),
     # "multirc": ("paragraph", "sentence"), #  paragraph question answer
     # "record": ("question1", "question2"), ['passage', 'query', 'entities', 'entity_spans', 'answers', 'idx'
     "rte": ("premise", "hypothesis"),
@@ -57,11 +57,13 @@ def create_eval_dataset(
     task: str,
     tokenizer_name: str,
     split: str,
+    dataset_name: str,
     max_seq_length: int = 256,
     max_retries: int = 10,
     num_workers: int = 0,
-    dataset_name: str = "glue",
+    dataset_subset: str = None,
     task_column_names: dict = _glue_task_column_names,
+    tokenize_fn_factory: callable = None,
 ):
     try:
         import datasets
@@ -85,7 +87,7 @@ def create_eval_dataset(
     download_config = datasets.DownloadConfig(max_retries=max_retries)
     dataset = datasets.load_dataset(
         dataset_name,
-        task,
+        dataset_subset if dataset_subset is not None else task,
         split=split,
         download_config=download_config,
     )
@@ -93,26 +95,22 @@ def create_eval_dataset(
     log.info(f"Starting tokenization by preprocessing over {num_workers} threads!")
     text_column_names = task_column_names[task]
 
-    def tokenize_function(inp):
-        # truncates sentences to max_length or pads them to max_length
-
-        first_half = inp[text_column_names[0]]
-        second_half = inp[text_column_names[1]] if text_column_names[1] in inp else None
-        # a [SEP] is added between first_half and second_half
-        return tokenizer(
-            text=first_half,
-            text_pair=second_half,
+    if tokenize_fn_factory is None:
+        tokenize_fn_factory = lambda tokenizer, max_seq_length: lambda inp: tokenizer(
+            text=inp[text_column_names[0]],
+            text_pair=(
+                inp[text_column_names[1]] if text_column_names[1] in inp else None
+            ),
             padding="max_length",
             max_length=max_seq_length,
             truncation=True,
         )
 
-    columns_to_remove = ["idx"] + [i for i in text_column_names if i is not None]
+    columns_to_remove = [i for i in text_column_names if i is not None]
 
     assert isinstance(dataset, datasets.Dataset)
-    safe_name = tokenizer_name.replace("/", ",")
     dataset = dataset.map(
-        tokenize_function,
+        tokenize_fn_factory(tokenizer, max_seq_length),
         batched=True,
         num_proc=None if num_workers == 0 else num_workers,
         batch_size=1000,
@@ -133,4 +131,15 @@ def create_superglue_dataset(**kwargs):
         **kwargs,
         dataset_name="aps/super_glue",
         task_column_names=_superglue_task_column_names,
+    )
+
+
+def create_swag_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="swag",
+        dataset_subset="regular",
+        task_column_names={
+            "swag": ("sent1", "sent2", "ending0", "ending1", "ending2", "ending3")
+        },
     )

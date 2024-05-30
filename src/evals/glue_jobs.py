@@ -15,7 +15,7 @@ from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from src.evals.data import create_glue_dataset
-from src.evals.finetuning_jobs import _build_dataloader, ClassificationJob
+from src.evals.finetuning_jobs import build_dataloader, ClassificationJob
 
 
 class MNLIJob(ClassificationJob):
@@ -81,7 +81,7 @@ class MNLIJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         mnli_eval_dataset = create_glue_dataset(
             split="validation_matched", **dataset_kwargs
         )
@@ -90,12 +90,12 @@ class MNLIJob(ClassificationJob):
         )
         mnli_evaluator = Evaluator(
             label="glue_mnli",
-            dataloader=_build_dataloader(mnli_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(mnli_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         mnli_evaluator_mismatched = Evaluator(
             label="glue_mnli_mismatched",
-            dataloader=_build_dataloader(
+            dataloader=build_dataloader(
                 mnli_eval_mismatched_dataset, **dataloader_kwargs
             ),
             metric_names=["MulticlassAccuracy"],
@@ -166,11 +166,11 @@ class RTEJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         rte_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         rte_evaluator = Evaluator(
             label="glue_rte",
-            dataloader=_build_dataloader(rte_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(rte_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [rte_evaluator]
@@ -239,11 +239,11 @@ class QQPJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         qqp_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         qqp_evaluator = Evaluator(
             label="glue_qqp",
-            dataloader=_build_dataloader(qqp_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(qqp_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         self.evaluators = [qqp_evaluator]
@@ -312,11 +312,11 @@ class COLAJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         cola_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         cola_evaluator = Evaluator(
             label="glue_cola",
-            dataloader=_build_dataloader(cola_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(cola_eval_dataset, **dataloader_kwargs),
             metric_names=["MatthewsCorrCoef"],
         )
         self.evaluators = [cola_evaluator]
@@ -385,11 +385,11 @@ class MRPCJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         mrpc_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         mrpc_evaluator = Evaluator(
             label="glue_mrpc",
-            dataloader=_build_dataloader(mrpc_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(mrpc_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         self.evaluators = [mrpc_evaluator]
@@ -458,11 +458,11 @@ class QNLIJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         qnli_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         qnli_evaluator = Evaluator(
             label="glue_qnli",
-            dataloader=_build_dataloader(qnli_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(qnli_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [qnli_evaluator]
@@ -531,11 +531,11 @@ class SST2Job(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         sst2_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         sst2_evaluator = Evaluator(
             label="glue_sst2",
-            dataloader=_build_dataloader(sst2_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(sst2_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [sst2_evaluator]
@@ -604,11 +604,11 @@ class STSBJob(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = _build_dataloader(train_dataset, **dataloader_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         stsb_eval_dataset = create_glue_dataset(split="validation", **dataset_kwargs)
         stsb_evaluator = Evaluator(
             label="glue_stsb",
-            dataloader=_build_dataloader(stsb_eval_dataset, **dataloader_kwargs),
+            dataloader=build_dataloader(stsb_eval_dataset, **dataloader_kwargs),
             metric_names=["SpearmanCorrCoef"],
         )
         self.evaluators = [stsb_evaluator]

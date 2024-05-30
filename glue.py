@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import numpy as np
 import omegaconf as om
 import src.evals.glue_jobs as glue_jobs_module
+import src.evals.misc_jobs as misc_jobs_module
 import src.evals.superglue_jobs as superglue_jobs_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
@@ -53,11 +54,13 @@ TASK_NAME_TO_CLASS = {
     "cola": glue_jobs_module.COLAJob,
     "boolq": superglue_jobs_module.BoolQJob,
     "cb": superglue_jobs_module.CBJob,
+    "copa": superglue_jobs_module.COPAJob,
     "wic": superglue_jobs_module.WiCJob,
+    "swag": misc_jobs_module.SWAGJob,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
-SUPERGLUE_TASKS = {"boolq", "cb", "rte", "wic"}
+SUPERGLUE_TASKS = {"boolq", "cb", "copa", "rte", "wic"}
 
 
 def build_algorithm(name, kwargs):
@@ -111,16 +114,30 @@ def build_scheduler(cfg):
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
 
-def build_model(cfg: DictConfig, num_labels: int):
+def build_model(cfg: DictConfig, model_type: str, num_labels: int):
     if cfg.name == "hf_bert":
-        return hf_bert_module.create_hf_bert_classification(
-            num_labels=num_labels,
-            pretrained_model_name=cfg.pretrained_model_name,
-            use_pretrained=cfg.get("use_pretrained", False),
-            model_config=cfg.get("model_config", None),
-            tokenizer_name=cfg.get("tokenizer_name", None),
-            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
-        )
+        if model_type == "multiple_choice":
+            return hf_bert_module.create_hf_bert_multiple_choice(
+                num_labels=num_labels,
+                pretrained_model_name=cfg.pretrained_model_name,
+                use_pretrained=cfg.get("use_pretrained", False),
+                model_config=cfg.get("model_config", None),
+                tokenizer_name=cfg.get("tokenizer_name", None),
+                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            )
+        elif model_type == "sequence_classification":
+            return hf_bert_module.create_hf_bert_classification(
+                num_labels=num_labels,
+                pretrained_model_name=cfg.pretrained_model_name,
+                use_pretrained=cfg.get("use_pretrained", False),
+                model_config=cfg.get("model_config", None),
+                tokenizer_name=cfg.get("tokenizer_name", None),
+                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            )
+        else:
+            raise ValueError(
+                f"Not sure how to build model with model_type={model_type}"
+            )
     elif cfg.name == "mosaic_bert":
         return mosaic_bert_module.create_mosaic_bert_classification(
             num_labels=num_labels,
@@ -259,7 +276,7 @@ def run_job_worker(
     instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,
-        model=build_model(config.model, task_cls.num_labels),
+        model=build_model(config.model, task_cls.model_type, task_cls.num_labels),
         tokenizer_name=config.tokenizer_name,
         scheduler=build_scheduler(config.scheduler),
         load_path=config.load_path,
@@ -431,6 +448,8 @@ def train(config: om.DictConfig) -> None:
         *{"cola", "sst2", "qqp", "qnli", "mnli"},
         # superglue:
         *{"boolq", "cb", "wic"},
+        # misc:
+        *{"swag"},
     }
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path
@@ -444,28 +463,38 @@ def train(config: om.DictConfig) -> None:
             round_1_results = run_jobs_serial(round_1_job_configs)
 
     # Builds up the information needed to run the second round, starting from the MNLI checkpoints
-    mnli_checkpoint_path = None
+    checkpoint_paths = {}
     for job_name, output_dict in round_1_results.items():
         job_results = output_dict["result"]
         job_values = get_values_from_path(job_name, separator="_")
         task_name = job_values["task"]
 
-        if task_name != "mnli":
+        if task_name in checkpoint_paths:
+            continue
+        elif len(job_results["checkpoints"]) == 0:
             continue
 
-        mnli_checkpoint_path = job_results["checkpoints"][-1]
-        break
+        checkpoint_paths[task_name] = job_results["checkpoints"][-1]
 
     # Builds round 2 configs and runs them
-    round_2_task_names = {"rte", "mrpc", "stsb"}
-    round_2_starting_checkpoint_path = (
-        mnli_checkpoint_path
-        if mnli_checkpoint_path is not None
-        else local_pretrain_checkpoint_path
-    )
-    round_2_job_configs = create_job_configs(
-        config, round_2_task_names, round_2_starting_checkpoint_path
-    )
+    round_2_task_names = {
+        "mnli": {"rte", "mrpc", "stsb"},
+        "swag": {"copa"},
+    }
+    round_2_job_configs = []
+    for dependent_task_name in round_2_task_names:
+        starting_checkpoint_path = (
+            checkpoint_paths[dependent_task_name]
+            if dependent_task_name in checkpoint_paths
+            else local_pretrain_checkpoint_path
+        )
+        round_2_job_configs.extend(
+            create_job_configs(
+                config,
+                round_2_task_names[dependent_task_name],
+                starting_checkpoint_path,
+            )
+        )
 
     round_2_results = {}
     if len(round_2_job_configs) > 0:
@@ -499,11 +528,24 @@ def train(config: om.DictConfig) -> None:
 
     overall_glue = []
     overall_superglue = []
+    overall_other = []
     for task_name, average_metric in results_mean.items():
         if task_name in GLUE_TASKS:
             overall_glue.append(average_metric)
         if task_name in SUPERGLUE_TASKS:
             overall_superglue.append(average_metric)
+        if task_name not in GLUE_TASKS.union(SUPERGLUE_TASKS):
+            overall_other.append(average_metric)
+
+    if len(overall_other) > 0:
+        other_results_mean = {
+            k: v
+            for k, v in results_mean.items()
+            if k not in GLUE_TASKS.union(SUPERGLUE_TASKS)
+        }
+        _print_averaged_glue_results(
+            [(key, value) for key, value in other_results_mean.items()]
+        )
 
     if len(overall_glue) > 0:
         glue_results_mean = {

@@ -45,6 +45,12 @@ tasks:
       # practice for evaluating RTE involves starting from an MNLI checkpoint,
       # which is why we keep one MNLI checkpoint locally.
       save_num_checkpoints_to_keep: 1
+  swag:
+    trainer_kwargs:
+      # SWAG is not part of SuperGLUE, but it is commonly used as a first step
+      # in the process of fine-tuning COPA, which is why we keep one SWAG
+      # checkpoint locally as well.
+      save_num_checkpoints_to_keep: 1
   boolq:
     seeds: [23, 42, 6033]
     trainer_kwargs:
@@ -59,5 +65,9 @@ tasks:
       save_num_checkpoints_to_keep: 0
   wic:
     seeds: [23, 42, 6033]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  copa:
+    seeds: [23, 42, 6033, 1337, 24]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
