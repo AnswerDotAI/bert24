@@ -132,7 +132,7 @@ def create_flex_bert_mlm(
         MaskedAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=True)
+    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=model.config.allow_embedding_resizing)
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
@@ -282,7 +282,7 @@ def create_flex_bert_classification(
         if num_labels == 2:
             metrics.append(BinaryF1Score())
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=True)
+    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=model.config.allow_embedding_resizing)
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
