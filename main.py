@@ -128,7 +128,7 @@ def build_optimizer(cfg, model):
                 Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
             )
         return AdamW(
-            model.parameters(), lr=cfg.lr, betas=cfg.betas, eps=cfg.eps, weight_decay=cfg.weight_decay
+            model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
         )
     else:
         raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
