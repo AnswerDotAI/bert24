@@ -617,6 +617,11 @@ class FlexBertModel(BertPreTrainedModel):
         super().__init__(config)
         self.embeddings = get_embedding_layer(config)
         self.encoder = get_encoder_layer(config)
+        if "prenorm" in config.bert_layer:
+            # if we use prenorm attention we need to add a final norm
+            self.final_norm = get_norm_layer(config)
+        else:
+            self.final_norm = None
         self.post_init()
 
     def get_input_embeddings(self):
@@ -639,6 +644,8 @@ class FlexBertModel(BertPreTrainedModel):
 
         encoder_outputs = self.encoder(embedding_output, attention_mask)
 
+        if self.final_norm is not None:
+            encoder_outputs = self.final_norm(encoder_outputs)
         return encoder_outputs
 
 

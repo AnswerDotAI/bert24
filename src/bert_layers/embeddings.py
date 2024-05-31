@@ -161,6 +161,11 @@ EBB2CLS = {
 
 def get_embedding_layer(config: FlexBertConfig) -> FlexBertEmbeddingsBase:
     try:
+        if "prenorm" in config.bert_layer:
+            if config.embed_norm:
+                print("embed_norm is set to False as prenorm attention is being used.")
+            config.embed_norm = False
+
         return EBB2CLS[config.embedding_layer](config)
     except KeyError:
         raise ValueError(f"Invalid embeddings layer type: {config.embedding_layer=}, must be one of {EBB2CLS.keys()}.")
