@@ -69,6 +69,7 @@ class FlexBertConfig(TransformersBertConfig):
         rotary_emb_interleaved: bool = False,
         use_fa2: bool = True,
         use_sdpa_attn_mask: bool = False,
+        allow_embedding_resizing: bool = False,
         **kwargs,
     ):
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -107,6 +108,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.rotary_emb_interleaved = rotary_emb_interleaved
         self.use_fa2 = use_fa2
         self.use_sdpa_attn_mask = use_sdpa_attn_mask
+        self.allow_embedding_resizing = allow_embedding_resizing
 
 
 PADDING = ["unpadded", "padded"]
