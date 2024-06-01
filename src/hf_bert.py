@@ -125,6 +125,7 @@ def create_hf_bert_classification(
     model_config: Optional[dict] = None,
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
+    additional_eval_metrics: Optional[list] = [],
 ):
     """BERT model based on |:hugging_face:| Transformers.
 
@@ -238,7 +239,14 @@ def create_hf_bert_classification(
             metrics.append(BinaryF1Score())
 
     return HuggingFaceModel(
-        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *additional_eval_metrics,
+        ],
     )
 
 
@@ -249,6 +257,7 @@ def create_hf_bert_multiple_choice(
     model_config: Optional[dict] = None,
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
+    additional_eval_metrics: Optional[list] = [],
 ):
     """BERT model based on |:hugging_face:| Transformers.
 
@@ -358,5 +367,9 @@ def create_hf_bert_multiple_choice(
         metrics.append(BinaryF1Score())
 
     return HuggingFaceModel(
-        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        eval_metrics=[*metrics, *additional_eval_metrics],
     )

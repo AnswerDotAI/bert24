@@ -420,8 +420,10 @@ dependencies:
   - zlib=1.2.13=hd590300_5
   - pip:
       - composer==0.22.0
+      - evaluate==0.4.2
       - mosaicml-cli==0.6.24
       - mosaicml-streaming==0.7.6
       - ninja==1.11.1.1
       - python-snappy==0.7.1
+      - scikit-learn==1.5.0
       - zstd==1.5.5.1

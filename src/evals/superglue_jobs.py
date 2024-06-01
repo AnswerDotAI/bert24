@@ -4,14 +4,19 @@
 # """Contains SuperGLUE job objects for the simple_glue_trainer."""
 import os
 import sys
-from typing import List, Optional
+from typing import Any, List, Optional
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
+import evaluate
+import torch
+import torchmetrics
+
 from composer import ComposerModel
 from composer.core import Callback
 from composer.core.evaluator import Evaluator
+from composer.devices import DeviceCPU
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from src.evals.data import create_superglue_dataset
@@ -256,28 +261,173 @@ class COPAJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
+            "collate_fn": multiple_choice_collate_fn,
             "num_workers": 0,
             "shuffle": False,
             "drop_last": False,
         }
 
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
-        self.train_dataloader = build_dataloader(
-            train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
-        )
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         copa_eval_dataset = create_superglue_dataset(
             split="validation", **dataset_kwargs
         )
         copa_evaluator = Evaluator(
             label="superglue_copa",
-            dataloader=build_dataloader(
-                copa_eval_dataset,
-                collate_fn=multiple_choice_collate_fn,
-                **dataloader_kwargs,
-            ),
+            dataloader=build_dataloader(copa_eval_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [copa_evaluator]
+
+
+class MultiRCMetrics(torchmetrics.Metric):
+    needs_batch = True
+
+    def __init__(self):
+        super().__init__()
+        self.hf_metric = evaluate.load("super_glue", "multirc")
+
+    def update(self, batch, outputs, labels):
+        predictions = [
+            {
+                "prediction": outputs[i].argmax().detach().cpu().numpy(),
+                "idx": {
+                    "paragraph": batch["idx"][i, 0],
+                    "question": batch["idx"][i, 1],
+                    "answer": batch["idx"][i, 2],
+                },
+            }
+            for i in range(outputs.shape[0])
+        ]
+
+        self.hf_metric.add_batch(
+            predictions=predictions,
+            references=labels.detach().cpu().numpy(),
+        )
+
+    def compute(self):
+        return self.hf_metric.compute()
+
+    def compute_final(self):
+        metrics = self.compute()
+        # In SuperGLUE, the MultiRC score is an average of f1_a and em, so
+        # we should remove f1_m before that average is computed
+        del metrics["f1_m"]
+        return metrics
+
+
+class MultiRCJob(ClassificationJob):
+    """MultiRC."""
+
+    additional_eval_metrics = [MultiRCMetrics()]
+    num_labels = 2
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "400ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        max_sequence_length: Optional[int] = 256,
+        max_duration: Optional[str] = "6ep",
+        batch_size: Optional[int] = 48,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="multirc",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        self.optimizer = DecoupledAdamW(
+            self.model.parameters(),
+            lr=5e-5,
+            betas=(0.9, 0.98),
+            eps=1e-6,
+            weight_decay=5e-6,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(inp):
+                return tokenizer(
+                    text=[
+                        f"{inp['paragraph'][i]} {inp['question'][i]}"
+                        for i in range(len(inp["paragraph"]))
+                    ],
+                    text_pair=inp["answer"],
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+
+            return tokenize_fn
+
+        def collate_fn(features):
+            batch = {
+                "input_ids": [],
+                "attention_mask": [],
+                "token_type_ids": [],
+                "idx": [],
+                "label": [],
+            }
+
+            for feature in features:
+                for k, v in feature.items():
+                    if k == "idx":
+                        batch[k].append([v["paragraph"], v["question"], v["answer"]])
+                    else:
+                        batch[k].append(v)
+
+            batch = {k: torch.tensor(v) for k, v in batch.items()}
+            batch["labels"] = batch.pop("label")
+            return batch
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenize_fn_factory": tokenize_fn_factory,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "collate_fn": collate_fn,
+            "num_workers": 0,
+            "shuffle": False,
+            "drop_last": False,
+        }
+
+        train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+        multirc_eval_dataset = create_superglue_dataset(
+            split="validation", **dataset_kwargs
+        )
+        multirc_evaluator = Evaluator(
+            label="superglue_multirc",
+            dataloader=build_dataloader(multirc_eval_dataset, **dataloader_kwargs),
+            metric_names=["MultiRCMetrics"],
+        )
+        self.evaluators = [multirc_evaluator]
 
 
 class WiCJob(ClassificationJob):

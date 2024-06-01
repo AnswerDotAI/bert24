@@ -71,3 +71,7 @@ tasks:
     seeds: [23, 42, 6033, 1337, 24]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
+  multirc:
+    seeds: [23, 42, 6033, 1337]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0

@@ -183,9 +183,19 @@ class FineTuneJob:
 
         collected_metrics: Dict[str, Dict[str, Any]] = {}
         for eval_name, metrics in trainer.state.eval_metrics.items():
-            collected_metrics[eval_name] = {
-                name: metric.compute().cpu().numpy() for name, metric in metrics.items()
-            }
+            collected_metrics = {}
+            for name, metric in metrics.items():
+                if hasattr(metric, "compute_final"):
+                    result = metric.compute_final()
+                else:
+                    result = metric.compute()
+
+                if isinstance(result, dict):
+                    collected_metrics[eval_name] = result
+                else:
+                    collected_metrics[eval_name] = {
+                        name: metric.compute().cpu().numpy()
+                    }
 
         saved_checkpoints = copy.copy(trainer.saved_checkpoints)
         reset_trainer(trainer, garbage_collect=True)
@@ -202,7 +212,7 @@ class FineTuneJob:
 
 
 class ClassificationJob(FineTuneJob):
-
+    additional_eval_metrics = []
     model_type = "sequence_classification"
 
     def __init__(

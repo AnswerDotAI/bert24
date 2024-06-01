@@ -37,7 +37,7 @@ _superglue_task_column_names = {
     "boolq": ("question", "passage"),
     "cb": ("premise", "hypothesis"),
     "copa": ("premise", "choice1", "choice2", "question"),
-    # "multirc": ("paragraph", "sentence"), #  paragraph question answer
+    "multirc": ("paragraph", "question", "answer"),
     # "record": ("question1", "question2"), ['passage', 'query', 'entities', 'entity_spans', 'answers', 'idx'
     "rte": ("premise", "hypothesis"),
     "wic": (

@@ -57,12 +57,13 @@ TASK_NAME_TO_CLASS = {
     "boolq": superglue_jobs_module.BoolQJob,
     "cb": superglue_jobs_module.CBJob,
     "copa": superglue_jobs_module.COPAJob,
+    "multirc": superglue_jobs_module.MultiRCJob,
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
-SUPERGLUE_TASKS = {"boolq", "cb", "copa", "rte", "wic"}
+SUPERGLUE_TASKS = {"boolq", "cb", "copa", "multirc", "rte", "wic"}
 
 
 def build_algorithm(name, kwargs):
@@ -118,7 +119,7 @@ def build_scheduler(cfg):
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
 
-def build_model(cfg: DictConfig, model_type: str, num_labels: int):
+def build_model(cfg: DictConfig, model_type: str, num_labels: int, **kwargs):
     if cfg.name == "hf_bert":
         if model_type == "multiple_choice":
             return hf_bert_module.create_hf_bert_multiple_choice(
@@ -128,6 +129,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int):
                 model_config=cfg.get("model_config", None),
                 tokenizer_name=cfg.get("tokenizer_name", None),
                 gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+                **kwargs,
             )
         elif model_type == "sequence_classification":
             return hf_bert_module.create_hf_bert_classification(
@@ -137,6 +139,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int):
                 model_config=cfg.get("model_config", None),
                 tokenizer_name=cfg.get("tokenizer_name", None),
                 gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+                **kwargs,
             )
         else:
             raise ValueError(
@@ -150,6 +153,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int):
             model_config=cfg.get("model_config", None),
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            **kwargs,
         )
     elif cfg.name == "flex_bert":
         return flex_bert_module.create_flex_bert_classification(
@@ -159,6 +163,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int):
             model_config=cfg.get("model_config", None),
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            **kwargs,
         )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
@@ -289,7 +294,12 @@ def run_job_worker(
     instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,
-        model=build_model(config.model, task_cls.model_type, task_cls.num_labels),
+        model=build_model(
+            config.model,
+            model_type=task_cls.model_type,
+            num_labels=task_cls.num_labels,
+            additional_eval_metrics=task_cls.additional_eval_metrics,
+        ),
         tokenizer_name=config.tokenizer_name,
         scheduler=build_scheduler(config.scheduler),
         load_path=config.load_path,
@@ -460,7 +470,7 @@ def train(config: om.DictConfig) -> None:
         # glue:
         *{"cola", "sst2", "qqp", "qnli", "mnli"},
         # superglue:
-        *{"boolq", "cb", "wic"},
+        *{"boolq", "cb", "multirc", "wic"},
         # misc:
         *{"swag"},
     }
