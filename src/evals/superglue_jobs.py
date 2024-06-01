@@ -4,7 +4,7 @@
 # """Contains SuperGLUE job objects for the simple_glue_trainer."""
 import os
 import sys
-from typing import Any, List, Optional
+from typing import List, Optional
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -16,7 +16,6 @@ import torchmetrics
 from composer import ComposerModel
 from composer.core import Callback
 from composer.core.evaluator import Evaluator
-from composer.devices import DeviceCPU
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from src.evals.data import create_superglue_dataset
@@ -102,9 +101,26 @@ class BoolQJob(ClassificationJob):
         self.evaluators = [boolq_evaluator]
 
 
+class CBMetric(torchmetrics.Metric):
+
+    def __init__(self):
+        super().__init__()
+        self.hf_metric = evaluate.load("super_glue", "cb")
+
+    def update(self, outputs, labels):
+        self.hf_metric.add_batch(
+            predictions=outputs.argmax(axis=1).cpu().numpy(),
+            references=labels.detach().cpu().numpy(),
+        )
+
+    def compute(self):
+        return self.hf_metric.compute()
+
+
 class CBJob(ClassificationJob):
     """CB."""
 
+    additional_eval_metrics = [CBMetric()]
     num_labels = 3
 
     def __init__(
@@ -170,7 +186,7 @@ class CBJob(ClassificationJob):
         cb_evaluator = Evaluator(
             label="superglue_cb",
             dataloader=build_dataloader(cb_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
+            metric_names=["CBMetric"],
         )
         self.evaluators = [cb_evaluator]
 
@@ -280,7 +296,7 @@ class COPAJob(ClassificationJob):
         self.evaluators = [copa_evaluator]
 
 
-class MultiRCMetrics(torchmetrics.Metric):
+class MultiRCMetric(torchmetrics.Metric):
     needs_batch = True
 
     def __init__(self):
@@ -319,7 +335,7 @@ class MultiRCMetrics(torchmetrics.Metric):
 class MultiRCJob(ClassificationJob):
     """MultiRC."""
 
-    additional_eval_metrics = [MultiRCMetrics()]
+    additional_eval_metrics = [MultiRCMetric()]
     num_labels = 2
 
     def __init__(
@@ -425,7 +441,7 @@ class MultiRCJob(ClassificationJob):
         multirc_evaluator = Evaluator(
             label="superglue_multirc",
             dataloader=build_dataloader(multirc_eval_dataset, **dataloader_kwargs),
-            metric_names=["MultiRCMetrics"],
+            metric_names=["MultiRCMetric"],
         )
         self.evaluators = [multirc_evaluator]
 
