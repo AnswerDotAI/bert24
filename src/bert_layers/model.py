@@ -62,6 +62,7 @@ from transformers.modeling_outputs import (
     MaskedLMOutput,
     MultipleChoiceModelOutput,
     SequenceClassifierOutput,
+    TokenClassifierOutput,
 )
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
@@ -981,6 +982,172 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         return params
 
 
+class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
+    def __init__(self, config: FlexBertConfig):
+        super().__init__(config)
+        self.generator = FlexBertForMaskedLM(config)
+        self.discriminator = FlexBertForTokenClassification(config)
+
+        self.has_position_embeddings = getattr(self.generator.embeddings, "position_embeddings", False)
+        self.rtd_temp = getattr(config, "rtd_temp", 1.0)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+        self.share_embedding = getattr(config, "embedding_sharing", "none").lower()
+        if self.share_embedding == "gdes":  # Gradient-disentangled weight/embedding sharing
+            tok_bias = torch.zeros_like(self.discriminator.embeddings.tok_embeddings.weight)
+            tok_bias = torch.nn.Parameter(tok_bias)
+            delattr(self.discriminator.embeddings.tok_embeddings, "weight")
+            self.discriminator.embeddings.tok_embeddings.register_parameter("_weight", tok_bias)
+
+            if self.has_position_embeddings:
+                position_bias = torch.zeros_like(self.discriminator.embeddings.position_embeddings.weight)
+                position_bias = torch.nn.Parameter(position_bias)
+                delattr(self.discriminator.embeddings.position_embeddings, "weight")
+                self.discriminator.embeddings.position_embeddings.register_parameter("_weight", position_bias)
+
+        self.register_discriminator_fw_hook()
+
+    @classmethod
+    def from_composer(
+        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("FlexBERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+        if len(unexpected_keys) > 0:
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+
+        return model
+
+    # def get_output_embeddings(self):
+    #     return self.decoder
+
+    # def set_output_embeddings(self, new_embeddings):
+    #     self.decoder = new_embeddings
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+        **kwargs,
+    ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
+        # labels should be a `torch.LongTensor` of shape
+        # `(batch_size, sequence_length)`. These are used for computing the
+        #  masked language modeling loss.
+        #
+        # Indices should be in `[-100, 0, ..., config.vocab_size]` (see
+        # `input_ids` docstring) Tokens with indices set to `-100` are ignored
+        # (masked), the loss is only computed for the tokens with labels in `[0,
+        # ..., config.vocab_size]`
+        #
+        # Prediction scores are only computed for masked tokens and the (bs,
+        # seqlen) dimensions are flattened
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        generator_output = self.generator(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            labels=labels,
+            return_dict=return_dict,
+            **kwargs,
+        )
+
+        mask_index = (labels.view(-1) >= 0).nonzero().view(-1)
+        topk_labels, top_p = self.topk_sampling(generator_output["logits"], topk=1, temp=self.rtd_temp)
+
+        top_ids = torch.zeros_like(labels.view(-1))
+        top_ids.scatter_(index=mask_index, src=topk_labels.view(-1).int(), dim=-1)
+        top_ids = top_ids.view(labels.size())
+        generated_ids = torch.where(labels >= 0, top_ids, input_ids).detach()
+
+        discriminator_labels = (labels >= 0).long()
+        discriminator_output = self.discriminator(
+            generated_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            labels=discriminator_labels,
+            return_dict=return_dict,
+            **kwargs,
+        )
+
+        loss = None
+        if labels is not None:
+            mlm_loss = generator_output["loss"]
+            rtd_loss = discriminator_output["loss"]
+            loss = mlm_loss + (self.config.rtd_lambda * rtd_loss)
+
+        return MaskedLMOutput(
+            loss=loss,
+            logits=None,  # TODO: should we create a RTDOutput class to support generator + discriminator outputs?
+            hidden_states=None,
+            attentions=None,
+        )
+
+    def topk_sampling(self, logits, topk=1, temp=1):
+        top_p = torch.nn.functional.softmax(logits / temp, dim=-1)
+        topk = max(1, topk)
+        next_tokens = torch.multinomial(top_p, topk)
+        return next_tokens, top_p
+
+    def register_discriminator_fw_hook(self, *wargs):
+        def fw_hook(module, *inputs):
+            if self.share_embedding == "gdes":  # Gradient-disentangled weight/embedding sharing
+                g_tok_emb = self.generator.embeddings.tok_embeddings
+                d_tok_emb = self.discriminator.embeddings.tok_embeddings
+                self._set_param(d_tok_emb, "weight", g_tok_emb.weight.detach() + d_tok_emb._weight)
+
+                if self.has_position_embeddings:
+                    g_pos_emb = self.generator.embeddings.position_embeddings
+                    d_pos_emb = self.discriminator.embeddings.position_embeddings
+                    self._set_param(d_pos_emb, "weight", g_pos_emb.weight.detach() + d_pos_emb._weight)
+
+            elif self.share_embedding == "es":  # vallina embedding sharing
+                g_tok_emb = self.generator.embeddings.tok_embeddings
+                d_tok_emb = self.discriminator.embeddings.tok_embeddings
+                self._set_param(d_tok_emb, "weight", g_tok_emb.weight)
+
+                if self.has_position_embeddings:
+                    g_pos_emb = self.generator.embeddings.position_embeddings
+                    d_pos_emb = self.discriminator.embeddings.position_embeddings
+                    self._set_param(d_pos_emb, "weight", g_pos_emb.weight)
+
+            return None
+
+        self.discriminator.register_forward_pre_hook(fw_hook)
+
+    def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
+        input_shape = input_ids.shape
+        effective_batch_size = input_shape[0]
+
+        #  add a dummy token
+        if self.config.pad_token_id is None:
+            raise ValueError("The PAD token should be defined for generation")
+
+        attention_mask = torch.cat([attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))], dim=-1)
+        dummy_token = torch.full(
+            (effective_batch_size, 1), self.config.pad_token_id, dtype=torch.long, device=input_ids.device
+        )
+        input_ids = torch.cat([input_ids, dummy_token], dim=1)
+
+        return {"input_ids": input_ids, "attention_mask": attention_mask}
+
+
 class FlexBertForSequenceClassification(BertPreTrainedModel):
     """Bert Model transformer with a sequence classification/regression head.
 
@@ -1212,3 +1379,73 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
         params += _count_parameters(self.head, trainable)
         params += _count_parameters(self.classifier, trainable)
         return params
+
+
+class FlexBertForTokenClassification(BertPreTrainedModel):
+    """Bert Model transformer with a token classification head."""
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__(config)
+        self.num_labels = getattr(config, "num_labels", 1)
+        assert self.num_labels > 1, "Regression loss is not currently supported in FlexBertForTokenClassification"
+        self.config = config
+
+        self.bert = FlexBertModel(config)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @classmethod
+    def from_composer(
+        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+        if len(unexpected_keys) > 0:
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+
+        return model
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
+        # labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        # Labels for computing the sequence classification loss.
+        # Indices should be in `[0, ..., config.num_labels - 1]`.
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        output = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+        )
+
+        logits = self.classifier(output)
+
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + output
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(loss=loss, logits=logits, hidden_states=None, attentions=None)
