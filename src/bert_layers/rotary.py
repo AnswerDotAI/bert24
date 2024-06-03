@@ -66,7 +66,7 @@ def apply_rotary_emb_unpad(
 ):
     """
     Arguments:
-        x: (total_nnz, dim) - input tensor for packed QKV, where dim = 3 * headdim
+        x: (total_nnz, 3, nheads * headdim) - input tensor for packed QKV.
         cos, sin: (seqlen_rotary, rotary_dim / 2)
         interleaved: if True, rotate pairs of even and odd dimensions (GPT-J style) instead
             of 1st half and 2nd half (GPT-NeoX style).
