@@ -617,6 +617,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
         self.use_fa2 = config.use_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.max_seq_len = config.max_position_embeddings
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
                 "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
@@ -670,13 +671,13 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         seqlen_offset = 0
 
         if IMPL_USE_FLASH2:
-            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
+            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, self.max_seq_len)  # batch, max_seqlen, thd
 
             # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
+            qkv = qkv.view(-1, self.max_seq_len, 3, self.num_attention_heads, self.attn_head_size)
 
             # Apply RoPE
-            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
+            qkv = self.rotary_emb(qkv, seqlen_offset=0, max_seqlen=self.max_seq_len)
             qkv = bert_padding.unpad_input_only(qkv, torch.squeeze(attn_mask) == 1)
 
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
