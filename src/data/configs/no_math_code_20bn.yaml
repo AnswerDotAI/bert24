@@ -1,0 +1,38 @@
+sources:
+  - name: cc_en_middle
+    source_coefficient: 1
+  - name: falcon
+    source_coefficient: 1
+  - name: cc_en_tail
+    source_coefficient: 1
+  - name: cc_en_head
+    source_coefficient: 1
+  - name: c4
+    source_coefficient: 1
+  - name: starcoder
+    source_coefficient: 0  # Remove code
+  - name: reddit
+    source_coefficient: 1
+  - name: pes2o
+    source_coefficient: 1
+  - name: arxiv
+    source_coefficient: 1
+  - name: wiki
+    source_coefficient: 1
+  - name: tulu_flan
+    source_coefficient: 1
+  - name: stackexchange
+    source_coefficient: 0
+  - name: cc_news
+    source_coefficient: 1
+  - name: open_web_math_train
+    source_coefficient: 0   # Remove math
+  - name: algebraic_stack_train
+    source_coefficient: 0  # Remove math
+  - name: books
+    source_coefficient: 1
+  - name: megawika
+    source_coefficient: 1
+source_coefficient_type: relative_proportion
+target_tokens: 20000000000 # 20bn
+hf_out_path: answerdotai/dolma_20bn_no_math_code

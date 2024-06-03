@@ -16,6 +16,7 @@ from composer import Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
 from composer.loggers import WandBLogger
 from composer.optim import DecoupledAdamW
+from torch.optim import AdamW
 from composer.optim.scheduler import (
     ConstantWithWarmupScheduler,
     CosineAnnealingWithWarmupScheduler,
@@ -119,7 +120,15 @@ def build_scheduler(cfg):
 def build_optimizer(cfg, model):
     if cfg.name == "decoupled_adamw":
         return DecoupledAdamW(
-            model.parameters(), lr=cfg.lr, betas=cfg.betas, eps=cfg.eps, weight_decay=cfg.weight_decay
+            model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
+        )
+    elif cfg.name == "adamw":
+        print(
+                f"INFO: You might want to increase the weight decay because in AdamW it is scaled by the lr.
+                Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+            )
+        return AdamW(
+            model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
         )
     else:
         raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
