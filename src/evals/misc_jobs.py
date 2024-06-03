@@ -25,7 +25,7 @@ from src.evals.finetuning_jobs import (
 class SWAGJob(ClassificationJob):
     """SWAG."""
 
-    model_type = "multiple_choice"
+    multiple_choice = True
     num_labels = 4
 
     def __init__(

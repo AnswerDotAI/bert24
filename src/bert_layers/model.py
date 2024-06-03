@@ -58,12 +58,21 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
-from transformers.modeling_outputs import MaskedLMOutput, SequenceClassifierOutput
+from transformers.modeling_outputs import (
+    MaskedLMOutput,
+    MultipleChoiceModelOutput,
+    SequenceClassifierOutput,
+)
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
 import bert_padding as bert_padding_module
 from .loss import get_loss_fn
-from .layers import BertAlibiEncoder, BertPooler, BertPredictionHeadTransform, get_encoder_layer
+from .layers import (
+    BertAlibiEncoder,
+    BertPooler,
+    BertPredictionHeadTransform,
+    get_encoder_layer,
+)
 from .embeddings import BertAlibiEmbeddings, get_embedding_layer
 from .configuration_bert import FlexBertConfig
 from .normalization import get_norm_layer
@@ -168,14 +177,20 @@ class BertModel(BertPreTrainedModel):
 
         if masked_tokens_mask is None:
             sequence_output = encoder_outputs[-1]
-            pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+            pooled_output = (
+                self.pooler(sequence_output) if self.pooler is not None else None
+            )
         else:
             # TD [2022-03-01]: the indexing here is very tricky.
             attention_mask_bool = attention_mask.bool()
             subset_idx = subset_mask[attention_mask_bool]  # type: ignore
-            sequence_output = encoder_outputs[-1][masked_tokens_mask[attention_mask_bool][subset_idx]]
+            sequence_output = encoder_outputs[-1][
+                masked_tokens_mask[attention_mask_bool][subset_idx]
+            ]
             if self.pooler is not None:
-                pool_input = encoder_outputs[-1][first_col_mask[attention_mask_bool][subset_idx]]
+                pool_input = encoder_outputs[-1][
+                    first_col_mask[attention_mask_bool][subset_idx]
+                ]
                 pooled_output = self.pooler(pool_input, pool=False)
             else:
                 pooled_output = None
@@ -198,7 +213,9 @@ class BertLMPredictionHead(nn.Module):
         self.transform = BertPredictionHeadTransform(config)
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
-        self.decoder = nn.Linear(bert_model_embedding_weights.size(1), bert_model_embedding_weights.size(0))
+        self.decoder = nn.Linear(
+            bert_model_embedding_weights.size(1), bert_model_embedding_weights.size(0)
+        )
         self.decoder.weight = bert_model_embedding_weights
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -260,7 +277,14 @@ class BertForMaskedLM(BertPreTrainedModel):
 
     @classmethod
     def from_composer(
-        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
     ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
@@ -273,9 +297,13 @@ class BertForMaskedLM(BertPreTrainedModel):
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
         if len(unexpected_keys) > 0:
-            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
 
         return model
 
@@ -319,7 +347,9 @@ class BertForMaskedLM(BertPreTrainedModel):
         else:
             masked_tokens_mask = labels > 0
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         outputs = self.bert(
             input_ids,
@@ -343,13 +373,17 @@ class BertForMaskedLM(BertPreTrainedModel):
         if labels is not None:
             # Compute loss
             loss_fct = nn.CrossEntropyLoss()
-            masked_token_idx = torch.nonzero(labels.flatten() > 0, as_tuple=False).flatten()
+            masked_token_idx = torch.nonzero(
+                labels.flatten() > 0, as_tuple=False
+            ).flatten()
             loss = loss_fct(prediction_scores, labels.flatten()[masked_token_idx])
 
             assert input_ids is not None, "Coding error; please open an issue"
             batch, seqlen = input_ids.shape[:2]
             prediction_scores = rearrange(
-                bert_padding_module.index_put_first_axis(prediction_scores, masked_token_idx, batch * seqlen),
+                bert_padding_module.index_put_first_axis(
+                    prediction_scores, masked_token_idx, batch * seqlen
+                ),
                 "(b s) d -> b s d",
                 b=batch,
             )
@@ -365,7 +399,9 @@ class BertForMaskedLM(BertPreTrainedModel):
             attentions=None,
         )
 
-    def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs
+    ):
         input_shape = input_ids.shape
         effective_batch_size = input_shape[0]
 
@@ -373,9 +409,15 @@ class BertForMaskedLM(BertPreTrainedModel):
         if self.config.pad_token_id is None:
             raise ValueError("The PAD token should be defined for generation")
 
-        attention_mask = torch.cat([attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))], dim=-1)
+        attention_mask = torch.cat(
+            [attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))],
+            dim=-1,
+        )
         dummy_token = torch.full(
-            (effective_batch_size, 1), self.config.pad_token_id, dtype=torch.long, device=input_ids.device
+            (effective_batch_size, 1),
+            self.config.pad_token_id,
+            dtype=torch.long,
+            device=input_ids.device,
         )
         input_ids = torch.cat([input_ids, dummy_token], dim=1)
 
@@ -401,7 +443,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
         self.bert = BertModel(config)
         classifier_dropout = (
-            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
@@ -411,7 +455,14 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
     @classmethod
     def from_composer(
-        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
     ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
@@ -424,9 +475,13 @@ class BertForSequenceClassification(BertPreTrainedModel):
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
         if len(unexpected_keys) > 0:
-            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
 
         return model
 
@@ -450,7 +505,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
         # (mean-square loss). If `config.num_labels > 1` a classification loss
         # is computed (cross-entropy).
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         outputs = self.bert(
             input_ids,
@@ -475,7 +532,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -506,8 +565,120 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
 
 class BertForMultipleChoice(BertPreTrainedModel):
-    # TBD: Push in future commit
-    pass
+    """
+    Bert Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a
+    softmax) e.g. for RocStories/SWAG tasks.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.bert = BertModel(config)
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, 1)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @classmethod
+    def from_composer(
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
+
+        return model
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the multiple choice classification loss. Indices should be in `[0, ...,
+            num_choices-1]` where `num_choices` is the size of the second dimension of the input tensors. (See
+            `input_ids` above)
+        """
+
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+        num_choices = (
+            input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
+        )
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        pooled_output = outputs[1]
+
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        reshaped_logits = logits.view(-1, num_choices)
+
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(reshaped_logits, labels)
+
+        if not return_dict:
+            output = (reshaped_logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return MultipleChoiceModelOutput(
+            loss=loss,
+            logits=reshaped_logits,
+            hidden_states=None,
+            attentions=None,
+        )
 
 
 class BertForTokenClassification(BertPreTrainedModel):
@@ -534,7 +705,9 @@ class BertForQuestionAnswering(BertPreTrainedModel):
 class FlexBertPredictionHead(nn.Module):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_pred_bias)
+        self.dense = nn.Linear(
+            config.hidden_size, config.hidden_size, config.head_pred_bias
+        )
         self.act = get_act_fn(config) if config.head_pred_act else nn.Identity()
         self.norm = get_norm_layer(config) if config.head_pred_norm else nn.Identity()
 
@@ -545,13 +718,21 @@ class FlexBertPredictionHead(nn.Module):
 class FlexBertPoolingHead(nn.Module):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_class_bias)
+        self.dense = nn.Linear(
+            config.hidden_size, config.hidden_size, config.head_class_bias
+        )
         self.act = get_act_fn(config) if config.head_class_act else nn.Identity()
         self.norm = get_norm_layer(config) if config.head_class_norm else nn.Identity()
-        self.drop = torch.nn.Dropout(config.head_class_dropout) if config.head_class_dropout > 0 else nn.Identity()
+        self.drop = (
+            torch.nn.Dropout(config.head_class_dropout)
+            if config.head_class_dropout > 0
+            else nn.Identity()
+        )
         self.pooling_type = config.pooling_type
 
-    def forward(self, hidden_states: torch.Tensor, pool: Optional[bool] = True) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, pool: Optional[bool] = True
+    ) -> torch.Tensor:
         if pool:
             if self.pooling_type == "cls":
                 output = hidden_states[:, 0]
@@ -646,7 +827,11 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
         super().__init__(config)
         self.mlm_probability = getattr(config, "mlm_probability", 0.0)
-        self.sparse_prediction = getattr(config, "sparse_prediction", False) if self.mlm_probability > 0 else False
+        self.sparse_prediction = (
+            getattr(config, "sparse_prediction", False)
+            if self.mlm_probability > 0
+            else False
+        )
 
         self.bert = FlexBertModel(config)
         self.head = FlexBertPredictionHead(config)
@@ -654,18 +839,33 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         if config.tie_word_embeddings:
             decoder_weights = self.bert.embeddings.tok_embeddings.weight
         else:
-            decoder_weights = nn.Linear(config.hidden_size, config.vocab_size, bias=False).weight
-        self.decoder = nn.Linear(decoder_weights.size(1), decoder_weights.size(0), bias=config.decoder_bias)
+            decoder_weights = nn.Linear(
+                config.hidden_size, config.vocab_size, bias=False
+            ).weight
+        self.decoder = nn.Linear(
+            decoder_weights.size(1), decoder_weights.size(0), bias=config.decoder_bias
+        )
         self.decoder.weight = decoder_weights
 
-        self.loss_fn = nn.CrossEntropyLoss() if not hasattr(config, "loss_function") else get_loss_fn(config)
+        self.loss_fn = (
+            nn.CrossEntropyLoss()
+            if not hasattr(config, "loss_function")
+            else get_loss_fn(config)
+        )
 
         # Initialize weights and apply final processing
         self.post_init()
 
     @classmethod
     def from_composer(
-        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
     ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
@@ -678,9 +878,13 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
         if len(unexpected_keys) > 0:
-            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
 
         return model
 
@@ -711,9 +915,13 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         # Prediction scores are only computed for masked tokens and the (bs,
         # seqlen) dimensions are flattened
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
-        output = self.bert(input_ids, attention_mask=attention_mask, position_ids=position_ids)
+        output = self.bert(
+            input_ids, attention_mask=attention_mask, position_ids=position_ids
+        )
 
         logits = self.decoder(self.head(output))
         loss = None
@@ -727,7 +935,9 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
             attentions=None,
         )
 
-    def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs
+    ):
         input_shape = input_ids.shape
         effective_batch_size = input_shape[0]
 
@@ -735,9 +945,15 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         if self.config.pad_token_id is None:
             raise ValueError("The PAD token should be defined for generation")
 
-        attention_mask = torch.cat([attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))], dim=-1)
+        attention_mask = torch.cat(
+            [attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))],
+            dim=-1,
+        )
         dummy_token = torch.full(
-            (effective_batch_size, 1), self.config.pad_token_id, dtype=torch.long, device=input_ids.device
+            (effective_batch_size, 1),
+            self.config.pad_token_id,
+            dtype=torch.long,
+            device=input_ids.device,
         )
         input_ids = torch.cat([input_ids, dummy_token], dim=1)
 
@@ -765,7 +981,14 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
 
     @classmethod
     def from_composer(
-        cls, pretrained_checkpoint, state_dict=None, cache_dir=None, from_tf=False, config=None, *inputs, **kwargs
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
     ):
         """Load from pre-trained."""
         model = cls(config, *inputs, **kwargs)
@@ -778,9 +1001,13 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
         if len(missing_keys) > 0:
-            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
         if len(unexpected_keys) > 0:
-            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
 
         return model
 
@@ -799,7 +1026,9 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         # (mean-square loss). If `config.num_labels > 1` a classification loss
         # is computed (cross-entropy).
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         output = self.bert(
             input_ids,
@@ -816,7 +1045,9 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -841,6 +1072,103 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         return SequenceClassifierOutput(
             loss=loss,
             logits=logits,
+            hidden_states=None,
+            attentions=None,
+        )
+
+
+class FlexBertForMultipleChoice(BertPreTrainedModel):
+    """
+    Bert Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a
+    softmax) e.g. for RocStories/SWAG tasks.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.bert = FlexBertModel(config)
+        self.head = FlexBertPoolingHead(config)
+        self.classifier = nn.Linear(config.hidden_size, 1)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @classmethod
+    def from_composer(
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(
+                f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}"
+            )
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}"
+            )
+
+        return model
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
+        # labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        # Labels for computing the sequence classification/regression loss.
+        # Indices should be in `[0, ..., config.num_labels - 1]`.
+        # If `config.num_labels == 1` a regression loss is computed
+        # (mean-square loss). If `config.num_labels > 1` a classification loss
+        # is computed (cross-entropy).
+
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+        num_choices = input_ids.shape[1]
+
+        output = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+        )
+
+        pooled_output = self.head(output)
+        logits = self.classifier(pooled_output)
+        reshaped_logits = logits.view(-1, num_choices)
+
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(reshaped_logits, labels)
+
+        if not return_dict:
+            output = (reshaped_logits,) + output
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=reshaped_logits,
             hidden_states=None,
             attentions=None,
         )

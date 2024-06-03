@@ -213,7 +213,7 @@ class FineTuneJob:
 
 class ClassificationJob(FineTuneJob):
     additional_eval_metrics = []
-    model_type = "sequence_classification"
+    multiple_choice = False
 
     def __init__(
         self,

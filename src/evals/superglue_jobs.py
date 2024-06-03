@@ -194,7 +194,7 @@ class CBJob(ClassificationJob):
 class COPAJob(ClassificationJob):
     """COPA."""
 
-    model_type = "multiple_choice"
+    multiple_choice = True
     num_labels = 2
 
     def __init__(

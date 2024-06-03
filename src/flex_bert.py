@@ -104,7 +104,9 @@ def create_flex_bert_mlm(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(
+        pretrained_model_name, **model_config
+    )
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -132,7 +134,13 @@ def create_flex_bert_mlm(
         MaskedAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=model.config.allow_embedding_resizing)
+    hf_model = HuggingFaceModel(
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        allow_embedding_resizing=model.config.allow_embedding_resizing,
+    )
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
@@ -150,6 +158,7 @@ def create_flex_bert_classification(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    multiple_choice: Optional[bool] = False,
 ):
     """FlexBERT classification model based on |:hugging_face:| Transformers.
 
@@ -174,12 +183,14 @@ def create_flex_bert_classification(
             initialize the model weights. If provided,
             the state dictionary stored at `pretrained_checkpoint` will be
             loaded into the model after initialization. Default: ``None``.
+        multiple_choice (bool, optional): Whether the model is used for
+            multiple choice tasks. Default: ``False``.
 
     .. code-block::
         {
             "_name_or_path": "bert-base-uncased",
             "alibi_starting_size": 512,
-            "architectures": ["BertForSequenceClassification],
+            "architectures": ["BertForSequenceClassification"],
             "attention_probs_dropout_prob": 0.0,
             "classifier_dropout": null,
             "gradient_checkpointing": false,
@@ -245,21 +256,28 @@ def create_flex_bert_classification(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
+    model_cls = bert_layers_module.FlexBertForSequenceClassification
+
+    if multiple_choice:
+        model_cls = bert_layers_module.FlexBertForMultipleChoice
+
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(
+        pretrained_model_name, **model_config
+    )
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = bert_layers_module.FlexBertForSequenceClassification.from_composer(
+        model = model_cls.from_composer(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.FlexBertForSequenceClassification(config)
+        model = model_cls(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
@@ -282,7 +300,13 @@ def create_flex_bert_classification(
         if num_labels == 2:
             metrics.append(BinaryF1Score())
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=model.config.allow_embedding_resizing)
+    hf_model = HuggingFaceModel(
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        allow_embedding_resizing=model.config.allow_embedding_resizing,
+    )
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it

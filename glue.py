@@ -25,6 +25,7 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.flex_bert as flex_bert_module
 import torch
+import transformers
 from composer import algorithms
 from composer.callbacks import (
     LRMonitor,
@@ -119,32 +120,20 @@ def build_scheduler(cfg):
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
 
-def build_model(cfg: DictConfig, model_type: str, num_labels: int, **kwargs):
+def build_model(
+    cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs
+):
     if cfg.name == "hf_bert":
-        if model_type == "multiple_choice":
-            return hf_bert_module.create_hf_bert_multiple_choice(
-                num_labels=num_labels,
-                pretrained_model_name=cfg.pretrained_model_name,
-                use_pretrained=cfg.get("use_pretrained", False),
-                model_config=cfg.get("model_config", None),
-                tokenizer_name=cfg.get("tokenizer_name", None),
-                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
-                **kwargs,
-            )
-        elif model_type == "sequence_classification":
-            return hf_bert_module.create_hf_bert_classification(
-                num_labels=num_labels,
-                pretrained_model_name=cfg.pretrained_model_name,
-                use_pretrained=cfg.get("use_pretrained", False),
-                model_config=cfg.get("model_config", None),
-                tokenizer_name=cfg.get("tokenizer_name", None),
-                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
-                **kwargs,
-            )
-        else:
-            raise ValueError(
-                f"Not sure how to build model with model_type={model_type}"
-            )
+        return hf_bert_module.create_hf_bert_classification(
+            num_labels=num_labels,
+            pretrained_model_name=cfg.pretrained_model_name,
+            use_pretrained=cfg.get("use_pretrained", False),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            multiple_choice=multiple_choice,
+            **kwargs,
+        )
     elif cfg.name == "mosaic_bert":
         return mosaic_bert_module.create_mosaic_bert_classification(
             num_labels=num_labels,
@@ -153,6 +142,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int, **kwargs):
             model_config=cfg.get("model_config", None),
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            multiple_choice=multiple_choice,
             **kwargs,
         )
     elif cfg.name == "flex_bert":
@@ -163,6 +153,7 @@ def build_model(cfg: DictConfig, model_type: str, num_labels: int, **kwargs):
             model_config=cfg.get("model_config", None),
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            multiple_choice=multiple_choice,
             **kwargs,
         )
     else:
@@ -296,8 +287,8 @@ def run_job_worker(
         seed=config.seed,
         model=build_model(
             config.model,
-            model_type=task_cls.model_type,
             num_labels=task_cls.num_labels,
+            multiple_choice=task_cls.multiple_choice,
             additional_eval_metrics=task_cls.additional_eval_metrics,
         ),
         tokenizer_name=config.tokenizer_name,

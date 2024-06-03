@@ -5,7 +5,11 @@ from .attention import (
     FlexBertPaddedAttention,
     FlexBertUnpadAttention,
 )
-from .embeddings import BertAlibiEmbeddings, FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings
+from .embeddings import (
+    BertAlibiEmbeddings,
+    FlexBertAbsoluteEmbeddings,
+    FlexBertSansPositionEmbeddings,
+)
 from .layers import (
     BertAlibiEncoder,
     BertAlibiLayer,
@@ -20,6 +24,7 @@ from .model import (
     BertModel,
     BertForMaskedLM,
     BertForSequenceClassification,
+    BertForMultipleChoice,
     BertOnlyMLMHead,
     BertOnlyNSPHead,
     BertPooler,
@@ -27,6 +32,7 @@ from .model import (
     FlexBertModel,
     FlexBertForMaskedLM,
     FlexBertForSequenceClassification,
+    FlexBertForMultipleChoice,
 )
 
 
@@ -35,6 +41,7 @@ __all__ = [
     "BertAlibiEncoder",
     "BertForMaskedLM",
     "BertForSequenceClassification",
+    "BertForMultipleChoice",
     "BertResidualGLU",
     "BertAlibiLayer",
     "BertLMPredictionHead",
@@ -57,4 +64,5 @@ __all__ = [
     "FlexBertModel",
     "FlexBertForMaskedLM",
     "FlexBertForSequenceClassification",
+    "FlexBertForMultipleChoice",
 ]
