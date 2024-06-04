@@ -617,7 +617,7 @@ class FlexBertModel(BertPreTrainedModel):
         super().__init__(config)
         self.embeddings = get_embedding_layer(config)
         self.encoder = get_encoder_layer(config)
-        if "prenorm" in config.bert_layer:
+        if config.final_norm:
             # if we use prenorm attention we need to add a final norm
             self.final_norm = get_norm_layer(config)
         else:

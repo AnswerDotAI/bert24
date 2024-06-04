@@ -43,6 +43,7 @@ class FlexBertConfig(TransformersBertConfig):
         decoder_bias: bool = True,
         embed_dropout_prob: float = 0.0,
         embed_norm: bool = True,
+        final_norm: bool = False,
         embedding_layer: str = "absolute_pos",
         encoder_layer: str = "base",
         loss_function: str = "cross_entropy",
@@ -82,6 +83,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.decoder_bias = decoder_bias
         self.embed_dropout_prob = embed_dropout_prob
         self.embed_norm = embed_norm
+        self.final_norm = final_norm
         self.embedding_layer = embedding_layer
         self.encoder_layer = encoder_layer
         self.loss_function = loss_function
