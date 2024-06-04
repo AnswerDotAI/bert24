@@ -9,22 +9,38 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx,
-        x,
+        qkv,
         cos,
         sin,
         interleaved=False,
-        inplace=False,
         seqlen_offsets: Union[int, torch.Tensor] = 0,
         cu_seqlens: Optional[torch.Tensor] = None,
         max_seqlen: Optional[int] = None,
     ):
-        q, k, v = torch.split(x, 1, dim=1)
-        q = q.squeeze(1)
-        k = k.squeeze(1)
-        v = v.squeeze(1)
-        q_rot = apply_rotary(q, cos, sin, seqlen_offsets=seqlen_offsets, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, interleaved=interleaved, inplace=inplace)
-        k_rot = apply_rotary(k, cos, sin, seqlen_offsets=seqlen_offsets, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, interleaved=interleaved, inplace=inplace)
-        out = torch.cat((q_rot, k_rot, v), dim=-1)
+        # (total_nnz, 3, nheads, headdim)
+        total_nnz, three, nheads, headdim = qkv.shape
+        assert three == 3
+        q, k = qkv[:, 0, :, :], qkv[:, 1, :, :]
+        apply_rotary(
+            q,
+            cos,
+            sin,
+            seqlen_offsets=seqlen_offsets,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+            interleaved=interleaved,
+            inplace=True,
+        )
+        apply_rotary(
+            k,
+            cos,
+            sin,
+            seqlen_offsets=seqlen_offsets,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+            interleaved=interleaved,
+            inplace=True,
+        )
 
         if isinstance(seqlen_offsets, int):
             ctx.save_for_backward(cos, sin, cu_seqlens)
@@ -33,9 +49,8 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
             ctx.save_for_backward(cos, sin, cu_seqlens, seqlen_offsets)
             ctx.seqlen_offsets = None
         ctx.interleaved = interleaved
-        ctx.inplace = inplace
         ctx.max_seqlen = max_seqlen
-        return out if not inplace else x
+        return qkv
 
     @staticmethod
     def backward(ctx, do):
@@ -45,28 +60,45 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
         else:
             cos, sin, cu_seqlens = ctx.saved_tensors
 
-        if not ctx.interleaved and not ctx.inplace:
-            do = do.clone()
-
         dq, dk = do[:, 0, :, :], do[:, 1, :, :]
-        apply_rotary(dq, cos, sin, seqlen_offsets=seqlen_offsets, cu_seqlens=cu_seqlens, max_seqlen=ctx.max_seqlen, interleaved=ctx.interleaved, inplace=ctx.inplace, conjugate=True)
-        apply_rotary(dk, cos, sin, seqlen_offsets=seqlen_offsets, cu_seqlens=cu_seqlens, max_seqlen=ctx.max_seqlen, interleaved=ctx.interleaved, inplace=ctx.inplace, conjugate=True)
+        apply_rotary(
+            dq,
+            cos,
+            sin,
+            seqlen_offsets=seqlen_offsets,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=ctx.max_seqlen,
+            interleaved=ctx.interleaved,
+            inplace=True,
+            conjugate=True,
+        )
+        apply_rotary(
+            dk,
+            cos,
+            sin,
+            seqlen_offsets=seqlen_offsets,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=ctx.max_seqlen,
+            interleaved=ctx.interleaved,
+            inplace=True,
+            conjugate=True,
+        )
 
-        return do, None, None, None, None, None, None, None
+        return do, None, None, None, None, None, None
+
 
 def apply_rotary_emb_unpad(
-    x,
+    qkv,
     cos,
     sin,
     interleaved=False,
-    inplace=False,
     seqlen_offsets: Union[int, torch.Tensor] = 0,
     cu_seqlens: Optional[torch.Tensor] = None,
     max_seqlen: Optional[int] = None,
 ):
     """
     Arguments:
-        x: (total_nnz, 3, nheads * headdim) - input tensor for packed QKV.
+        qkv: (total_nnz, 3, nheads, headdim) - input tensor for packed QKV.
         cos, sin: (seqlen_rotary, rotary_dim / 2)
         interleaved: if True, rotate pairs of even and odd dimensions (GPT-J style) instead
             of 1st half and 2nd half (GPT-NeoX style).
@@ -80,14 +112,12 @@ def apply_rotary_emb_unpad(
     rotary_dim must be <= headdim
     Apply rotary embedding to the first rotary_dim of x.
     """
-    return ApplyRotaryEmbUnpad.apply(
-        x, cos, sin, interleaved, inplace, seqlen_offsets, cu_seqlens, max_seqlen
-    )
+    return ApplyRotaryEmbUnpad.apply(qkv, cos, sin, interleaved, seqlen_offsets, cu_seqlens, max_seqlen)
 
 
 class UnpaddedRotaryEmbedding(torch.nn.Module):
     """
-    The rotary position embeddings applied to unpadded sequences.
+    The rotary position embeddings applied directly to unpadded sequences.
     """
 
     def __init__(
@@ -136,10 +166,7 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         self._sin_k_cached = None
 
     def _compute_inv_freq(self, device=None):
-        return 1.0 / (
-            self.base
-            ** (torch.arange(0, self.dim, 2, device=device, dtype=torch.float32) / self.dim)
-        )
+        return 1.0 / (self.base ** (torch.arange(0, self.dim, 2, device=device, dtype=torch.float32) / self.dim))
 
     def _update_cos_sin_cache(self, seqlen, device=None, dtype=None):
         # Reset the tables if the sequence length has changed,
@@ -177,8 +204,7 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
                 self._sin_cached = torch.sin(freqs).to(dtype)
             else:
                 power = (
-                    torch.arange(seqlen, dtype=self.scale.dtype, device=self.scale.device)
-                    - seqlen // 2
+                    torch.arange(seqlen, dtype=self.scale.dtype, device=self.scale.device) - seqlen // 2
                 ) / self.scale_base
                 scale = self.scale.to(device=power.device) ** rearrange(power, "s -> s 1")
                 # We want the multiplication by scale to happen in fp32
@@ -195,7 +221,7 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         seqlen_offset: Union[int, torch.Tensor] = 0,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        qkv: (total_nnz, 3, nheads * headdim)
+        qkv: (total_nnz, 3, nheads, headdim)
         cu_seqlens: (batch + 1,) cumulative sequence lengths
         max_seqlen: int max seq length in the batch
         seqlen_offset: (batch_size,) or int. Each sequence in x is shifted by this amount.
@@ -204,21 +230,17 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
             should pass in max_seqlen, which will update the cos / sin cache up to that length.
         Apply rotary embedding *inplace* to qkv.
         """
-        # seqlen = qkv.shape[1]
         if max_seqlen is not None:
             self._update_cos_sin_cache(max_seqlen, device=qkv.device, dtype=qkv.dtype)
-        # elif isinstance(seqlen_offset, int):
-        #     self._update_cos_sin_cache(seqlen + seqlen_offset, device=qkv.device, dtype=qkv.dtype)
-        
+
         qkv = apply_rotary_emb_unpad(
             qkv,
             self._cos_cached,
             self._sin_cached,
             interleaved=self.interleaved,
-            inplace=True,
             seqlen_offsets=seqlen_offset,
             cu_seqlens=cu_seqlens,
-            max_seqlen=max_seqlen
+            max_seqlen=max_seqlen,
         )
-        
+
         return qkv
