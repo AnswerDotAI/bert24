@@ -212,7 +212,7 @@ class FineTuneJob:
 
 
 class ClassificationJob(FineTuneJob):
-    additional_eval_metrics = []
+    custom_eval_metrics = []
     multiple_choice = False
 
     def __init__(

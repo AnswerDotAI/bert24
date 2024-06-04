@@ -125,7 +125,7 @@ def create_hf_bert_classification(
     model_config: Optional[dict] = None,
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
-    additional_eval_metrics: Optional[list] = [],
+    custom_eval_metrics: Optional[list] = [],
     multiple_choice: Optional[bool] = False,
 ):
     """BERT model based on |:hugging_face:| Transformers.
@@ -140,6 +140,7 @@ def create_hf_bert_classification(
             architecture of a Hugging Face model.
         tokenizer_name (str, optional): Tokenizer name used to preprocess the dataset and validate the models inputs.
         gradient_checkpointing (bool, optional): Use gradient checkpointing. Default: ``False``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to evaluate the model. Default: ``[]``.
         multiple_choice (bool, optional): Whether the model is used for multiple choice tasks. Default: ``False``.
 
         .. code-block::
@@ -252,6 +253,6 @@ def create_hf_bert_classification(
         metrics=metrics,
         eval_metrics=[
             *metrics,
-            *additional_eval_metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
         ],
     )

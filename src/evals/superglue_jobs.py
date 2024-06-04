@@ -120,7 +120,7 @@ class CBMetric(torchmetrics.Metric):
 class CBJob(ClassificationJob):
     """CB."""
 
-    additional_eval_metrics = [CBMetric()]
+    custom_eval_metrics = [CBMetric]
     num_labels = 3
 
     def __init__(
@@ -335,7 +335,7 @@ class MultiRCMetric(torchmetrics.Metric):
 class MultiRCJob(ClassificationJob):
     """MultiRC."""
 
-    additional_eval_metrics = [MultiRCMetric()]
+    custom_eval_metrics = [MultiRCMetric]
     num_labels = 2
 
     def __init__(
