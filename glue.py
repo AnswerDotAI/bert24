@@ -289,7 +289,7 @@ def run_job_worker(
             config.model,
             num_labels=task_cls.num_labels,
             multiple_choice=task_cls.multiple_choice,
-            additional_eval_metrics=task_cls.additional_eval_metrics,
+            custom_eval_metrics=task_cls.custom_eval_metrics,
         ),
         tokenizer_name=config.tokenizer_name,
         scheduler=build_scheduler(config.scheduler),
