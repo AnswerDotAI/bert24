@@ -76,6 +76,17 @@ def main(dolma_hf_path, tokenizer, out_fn):
                 "shards": 1,
             })
 
+    # do the percentile calculation for the last source also
+    tokens_np = np.array(tokens_for_source)
+    percentile_stats_all = np.percentile(tokens_np, percentiles)
+    percentile_stats = {
+        "mean": np.mean(tokens_np),
+        "std": np.std(tokens_np),
+        "percentiles": {p: v for p, v in zip(percentiles, percentile_stats_all)}
+    }
+    percentiles_out.write(json.dumps({prev_src: percentile_stats}) + "\n")
+
+    # now get the total stats
     stats = pd.DataFrame(stats)
 
     # Group by source and sum num_tokens
