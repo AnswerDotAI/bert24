@@ -445,7 +445,6 @@ LAYER2CLS = {
 
 
 def get_bert_layer(config) -> FlexBertLayerBase:
-    assert "prenorm" in config.bert_layer or "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
     try:
         return LAYER2CLS[maybe_add_padding(config, config.bert_layer)](config)
     except KeyError:

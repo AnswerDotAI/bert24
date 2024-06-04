@@ -109,6 +109,7 @@ def create_flex_bert_mlm(
     if "prenorm" in config.bert_layer:
         assert config.final_norm, "Final norm must be used with prenorm attention"
     else:
+        assert "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
         assert not config.final_norm, "Final norm should not be used with postnorm attention"
 
     # Padding for divisibility by 8
