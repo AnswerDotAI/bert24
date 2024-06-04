@@ -96,6 +96,11 @@ def create_eval_dataset(
     text_column_names = task_column_names[task]
 
     if tokenize_fn_factory is None:
+        # Calling the BERT tokenizer in this way will insert [SEP] between the
+        # inputs, e.g. "[CLS] text [SEP] text_pair [SEP]". Without NSP, BERT is
+        # not exposed to sequences with two [SEP] tokens during pretraining,
+        # but finetuning on MNLI before finetuning on smaller datasets can help
+        # the model get used to this.
         tokenize_fn_factory = lambda tokenizer, max_seq_length: lambda inp: tokenizer(
             text=inp[text_column_names[0]],
             text_pair=(

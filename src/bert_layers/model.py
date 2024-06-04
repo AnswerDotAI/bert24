@@ -582,6 +582,11 @@ class BertForMultipleChoice(BertPreTrainedModel):
             else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
+
+        # In multiple choice tasks, all choices are submitted in a batch, and
+        # we compute a logit for each option independently. The logits are then
+        # normalized in the forward pass to get a probability distribution over
+        # the choices.
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -1090,6 +1095,11 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
 
         self.bert = FlexBertModel(config)
         self.head = FlexBertPoolingHead(config)
+
+        # In multiple choice tasks, all choices are submitted in a batch, and
+        # we compute a logit for each option independently. The logits are then
+        # normalized in the forward pass to get a probability distribution over
+        # the choices.
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -1166,7 +1176,7 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
             output = (reshaped_logits,) + output
             return ((loss,) + output) if loss is not None else output
 
-        return SequenceClassifierOutput(
+        return MultipleChoiceModelOutput(
             loss=loss,
             logits=reshaped_logits,
             hidden_states=None,
