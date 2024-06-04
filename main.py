@@ -125,7 +125,7 @@ def build_optimizer(cfg, model):
     elif cfg.name == "adamw":
         print(
                 "INFO: You might want to increase the weight decay because in AdamW it is scaled by the lr."
-                "Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+                f" Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
             )
         return AdamW(
             model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
