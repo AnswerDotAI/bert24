@@ -63,7 +63,7 @@ class FlexBertConfig(TransformersBertConfig):
         head_pred_bias: bool = False,
         head_pred_dropout: float = 0.0,
         head_pred_norm: bool = True,
-        pooling_type: str = "mean",
+        pooling_type: str = "cls",
         rotary_emb_dim: int | None = None,
         rotary_emb_base: float = 10000.0,
         rotary_emb_scale_base=None,
