@@ -60,7 +60,7 @@ def test_rotary_emb_unpad(interleaved, rotary_fraction, seqlen_offsets_type, dty
     rtol = 1e-3
     batch_size = 32
     nheads = 4
-    seqlen = 512
+    seqlen = 2048
     headdim = 128
     device = "cuda"
     rotary_dim = int(rotary_fraction * headdim)
