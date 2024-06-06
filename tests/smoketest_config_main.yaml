@@ -56,6 +56,7 @@ optimizer:
   - 0.95
   eps: 1.0e-08
   weight_decay: 0.0
+  filter_bias_and_bn: false
 
 # Training duration and evaluation frequency
 max_duration: 8ba
@@ -77,3 +78,8 @@ callbacks:
   speed_monitor:
     window_size: 4
   lr_monitor: {}
+
+algorithms:
+  gradient_clipping:
+    clipping_type: norm
+    clipping_threshold: 1.0

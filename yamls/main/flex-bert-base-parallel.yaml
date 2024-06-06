@@ -24,7 +24,7 @@ model:
   model_config:
     num_attention_heads: 12 # bert-base default
     num_hidden_layers: 12 # bert-base default
-    attention_layer: parallel 
+    attention_layer: parallel
     attention_probs_dropout_prob: 0.0
     attn_out_bias: False
     attn_out_dropout_prob: 0.0
@@ -89,6 +89,7 @@ optimizer:
   - 0.98
   eps: 1.0e-06
   weight_decay: 1.0e-5 # Amount of weight decay regularization
+  filter_bias_and_bn: false # If True, doesn't apply weight decay to norm layers and biases
 
 # algorithms:
 
