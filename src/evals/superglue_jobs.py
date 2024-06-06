@@ -85,7 +85,7 @@ class BoolQJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
@@ -177,7 +177,7 @@ class CBJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
@@ -279,7 +279,7 @@ class COPAJob(ClassificationJob):
             "batch_size": self.batch_size,
             "collate_fn": multiple_choice_collate_fn,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
 
@@ -429,7 +429,7 @@ class MultiRCJob(ClassificationJob):
             "batch_size": self.batch_size,
             "collate_fn": collate_fn,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
 
@@ -505,7 +505,7 @@ class WiCJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
