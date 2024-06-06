@@ -50,6 +50,7 @@ model:
     rotary_emb_base: 10000.0
     rotary_emb_scale_base: null
     rotary_emb_interleaved: false
+    hidden_act: silu
 
 # Dataloaders
 train_loader:

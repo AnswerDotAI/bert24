@@ -84,7 +84,7 @@ class FlexBertMLP(FlexBertMLPBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.Wi = nn.Linear(config.hidden_size, config.intermediate_size, bias=config.mlp_in_bias)
-        self.act = get_act_fn(config)
+        self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
 
@@ -108,7 +108,7 @@ class FlexBertGLU(FlexBertMLPBase):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size) * 2 , bias=config.mlp_in_bias)
-        self.act = get_act_fn(config)
+        self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
 
@@ -126,7 +126,7 @@ class FlexBertParallelGLU(FlexBertMLPBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.act = get_act_fn(config)
+        self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
 

@@ -46,6 +46,7 @@ model:
     normalization: rmsnorm
     padding: unpadded
     sparse_prediction: false
+    hidden_act: silu
 
 # Dataloaders
 train_loader:

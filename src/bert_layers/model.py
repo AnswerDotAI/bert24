@@ -535,7 +535,7 @@ class FlexBertPredictionHead(nn.Module):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_pred_bias)
-        self.act = get_act_fn(config) if config.head_pred_act else nn.Identity()
+        self.act = get_act_fn(config.head_pred_act) if config.head_pred_act else nn.Identity()
         self.norm = get_norm_layer(config) if config.head_pred_norm else nn.Identity()
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -546,7 +546,7 @@ class FlexBertPoolingHead(nn.Module):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_class_bias)
-        self.act = get_act_fn(config) if config.head_class_act else nn.Identity()
+        self.act = get_act_fn(config.head_class_act) if config.head_class_act else nn.Identity()
         self.norm = get_norm_layer(config) if config.head_class_norm else nn.Identity()
         self.drop = torch.nn.Dropout(config.head_class_dropout) if config.head_class_dropout > 0 else nn.Identity()
         self.pooling_type = config.pooling_type
