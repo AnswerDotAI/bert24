@@ -10,6 +10,7 @@ class BertConfig(TransformersBertConfig):
         alibi_starting_size: int = 512,
         normalization: str = "layernorm",
         attention_probs_dropout_prob: float = 0.0,
+        head_pred_act: str = "gelu",
         **kwargs,
     ):
         """Configuration class for MosaicBert.
@@ -28,6 +29,7 @@ class BertConfig(TransformersBertConfig):
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size
         self.normalization = normalization
+        self.head_pred_act = head_pred_act
 
 
 class FlexBertConfig(TransformersBertConfig):
