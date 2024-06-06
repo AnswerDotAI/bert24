@@ -10,6 +10,7 @@ class BertConfig(TransformersBertConfig):
         alibi_starting_size: int = 512,
         normalization: str = "layernorm",
         attention_probs_dropout_prob: float = 0.0,
+        head_pred_act: str = "gelu",
         **kwargs,
     ):
         """Configuration class for MosaicBert.
@@ -28,6 +29,7 @@ class BertConfig(TransformersBertConfig):
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size
         self.normalization = normalization
+        self.head_pred_act = head_pred_act
 
 
 class FlexBertConfig(TransformersBertConfig):
@@ -43,6 +45,7 @@ class FlexBertConfig(TransformersBertConfig):
         decoder_bias: bool = True,
         embed_dropout_prob: float = 0.0,
         embed_norm: bool = True,
+        final_norm: bool = False,
         embedding_layer: str = "absolute_pos",
         encoder_layer: str = "base",
         loss_function: str = "cross_entropy",
@@ -62,7 +65,7 @@ class FlexBertConfig(TransformersBertConfig):
         head_pred_bias: bool = False,
         head_pred_dropout: float = 0.0,
         head_pred_norm: bool = True,
-        pooling_type: str = "mean",
+        pooling_type: str = "cls",
         rotary_emb_dim: int | None = None,
         rotary_emb_base: float = 10000.0,
         rotary_emb_scale_base=None,
@@ -82,6 +85,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.decoder_bias = decoder_bias
         self.embed_dropout_prob = embed_dropout_prob
         self.embed_norm = embed_norm
+        self.final_norm = final_norm
         self.embedding_layer = embedding_layer
         self.encoder_layer = encoder_layer
         self.loss_function = loss_function

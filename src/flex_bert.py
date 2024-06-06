@@ -108,6 +108,12 @@ def create_flex_bert_mlm(
         pretrained_model_name, **model_config
     )
 
+    if "prenorm" in config.bert_layer:
+        assert config.final_norm, "Final norm must be used with prenorm attention"
+    else:
+        assert "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
+        assert not config.final_norm, "Final norm should not be used with postnorm attention"
+
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)

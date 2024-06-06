@@ -713,7 +713,9 @@ class FlexBertPredictionHead(nn.Module):
         self.dense = nn.Linear(
             config.hidden_size, config.hidden_size, config.head_pred_bias
         )
-        self.act = get_act_fn(config) if config.head_pred_act else nn.Identity()
+        self.act = (
+            get_act_fn(config.head_pred_act) if config.head_pred_act else nn.Identity()
+        )
         self.norm = get_norm_layer(config) if config.head_pred_norm else nn.Identity()
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -726,7 +728,11 @@ class FlexBertPoolingHead(nn.Module):
         self.dense = nn.Linear(
             config.hidden_size, config.hidden_size, config.head_class_bias
         )
-        self.act = get_act_fn(config) if config.head_class_act else nn.Identity()
+        self.act = (
+            get_act_fn(config.head_class_act)
+            if config.head_class_act
+            else nn.Identity()
+        )
         self.norm = get_norm_layer(config) if config.head_class_norm else nn.Identity()
         self.drop = (
             torch.nn.Dropout(config.head_class_dropout)
@@ -803,6 +809,11 @@ class FlexBertModel(BertPreTrainedModel):
         super().__init__(config)
         self.embeddings = get_embedding_layer(config)
         self.encoder = get_encoder_layer(config)
+        if config.final_norm:
+            # if we use prenorm attention we need to add a final norm
+            self.final_norm = get_norm_layer(config)
+        else:
+            self.final_norm = None
         self.post_init()
 
     def get_input_embeddings(self):
@@ -825,6 +836,8 @@ class FlexBertModel(BertPreTrainedModel):
 
         encoder_outputs = self.encoder(embedding_output, attention_mask)
 
+        if self.final_norm is not None:
+            encoder_outputs = self.final_norm(encoder_outputs)
         return encoder_outputs
 
 
