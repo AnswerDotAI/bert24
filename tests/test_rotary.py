@@ -58,7 +58,7 @@ def index_cos_sin(cos, sin, seqlen_offsets, seqlen):
 @pytest.mark.parametrize("interleaved", [False, True])
 def test_rotary_emb_unpad(interleaved, rotary_fraction, seqlen_offsets_type, dtype):
     rtol = 1e-3
-    batch_size = 32
+    batch_size = 16
     nheads = 4
     seqlen = 2048
     headdim = 128

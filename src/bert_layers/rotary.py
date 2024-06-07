@@ -1,5 +1,11 @@
+# Copyright 2024 **AUTHORS_TODO**
+# License: Apache-2.0
+
+# Copyright (c) 2023, Tri Dao.
+# License: Apache-2.0
+
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from flash_attn.ops.triton.rotary import apply_rotary
 
 from typing import Optional, Tuple, Union
@@ -20,27 +26,44 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
         # (total_nnz, 3, nheads, headdim)
         total_nnz, three, nheads, headdim = qkv.shape
         assert three == 3
-        q, k = qkv[:, 0, :, :], qkv[:, 1, :, :]
-        apply_rotary(
-            q,
-            cos,
-            sin,
-            seqlen_offsets=seqlen_offsets,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=max_seqlen,
-            interleaved=interleaved,
-            inplace=True,
-        )
-        apply_rotary(
-            k,
-            cos,
-            sin,
-            seqlen_offsets=seqlen_offsets,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=max_seqlen,
-            interleaved=interleaved,
-            inplace=True,
-        )
+        if qkv.is_contiguous():
+            # Call 1 kernel instead of 2 kernels
+            # We need qkv to be contiguous so that when we reshape to combine (3, nheads)
+            # dimensions, we get the same tensor
+            # qk = rearrange(qkv[:, :2], "b_s t h d -> b_s (t h) d")
+            qk = qkv[:, :2].view(total_nnz, -1, headdim)
+            apply_rotary(
+                qk,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_seqlen,
+                interleaved=interleaved,
+                inplace=True,
+            )
+        else:
+            q, k = qkv[:, 0, :, :], qkv[:, 1, :, :]
+            apply_rotary(
+                q,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_seqlen,
+                interleaved=interleaved,
+                inplace=True,
+            )
+            apply_rotary(
+                k,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_seqlen,
+                interleaved=interleaved,
+                inplace=True,
+            )
 
         if isinstance(seqlen_offsets, int):
             ctx.save_for_backward(cos, sin, cu_seqlens)
@@ -59,30 +82,47 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
             cos, sin, cu_seqlens, seqlen_offsets = ctx.saved_tensors
         else:
             cos, sin, cu_seqlens = ctx.saved_tensors
-
-        dq, dk = do[:, 0, :, :], do[:, 1, :, :]
-        apply_rotary(
-            dq,
-            cos,
-            sin,
-            seqlen_offsets=seqlen_offsets,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=ctx.max_seqlen,
-            interleaved=ctx.interleaved,
-            inplace=True,
-            conjugate=True,
-        )
-        apply_rotary(
-            dk,
-            cos,
-            sin,
-            seqlen_offsets=seqlen_offsets,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=ctx.max_seqlen,
-            interleaved=ctx.interleaved,
-            inplace=True,
-            conjugate=True,
-        )
+        if do.is_contiguous():
+            total_nnz, three, nheads, headdim = do.shape
+            # Call 1 kernel instead of 2 kernels
+            # We need dqkv to be contiguous so that when we reshape to combine (3, nheads)
+            # dimensions, we get the same tensor
+            dqk = do[:, :2].view(total_nnz, -1, headdim)
+            apply_rotary(
+                dqk,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=ctx.max_seqlen,
+                interleaved=ctx.interleaved,
+                inplace=True,
+                conjugate=True,
+            )
+        else:
+            dq, dk = do[:, 0, :, :], do[:, 1, :, :]
+            apply_rotary(
+                dq,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=ctx.max_seqlen,
+                interleaved=ctx.interleaved,
+                inplace=True,
+                conjugate=True,
+            )
+            apply_rotary(
+                dk,
+                cos,
+                sin,
+                seqlen_offsets=seqlen_offsets,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=ctx.max_seqlen,
+                interleaved=ctx.interleaved,
+                inplace=True,
+                conjugate=True,
+            )
 
         return do, None, None, None, None, None, None
 
