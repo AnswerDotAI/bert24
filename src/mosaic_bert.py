@@ -96,7 +96,9 @@ def create_mosaic_bert_mlm(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
-    config = configuration_bert_module.BertConfig.from_pretrained(pretrained_model_name, **model_config)
+    config = configuration_bert_module.BertConfig.from_pretrained(
+        pretrained_model_name, **model_config
+    )
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -124,7 +126,9 @@ def create_mosaic_bert_mlm(
         MaskedAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
+    hf_model = HuggingFaceModel(
+        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+    )
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
@@ -142,6 +146,7 @@ def create_mosaic_bert_classification(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    multiple_choice: Optional[bool] = False,
 ):
     """Mosaic BERT classification model based on |:hugging_face:| Transformers.
 
@@ -166,6 +171,8 @@ def create_mosaic_bert_classification(
             initialize the model weights. If provided,
             the state dictionary stored at `pretrained_checkpoint` will be
             loaded into the model after initialization. Default: ``None``.
+        multiple_choice (bool, optional): Whether the model is used for
+            multiple choice tasks. Default: ``False``.
 
     .. code-block::
         {
@@ -245,6 +252,11 @@ def create_mosaic_bert_classification(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
+    model_cls = bert_layers_module.BertForSequenceClassification
+
+    if multiple_choice:
+        model_cls = bert_layers_module.BertForMultipleChoice
+
     config, unused_kwargs = transformers.AutoConfig.from_pretrained(
         pretrained_model_name, return_unused_kwargs=True, **model_config
     )
@@ -256,11 +268,11 @@ def create_mosaic_bert_classification(
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = bert_layers_module.BertForSequenceClassification.from_composer(
+        model = model_cls.from_composer(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.BertForSequenceClassification(config)
+        model = model_cls(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
@@ -283,7 +295,9 @@ def create_mosaic_bert_classification(
         if num_labels == 2:
             metrics.append(BinaryF1Score())
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
+    hf_model = HuggingFaceModel(
+        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+    )
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it

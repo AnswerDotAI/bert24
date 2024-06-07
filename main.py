@@ -4,6 +4,9 @@
 import os
 import sys
 from typing import Optional, cast
+import warnings
+
+from torch import nn
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -54,6 +57,24 @@ def update_batch_size_info(cfg: DictConfig):
         else:
             cfg.device_eval_batch_size = cfg.device_train_microbatch_size
     return cfg
+
+
+# from timm: https://github.com/huggingface/pytorch-image-models/blob/main/timm/optim/optim_factory.py
+# Copyright 2019 Ross Wightman, Apache-2.0 License
+def param_groups_weight_decay(model: nn.Module, weight_decay=1e-5, no_weight_decay_list=()):
+    no_weight_decay_list = set(no_weight_decay_list)
+    decay = []
+    no_decay = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        if param.ndim <= 1 or name.endswith(".bias") or name in no_weight_decay_list:
+            no_decay.append(param)
+        else:
+            decay.append(param)
+
+    return [{"params": no_decay, "weight_decay": 0.0}, {"params": decay, "weight_decay": weight_decay}]
 
 
 def log_config(cfg: DictConfig):
@@ -118,17 +139,43 @@ def build_scheduler(cfg):
 
 
 def build_optimizer(cfg, model):
+    if cfg.get("filter_bias_and_bn", False):
+        params = param_groups_weight_decay(model, weight_decay=cfg.weight_decay)
+    else:
+        params = model.parameters()
+
     if cfg.name == "decoupled_adamw":
-        return DecoupledAdamW(
-            model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
-        )
+        return DecoupledAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
     elif cfg.name == "adamw":
         print(
-                f"INFO: You might want to increase the weight decay because in AdamW it is scaled by the lr."
-                f"Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
-            )
-        return AdamW(
-            model.parameters(), lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay
+            "INFO: You might want to increase the weight decay because in AdamW it is scaled by the lr."
+            f" Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+        )
+        return AdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
+    elif cfg.name == "stableadamw":
+        try:
+            from optimi import StableAdamW
+        except ImportError:
+            raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
+
+        print(
+            "INFO: You might want to increase the weight decay because in StableAdamW it is scaled by the lr."
+            f" Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+        )
+        return StableAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
+    elif cfg.name == "decoupled_stableadamw":
+        try:
+            from optimi import StableAdamW
+        except ImportError:
+            raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
+
+        return StableAdamW(
+            params,
+            lr=cfg.lr,
+            betas=list(cfg.betas),
+            eps=cfg.eps,
+            weight_decay=cfg.weight_decay,
+            decouple_lr=True,
         )
     else:
         raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
@@ -212,6 +259,14 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     callbacks = [build_callback(name, callback_cfg) for name, callback_cfg in cfg.get("callbacks", {}).items()]
 
     # Algorithms
+    if (
+        cfg.get("algorithms", {}).get("gradient_clipping", {}).get("clipping_threshold", 0) > 0
+    ) and "stableadamw" in cfg.get("optimizer", {}).get("name", "adamw"):
+        warnings.warn(
+            f"The StableAdamW optimizer replaces gradient clipping. "
+            f"Set {cfg['algorithms']['gradient_clipping']['clipping_threshold']=} to 0.0"
+        )
+
     algorithms = [build_algorithm(name, algorithm_cfg) for name, algorithm_cfg in cfg.get("algorithms", {}).items()]
 
     if cfg.get("run_name") is None:

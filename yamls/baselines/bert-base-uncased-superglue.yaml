@@ -1,0 +1,77 @@
+# Whether to run the various GLUE jobs serially or in parallel (use parallel=True to take advantage of multiple GPUs)
+parallel: true
+
+# Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
+base_run_name: bert-base-uncased-superglue-test
+default_seed: 19
+precision: amp_bf16
+
+# Tokenizer for dataset creation
+tokenizer_name: bert-base-uncased
+
+# Base model config
+model:
+  name: hf_bert
+  use_pretrained: true
+  pretrained_model_name: ${tokenizer_name}
+  tokenizer_name: ${tokenizer_name}
+
+# Saving
+save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
+save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
+
+# (Optional) W&B logging
+# loggers:
+#   wandb:
+    # project: # Fill this in if using W&B
+    # entity: # Fill this in if using W&B
+
+# Callbacks
+callbacks:
+  lr_monitor: {}
+  speed_monitor: {}
+
+# Scheduler
+scheduler:
+  name: linear_decay_with_warmup
+  t_warmup: 0.06dur
+  alpha_f: 0.0
+
+# Task configuration
+tasks:
+  mnli:
+    trainer_kwargs:
+      # MNLI is not part of SuperGLUE, but we include it here because best
+      # practice for evaluating RTE involves starting from an MNLI checkpoint,
+      # which is why we keep one MNLI checkpoint locally.
+      save_num_checkpoints_to_keep: 1
+  swag:
+    trainer_kwargs:
+      # SWAG is not part of SuperGLUE, but it is commonly used as a first step
+      # in the process of fine-tuning COPA, which is why we keep one SWAG
+      # checkpoint locally as well.
+      save_num_checkpoints_to_keep: 1
+  boolq:
+    seeds: [23, 42, 6033]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  cb:
+    seeds: [23, 42, 6033]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  rte:
+    seeds: [19, 8364, 717, 10536, 90166]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  wic:
+    seeds: [23, 42, 6033]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  copa:
+    seeds: [23, 42, 6033, 1337, 24]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  multirc:
+    seeds: [23, 42, 6033, 1337]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0

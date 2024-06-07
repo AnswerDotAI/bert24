@@ -53,6 +53,8 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     config.model.model_config.embedding_layer = embedding
     config.model.model_config.attention_layer = attention
     config.model.model_config.mlp_layer = mlp
+    if layer == "postnorm":
+        config.model.model_config.final_norm = False
 
     with SynthTextDirectory() as tmp_datadir:
         config.model.model_config.use_fa2 = False

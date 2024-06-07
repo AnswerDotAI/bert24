@@ -31,7 +31,8 @@ model:
     attn_qkv_bias: false
     bert_layer: prenorm
     embed_dropout_prob: 0.0
-    embed_norm: true
+    embed_norm: false
+    final_norm: true
     embedding_layer: sans_pos
     loss_function: cross_entropy
     loss_kwargs:
@@ -49,6 +50,7 @@ model:
     rotary_emb_base: 10000.0
     rotary_emb_scale_base: null
     rotary_emb_interleaved: false
+    hidden_act: silu
 
 # Dataloaders
 train_loader:
@@ -91,6 +93,7 @@ optimizer:
   - 0.98
   eps: 1.0e-06
   weight_decay: 1.0e-5 # Amount of weight decay regularization
+  filter_bias_and_bn: false # If True, doesn't apply weight decay to norm layers and biases
 
 # algorithms:
 

@@ -55,7 +55,8 @@ optimizer:
   - 0.9
   - 0.95
   eps: 1.0e-08
-  weight_decay: 0.0
+  weight_decay: 0.01
+  filter_bias_and_bn: true
 
 # Training duration and evaluation frequency
 max_duration: 8ba

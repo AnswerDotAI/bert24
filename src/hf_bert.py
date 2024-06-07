@@ -73,7 +73,9 @@ def create_hf_bert_mlm(
     try:
         import transformers
     except ImportError as e:
-        raise MissingConditionalImportError(extra_deps_group="nlp", conda_package="transformers") from e
+        raise MissingConditionalImportError(
+            extra_deps_group="nlp", conda_package="transformers"
+        ) from e
 
     if not model_config:
         model_config = {}
@@ -89,8 +91,12 @@ def create_hf_bert_mlm(
             pretrained_model_name_or_path=pretrained_model_name, **model_config
         )
     else:
-        config = transformers.AutoConfig.from_pretrained(pretrained_model_name, **model_config)
-        assert transformers.AutoModelForMaskedLM.from_config is not None, "AutoModelForMaskedLM has from_config method"
+        config = transformers.AutoConfig.from_pretrained(
+            pretrained_model_name, **model_config
+        )
+        assert (
+            transformers.AutoModelForMaskedLM.from_config is not None
+        ), "AutoModelForMaskedLM has from_config method"
         model = transformers.AutoModelForMaskedLM.from_config(config)
 
     if gradient_checkpointing:
@@ -107,7 +113,9 @@ def create_hf_bert_mlm(
         LanguageCrossEntropy(ignore_index=-100),
         MaskedAccuracy(ignore_index=-100),
     ]
-    return HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
+    return HuggingFaceModel(
+        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+    )
 
 
 def create_hf_bert_classification(
@@ -117,6 +125,8 @@ def create_hf_bert_classification(
     model_config: Optional[dict] = None,
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
+    custom_eval_metrics: Optional[list] = [],
+    multiple_choice: Optional[bool] = False,
 ):
     """BERT model based on |:hugging_face:| Transformers.
 
@@ -130,13 +140,15 @@ def create_hf_bert_classification(
             architecture of a Hugging Face model.
         tokenizer_name (str, optional): Tokenizer name used to preprocess the dataset and validate the models inputs.
         gradient_checkpointing (bool, optional): Use gradient checkpointing. Default: ``False``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to evaluate the model. Default: ``[]``.
+        multiple_choice (bool, optional): Whether the model is used for multiple choice tasks. Default: ``False``.
 
         .. code-block::
 
             {
               "_name_or_path": "bert-base-uncased",
               "architectures": [
-                "BertForSequenceClassification
+                "BertForSequenceClassification"
               ],
               "attention_probs_dropout_prob": 0.1,
               "classifier_dropout": null,
@@ -180,7 +192,9 @@ def create_hf_bert_classification(
     try:
         import transformers
     except ImportError as e:
-        raise MissingConditionalImportError(extra_deps_group="nlp", conda_package="transformers") from e
+        raise MissingConditionalImportError(
+            extra_deps_group="nlp", conda_package="transformers"
+        ) from e
 
     if not model_config:
         model_config = {}
@@ -190,19 +204,26 @@ def create_hf_bert_classification(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
+    auto_model_cls = transformers.AutoModelForSequenceClassification
+
+    if multiple_choice:
+        auto_model_cls = transformers.AutoModelForMultipleChoice
+
     if use_pretrained:
         assert (
-            transformers.AutoModelForSequenceClassification.from_pretrained is not None
-        ), "AutoModelForSequenceClassification has from_pretrained method"
-        model = transformers.AutoModelForSequenceClassification.from_pretrained(
+            auto_model_cls.from_pretrained is not None
+        ), f"{auto_model_cls.__name__} has from_pretrained method"
+        model = auto_model_cls.from_pretrained(
             pretrained_model_name_or_path=pretrained_model_name, **model_config
         )
     else:
-        config = transformers.AutoConfig.from_pretrained(pretrained_model_name, **model_config)
+        config = transformers.AutoConfig.from_pretrained(
+            pretrained_model_name, **model_config
+        )
         assert (
-            transformers.AutoModelForSequenceClassification.from_config is not None
-        ), "AutoModelForSequenceClassification has from_config method"
-        model = transformers.AutoModelForSequenceClassification.from_config(config)
+            auto_model_cls.from_config is not None
+        ), f"{auto_model_cls.__name__} has from_config method"
+        model = auto_model_cls.from_config(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -225,4 +246,13 @@ def create_hf_bert_classification(
         if num_labels == 2:
             metrics.append(BinaryF1Score())
 
-    return HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics)
+    return HuggingFaceModel(
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
+        ],
+    )
