@@ -38,21 +38,29 @@ def convert_to_mosiac_format(args):
     # be sure to export AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_ACCESS_KEY
     from torch.utils.data import DataLoader
     from streaming import StreamingDataset
+    import os
 
     # Remote path where full dataset is persistently stored
-    # for this example, we'll use a single shard but otherwise you'd use the whole folder
-    remote = 'azure://ACCOUNT_NAME.blob.core.windows.net/bert24usablations/data/dolma_20b_stratified/shard.01522.mds.zstd'
+    remote = 'azure://bert24usablations/data/dolma_20b_stratified/'
 
     # Local working dir where dataset is cached during operation
-    local = '/tmp'
+    local = 'mosaic_format_data'
 
+    if not os.path.exists(local):
+        os.makedirs(local)
+
+    # Note: if you get permission errors, modify the /tmp/streaming folder permissions
     # Create streaming dataset
-    dataset = StreamingDataset(local=local, remote=remote, shuffle=True)
+    dataset = StreamingDataset(local=local, remote=remote, shuffle=False, split=None, batch_size=1)
 
-    # Let's see what is in sample #1337...
-    sample = dataset[1337]
-    text = sample['text']
-    id = sample['id']
+    # Let's see what's in it
+    for sample in dataset:
+        text = sample['text']
+        id = sample['id']
+        print(f"Text: {text}")
+        print(f"ID: {id}")
+        break
+
 
     # Create PyTorch DataLoader
     dataloader = DataLoader(dataset)
