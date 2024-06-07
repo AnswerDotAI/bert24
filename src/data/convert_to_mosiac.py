@@ -31,7 +31,7 @@ def convert_to_mosiac_format(args):
     ### Example Usage
     ## Upload
     """
-    az storage blob upload-batch --source PATH_TO_SRC --destination https://ACCOUNT_NAME.blob.core.windows.net/bert24usablations --auth-mode login --destination-path data/NAME_OF_DATA
+    az storage blob upload-batch --source <path_to_src> --destination https://<account_name>.blob.core.windows.net/<container_name> --auth-mode login --destination-path data/<path_to_data>
     """
     ## Download and Usage
     """
@@ -41,7 +41,7 @@ def convert_to_mosiac_format(args):
     import os
 
     # Remote path where full dataset is persistently stored
-    remote = 'azure://bert24usablations/data/dolma_20b_stratified/'
+    remote = 'azure://<container_name>/data/dolma_20b_stratified/'
 
     # Local working dir where dataset is cached during operation
     local = 'mosaic_format_data'
