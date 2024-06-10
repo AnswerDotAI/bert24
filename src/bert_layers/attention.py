@@ -675,10 +675,9 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
         # (total_seqlen, 3, nheads, headdim)
         qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
         
         if self.use_fa2:
-            qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
-
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
@@ -702,8 +701,6 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 )
             attn = attn.view(bs, dim)
         else:
-            qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
-            
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1])  # batch, max_seqlen, thd
             unpad_bs, seqlen, *_ = qkv.shape
 
@@ -921,10 +918,9 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
 
         # (total_seqlen, 3, nheads, headdim)
         qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
         
         if self.use_fa2:
-            qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
-
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
@@ -948,8 +944,6 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                 )
             attn = attn.view(bs, dim)
         else:
-            qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
-            
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1])  # batch, max_seqlen, thd
             unpad_bs, seqlen, *_ = qkv.shape
 
