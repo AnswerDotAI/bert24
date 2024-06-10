@@ -15,7 +15,7 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
-from torchmetrics.classification import MultilabelF1Score
+from torchmetrics.classification import MultilabelF1Score, BinaryAUROC
 from src.evals.data import create_quality_dataset, create_swag_dataset, create_ultrafeedback_dataset, create_eurlex_dataset
 from src.evals.finetuning_jobs import (
     build_dataloader,
@@ -245,6 +245,7 @@ class QualityJob(ClassificationJob):
 class UltrafeedbackJob(ClassificationJob):
     """ultrafeedback binary classification."""
 
+    custom_eval_metrics = [BinaryAUROC]
     num_labels = 2
 
     def __init__(
@@ -332,7 +333,7 @@ class UltrafeedbackJob(ClassificationJob):
         ultrafeedback_evaluator = Evaluator(
             label="long_context_ultrafeedback",
             dataloader=build_dataloader(ultrafeedback_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy"],
+            metric_names=["MulticlassAccuracy", "BinaryAUROC"],
         )
         self.evaluators = [ultrafeedback_evaluator]
 
