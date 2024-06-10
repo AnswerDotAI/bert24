@@ -163,11 +163,13 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
     def __init__(
         self,
         dim: int,
-        base=10000.0,
-        interleaved=False,
-        scale_base=None,
-        pos_idx_in_fp32=True,
-        device=None,
+        base: float = 10000.0,
+        interleaved: bool = False,
+        max_seqlen: Optional[int] = None,
+        scale_base: Optional[bool] = None,
+        pos_idx_in_fp32: bool = True,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ):
         """
         interleaved: if True, rotate pairs of even and odd dimensions (GPT-J style) instead
@@ -182,6 +184,9 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
             embeddings for some positions will coincide.
             To maintain compatibility with models previously trained in pure bf16,
             we add this option.
+        max_seqlen: if max_seqlen, device, and dtype are provided, we precompute the cos_sin_cache
+            up to max_seqlen. If the max_seqlen, device, or dtype during training/inference differ,
+            the cos_sin_cache wll be recomputed during the forward pass.
         """
         super().__init__()
         self.dim = dim
@@ -204,6 +209,9 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         self._sin_cached = None
         self._cos_k_cached = None
         self._sin_k_cached = None
+
+        if max_seqlen is not None and device is not None and dtype is not None:
+            self._update_cos_sin_cache(max_seqlen, device=device, dtype=dtype)
 
     def _compute_inv_freq(self, device=None):
         return 1.0 / (self.base ** (torch.arange(0, self.dim, 2, device=device, dtype=torch.float32) / self.dim))
