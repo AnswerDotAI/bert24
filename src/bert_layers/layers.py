@@ -573,7 +573,11 @@ class FlexBertUnpadEncoder(FlexBertEncoderBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
+        if hasattr(config, "is_rtd_generator") and config.is_rtd_generator:
+            num_hidden_layers = config.generator_num_hidden_layers
+        else:
+            num_hidden_layers = config.num_hidden_layers
+        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -617,7 +621,11 @@ class FlexBertPaddedEncoder(FlexBertEncoderBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
+        if hasattr(config, "is_rtd_generator") and config.is_rtd_generator:
+            num_hidden_layers = config.generator_num_hidden_layers  
+        else:
+            num_hidden_layers = config.num_hidden_layers
+        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:

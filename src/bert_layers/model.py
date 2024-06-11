@@ -984,7 +984,8 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
 
 class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
-        super().__init__(config)
+        setattr(config, "is_rtd_generator", True)
+        super().__init__(config)        
         self.generator = FlexBertForMaskedLM(config)
         self.discriminator = FlexBertForTokenClassification(config)
 
@@ -998,8 +999,8 @@ class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
         if self.share_embedding == "gdes":  # Gradient-disentangled weight/embedding sharing
             tok_bias = torch.zeros_like(self.discriminator.embeddings.tok_embeddings.weight)
             tok_bias = torch.nn.Parameter(tok_bias)
-            delattr(self.discriminator.embeddings.tok_embeddings, "weight")
-            self.discriminator.embeddings.tok_embeddings.register_parameter("_weight", tok_bias)
+            delattr(self.discriminator.embeddings.tok_embeddings, 'weight')
+            self.discriminator.embeddings.tok_embeddings.register_parameter('_weight', tok_bias)
 
             if self.has_position_embeddings:
                 position_bias = torch.zeros_like(self.discriminator.embeddings.position_embeddings.weight)
@@ -1067,16 +1068,24 @@ class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
             return_dict=return_dict,
             **kwargs,
         )
+        
+        # the discriminator input generation shouldn't need any gradient graphs since the generated_ids are detached
+        with torch.no_grad():
+            # sample a single MLM tokens with a temperature of rtd_temp
+            mask_index = (labels.view(-1) >= 0).nonzero().view(-1)
+            topk_labels, top_p = self.topk_sampling(generator_output['logits'], topk=1, temp=self.rtd_temp)
+            
+            # Assign sampled generator tokens to the masked positions for the discriminator input
+            top_ids = torch.zeros_like(labels.view(-1))
+            top_ids.scatter_(index=mask_index, src=topk_labels.view(-1).int(), dim=-1)
+            top_ids = top_ids.view(labels.size())
+            generated_ids = torch.where(labels >= 0, top_ids, input_ids).detach()
+    
+            # Discriminator labels are 1 for incorrect generated tokens and 0 for the original tokens.
+            discriminator_labels = torch.logical_and(labels >= 0, top_ids != labels).long()
+            # Ignore loss over the original padding tokens.
+            discriminator_labels.masked_fill_(~attention_mask, -100)
 
-        mask_index = (labels.view(-1) >= 0).nonzero().view(-1)
-        topk_labels, top_p = self.topk_sampling(generator_output["logits"], topk=1, temp=self.rtd_temp)
-
-        top_ids = torch.zeros_like(labels.view(-1))
-        top_ids.scatter_(index=mask_index, src=topk_labels.view(-1).int(), dim=-1)
-        top_ids = top_ids.view(labels.size())
-        generated_ids = torch.where(labels >= 0, top_ids, input_ids).detach()
-
-        discriminator_labels = (labels >= 0).long()
         discriminator_output = self.discriminator(
             generated_ids,
             attention_mask=attention_mask,
@@ -1086,11 +1095,9 @@ class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
             **kwargs,
         )
 
-        loss = None
-        if labels is not None:
-            mlm_loss = generator_output["loss"]
-            rtd_loss = discriminator_output["loss"]
-            loss = mlm_loss + (self.config.rtd_lambda * rtd_loss)
+        mlm_loss = generator_output['loss']
+        rtd_loss = discriminator_output['loss']
+        loss = mlm_loss + (self.config.rtd_lambda * rtd_loss)
 
         return MaskedLMOutput(
             loss=loss,
@@ -1098,14 +1105,15 @@ class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
             hidden_states=None,
             attentions=None,
         )
-
+        
+    # TODO: see if there's a faster way to do this
     def topk_sampling(self, logits, topk=1, temp=1):
         top_p = torch.nn.functional.softmax(logits / temp, dim=-1)
         topk = max(1, topk)
         next_tokens = torch.multinomial(top_p, topk)
         return next_tokens, top_p
-
-    def register_discriminator_fw_hook(self, *wargs):
+    
+    def register_discriminator_fw_hook(self, *kwargs):
         def fw_hook(module, *inputs):
             if self.share_embedding == "gdes":  # Gradient-disentangled weight/embedding sharing
                 g_tok_emb = self.generator.embeddings.tok_embeddings
@@ -1117,7 +1125,7 @@ class FlexBertForReplacedTokenDetection(BertPreTrainedModel):
                     d_pos_emb = self.discriminator.embeddings.position_embeddings
                     self._set_param(d_pos_emb, "weight", g_pos_emb.weight.detach() + d_pos_emb._weight)
 
-            elif self.share_embedding == "es":  # vallina embedding sharing
+            elif self.share_embedding == 'es': # vanilla embedding sharing
                 g_tok_emb = self.generator.embeddings.tok_embeddings
                 d_tok_emb = self.discriminator.embeddings.tok_embeddings
                 self._set_param(d_tok_emb, "weight", g_tok_emb.weight)

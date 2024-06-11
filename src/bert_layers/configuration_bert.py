@@ -69,6 +69,7 @@ class FlexBertConfig(TransformersBertConfig):
         rotary_emb_base: float = 10000.0,
         rotary_emb_scale_base=None,
         rotary_emb_interleaved: bool = False,
+        rtd_temp: float = 1.0,
         use_fa2: bool = True,
         use_sdpa_attn_mask: bool = False,
         allow_embedding_resizing: bool = False,
@@ -81,6 +82,7 @@ class FlexBertConfig(TransformersBertConfig):
         initial_mlp_layer: str | None = None,
         num_initial_layers: int = 1,
         skip_first_prenorm: bool = False,
+        generator_num_hidden_layers: int = 6,
         **kwargs,
     ):
         """
@@ -167,6 +169,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.rotary_emb_base = rotary_emb_base
         self.rotary_emb_scale_base = rotary_emb_scale_base
         self.rotary_emb_interleaved = rotary_emb_interleaved
+        self.rtd_temp = rtd_temp
         self.use_fa2 = use_fa2
         self.use_sdpa_attn_mask = use_sdpa_attn_mask
         self.allow_embedding_resizing = allow_embedding_resizing
@@ -179,6 +182,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.initial_mlp_layer = initial_mlp_layer
         self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
+        self.generator_num_hidden_layers = generator_num_hidden_layers
 
 
 PADDING = ["unpadded", "padded"]

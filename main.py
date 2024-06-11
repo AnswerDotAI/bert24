@@ -213,6 +213,14 @@ def build_model(cfg: DictConfig):
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
         )
+    elif cfg.name == "flex_bert_rtd":
+        return flex_bert_module.create_flex_bert_rtd(
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+        )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 

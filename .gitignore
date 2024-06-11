@@ -167,3 +167,6 @@ wandb/
 
 # OS X
 .DS_Store
+
+# Data
+my-copy-c4
