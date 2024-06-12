@@ -10,6 +10,7 @@ import inspect
 import warnings
 import torch
 import torch.nn as nn
+from torch.nn import init
 
 from .configuration_bert import FlexBertConfig
 
@@ -60,6 +61,9 @@ class RMSNorm(nn.Module):
         """
         output = self._norm(x.float()).type_as(x)
         return output * self.weight
+
+    def reset_parameters(self):
+        init.ones_(self.weight)
 
 
 NORM2CLS = {

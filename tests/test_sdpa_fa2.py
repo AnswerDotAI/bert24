@@ -3,6 +3,7 @@
 
 import os
 import sys
+import random
 
 import pytest
 import torch
@@ -14,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import main
 from test_utils import SynthTextDirectory
+from src.bert_layers.initialization import InitFnType
 
 IMPL_USE_FLASH2 = False
 try:
@@ -55,6 +57,11 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     config.model.model_config.mlp_layer = mlp
     if layer == "postnorm":
         config.model.model_config.final_norm = False
+
+    # pick a random init type for testing
+    config.model.model_config.init_fn = random.choice([member.value for member in InitFnType])
+    if config.model.model_config.init_fn != InitFnType.full_megatron:
+        config.model.model_config.init_small_embedding = random.choice([True, False])
 
     with SynthTextDirectory() as tmp_datadir:
         config.model.model_config.use_fa2 = False

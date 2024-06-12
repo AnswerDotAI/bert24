@@ -51,6 +51,10 @@ model:
     rotary_emb_scale_base: null
     rotary_emb_interleaved: false
     hidden_act: silu
+    init_method: normal
+    init_std: 0.02
+    init_cutoff_factor: 2.0
+    init_small_embedding: False
 
 # Dataloaders
 train_loader:
