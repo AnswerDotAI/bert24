@@ -69,7 +69,7 @@ optimizer:
   - 0.98
   eps: 1.0e-06
   weight_decay: 1.0e-5 # Amount of weight decay regularization
-  filter_bias_and_bn: false # If True, doesn't apply weight decay to norm layers and biases
+  filter_bias_norm_wd: false # If True, doesn't apply weight decay to norm layers and biases
 
 max_duration: 286720000sp # Subsample the training data for ~275M samples
 eval_interval: 2000ba
@@ -87,6 +87,10 @@ progress_bar: false
 log_to_console: true
 console_log_interval: 1ba
 
+algorithms:
+  gradient_clipping:
+    clipping_type: norm
+    clipping_threshold: 1.0
 
 callbacks:
   speed_monitor:
