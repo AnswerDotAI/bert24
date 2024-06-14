@@ -43,10 +43,8 @@ tasks: # Only run SWAG and COPA for the sake of testing
       save_num_checkpoints_to_keep: 1
       max_duration: 2ba
       eval_subset_num_batches: 2
-      device_train_microbatch_size: 2
   copa:
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
       max_duration: 2ba
       eval_subset_num_batches: 2
-      device_train_microbatch_size: 2

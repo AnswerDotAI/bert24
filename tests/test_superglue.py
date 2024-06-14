@@ -31,7 +31,7 @@ class SuperGlueDirContext(object):
             shutil.rmtree(self.path)
 
 
-@pytest.mark.parametrize("model_name", ["mosaic_bert"])
+@pytest.mark.parametrize("model_name", ["mosaic_bert", "hf_bert", "flex_bert"])
 def test_superglue_script(model_name: str):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
