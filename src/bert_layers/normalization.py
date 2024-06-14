@@ -12,6 +12,11 @@ import torch
 import torch.nn as nn
 
 from .configuration_bert import FlexBertConfig
+try:
+    from flash_attn.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
+
+except ImportError:
+    TritonRMSNorm = None
 
 
 class RMSNorm(nn.Module):
@@ -64,7 +69,7 @@ class RMSNorm(nn.Module):
 
 NORM2CLS = {
     "layernorm": nn.LayerNorm,
-    "rmsnorm": RMSNorm,
+    "rmsnorm": RMSNorm if TritonRMSNorm is None else TritonRMSNorm,
 }
 
 
