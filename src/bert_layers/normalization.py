@@ -22,7 +22,7 @@ except ImportError:
 class RMSNorm(nn.Module):
     """Llama2 RMSNorm implementation"""
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-5):
         """
         Initialize the RMSNorm normalization layer.
 
