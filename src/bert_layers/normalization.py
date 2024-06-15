@@ -5,19 +5,25 @@
 # License: LLAMA 2 COMMUNITY LICENSE AGREEMENT
 
 
-from typing import Optional
 import inspect
-import warnings
 import torch
 import torch.nn as nn
 
+from .triton.rmsnorm import TritonRMSNorm
 from .configuration_bert import FlexBertConfig
 
 
 class RMSNorm(nn.Module):
     """Llama2 RMSNorm implementation"""
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(
+        self,
+        dim: int,
+        eps: float = 1e-5,
+        low_precision: bool = False,
+        device: torch.device = None,
+        dtype: torch.dtype = None,
+    ):
         """
         Initialize the RMSNorm normalization layer.
 
@@ -32,7 +38,12 @@ class RMSNorm(nn.Module):
         """
         super().__init__()
         self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
+        self.low_precision = low_precision
+        self.weight = torch.nn.Parameter(torch.empty(dim, device=device, dtype=dtype))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.ones_(self.weight)
 
     def _norm(self, x):
         """
@@ -58,13 +69,17 @@ class RMSNorm(nn.Module):
             torch.Tensor: The output tensor after applying RMSNorm.
 
         """
-        output = self._norm(x.float()).type_as(x)
-        return output * self.weight
+        if self.low_precision:
+            output = self._norm(x)
+        else:
+            output = self._norm(x.float())
+        return (output * self.weight).type_as(x)
 
 
 NORM2CLS = {
     "layernorm": nn.LayerNorm,
     "rmsnorm": RMSNorm,
+    "triton_rmsnorm": TritonRMSNorm,
 }
 
 
