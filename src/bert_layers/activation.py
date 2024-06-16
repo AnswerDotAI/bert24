@@ -52,8 +52,9 @@ def get_act_fn(config: Union[FlexBertConfig, str]) -> nn.Module:
     try:
         if isinstance(config, str):
             return ACT2FN[config]
-        return ACT2FN[config.activation_function]
+        return ACT2FN[config.hidden_act]
     except KeyError:
-        raise ValueError(
-            f"Invalid activation function type: {config.activation_function}, must be one of {ACT2FN.keys()}."
-        )
+        if isinstance(config, str):
+            raise ValueError(f"Invalid activation function type: {config}, must be one of {ACT2FN.keys()}.")
+        else:
+            raise ValueError(f"Invalid activation function type: {config.hidden_act=}, must be one of {ACT2FN.keys()}.")

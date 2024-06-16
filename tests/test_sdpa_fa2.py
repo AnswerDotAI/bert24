@@ -4,6 +4,7 @@
 import os
 import sys
 import random
+import time
 
 import pytest
 import torch
@@ -39,7 +40,8 @@ layer_combinations = [
 @pytest.mark.skipif(not IMPL_USE_FLASH2, reason="Flash Attention is not installed")
 @pytest.mark.parametrize("padding", ["padded", "unpadded"])
 @pytest.mark.parametrize("layer,embedding,attention,mlp", layer_combinations)
-def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str):
+@pytest.mark.parametrize("different_first_layer", [False, True])
+def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str, different_first_layer: bool):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -57,6 +59,17 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     config.model.model_config.mlp_layer = mlp
     if layer == "postnorm":
         config.model.model_config.final_norm = False
+
+    if different_first_layer:
+        if layer != "parallel_prenorm":
+            pytest.skip("Only parallel_prenorm needs a different first layer")
+        config.model.model_config.first_attention_layer = "rope" if attention == "rope_parallel" else "base"
+        config.model.model_config.first_bert_layer = "prenorm"
+        config.model.model_config.first_mlp_layer = "glu"
+
+    if config.model.model_config.bert_layer in ["parallel_prenorm", "prenorm"] and random.random() < 0.5:
+        config.model.model_config.skip_first_prenorm = True
+        config.model.model_config.embed_norm = True
 
     # pick a random init type for testing
     config.model.model_config.init_fn = random.choice([member.value for member in InitFnType])

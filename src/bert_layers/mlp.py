@@ -199,6 +199,14 @@ MLP2CLS = {
 
 def get_mlp_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertMLPBase:
     try:
-        return MLP2CLS[config.mlp_layer](config, layer_id=layer_id)
-    except KeyError:
-        raise ValueError(f"Invalid MLP layer type: {config.mlp_layer=}, must be one of {MLP2CLS.keys()}.")
+        mlp_layer = (
+            config.first_mlp_layer
+            if layer_id == 0 and getattr(config, "first_mlp_layer", None) is not None
+            else config.mlp_layer
+        )
+        return MLP2CLS[mlp_layer](config, layer_id=layer_id)
+    except KeyError as e:
+        if layer_id == 0 and getattr(config, "first_mlp_layer", None) is not None:
+            raise ValueError(f"Invalid MLP layer type: {config.first_mlp_layer=}, must be one of {MLP2CLS.keys()}. {e}")
+        else:
+            raise ValueError(f"Invalid MLP layer type: {config.mlp_layer=}, must be one of {MLP2CLS.keys()}. {e}")

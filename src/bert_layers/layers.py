@@ -284,7 +284,10 @@ class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
 
     def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
         super().__init__(config=config, layer_id=layer_id)
-        self.attn_norm = get_norm_layer(config)
+        if config.skip_first_prenorm and config.embed_norm and layer_id == 0:
+            self.attn_norm = nn.Identity()
+        else:
+            self.attn_norm = get_norm_layer(config)
         self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
         self.mlp = get_mlp_layer(config, layer_id=layer_id)
@@ -325,7 +328,10 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
         self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
-        self.norm = get_norm_layer(config)
+        if config.skip_first_prenorm and config.embed_norm and layer_id == 0:
+            self.norm = nn.Identity()
+        else:
+            self.norm = get_norm_layer(config)
         self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp = get_mlp_layer(config, layer_id=layer_id)
 
@@ -366,7 +372,10 @@ class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
 
     def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
         super().__init__(config=config, layer_id=layer_id)
-        self.attn_norm = get_norm_layer(config)
+        if config.skip_first_prenorm and config.embed_norm and layer_id == 0:
+            self.attn_norm = nn.Identity()
+        else:
+            self.attn_norm = get_norm_layer(config)
         self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
         self.mlp = get_mlp_layer(config, layer_id=layer_id)
@@ -401,7 +410,10 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
         self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
-        self.norm = get_norm_layer(config)
+        if config.skip_first_prenorm and config.embed_norm and layer_id == 0:
+            self.norm = nn.Identity()
+        else:
+            self.norm = get_norm_layer(config)
         self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp = get_mlp_layer(config, layer_id=layer_id)
 
@@ -511,14 +523,25 @@ LAYER2CLS = {
 }
 
 
-def get_bert_layer(config, layer_id: Optional[int] = None) -> FlexBertLayerBase:
+def get_bert_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertLayerBase:
     try:
-        return LAYER2CLS[maybe_add_padding(config, config.bert_layer)](config, layer_id=layer_id)
-    except KeyError:
-        raise ValueError(
-            f"Invalid BERT layer type: {config.bert_layer=}, must be one of {LAYER2CLS.keys()}. "
-            f"{config.padding=} will be automatically prepended to `config.bert_layer` if unspecified."
+        bert_layer = (
+            config.first_bert_layer
+            if layer_id == 0 and getattr(config, "first_bert_layer", None) is not None
+            else config.bert_layer
         )
+        return LAYER2CLS[maybe_add_padding(config, bert_layer)](config, layer_id=layer_id)
+    except KeyError:
+        if layer_id == 0 and getattr(config, "first_bert_layer", None) is not None:
+            raise ValueError(
+                f"Invalid BERT layer type: {config.first_bert_layer=}, must be one of {LAYER2CLS.keys()}."
+                f"{config.padding=} will be automatically prepended to `config.bert_layer` if unspecified."
+            )
+        else:
+            raise ValueError(
+                f"Invalid BERT layer type: {config.bert_layer=}, must be one of {LAYER2CLS.keys()}. "
+                f"{config.padding=} will be automatically prepended to `config.bert_layer` if unspecified."
+            )
 
 
 class FlexBertEncoderBase(nn.Module):

@@ -1284,9 +1284,20 @@ ATTN2CLS = {
 
 def get_attention_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertAttentionBase:
     try:
-        return ATTN2CLS[maybe_add_padding(config, config.attention_layer)](config, layer_id=layer_id)
-    except KeyError:
-        raise ValueError(
-            f"Invalid attention layer type: {config.attention_layer=}, must be one of {ATTN2CLS.keys()}. "
-            f"{config.padding=} will be automatically prepended to `config.attention_layer` if unspecified."
+        attention_layer = (
+            config.first_attention_layer
+            if layer_id == 0 and getattr(config, "first_attention_layer", None) is not None
+            else config.attention_layer
         )
+        return ATTN2CLS[maybe_add_padding(config, attention_layer)](config, layer_id=layer_id)
+    except KeyError:
+        if layer_id == 0 and getattr(config, "first_attention_layer", None) is not None:
+            raise ValueError(
+                f"Invalid attention layer type: {config.first_attention_layer=}, must be one of {ATTN2CLS.keys()}."
+                f"{config.padding=} will be automatically prepended to `config.attention_layer` if unspecified."
+            )
+        else:
+            raise ValueError(
+                f"Invalid attention layer type: {config.attention_layer=}, must be one of {ATTN2CLS.keys()}. "
+                f"{config.padding=} will be automatically prepended to `config.attention_layer` if unspecified."
+            )

@@ -6,12 +6,12 @@
 data_local: ./my-copy-c4
 data_remote: # If blank, files must be present in data_local
 
-max_seq_len: 128
+max_seq_len: 512
 tokenizer_name: bert-base-uncased # switch to bert tokenizer until we add [MASK] token to the llama tokenizer meta-llama/Llama-2-7b-hf
 mlm_probability: 0.3 # FlexBERT should use 30% masking for optimal performance
 
 # Run Name
-run_name: flex-bert-base-parallel
+run_name: flex-bert-rope-parallel-firstprenorm
 
 # Model
 model:
@@ -24,37 +24,41 @@ model:
   model_config:
     num_attention_heads: 12 # bert-base default
     num_hidden_layers: 12 # bert-base default
-    attention_layer: parallel
+    attention_layer: rope_parallel
     attention_probs_dropout_prob: 0.0
-    attn_out_bias: False
+    attn_out_bias: false
     attn_out_dropout_prob: 0.0
-    attn_qkv_bias: False
+    attn_qkv_bias: false
     bert_layer: parallel_prenorm
     embed_dropout_prob: 0.0
-    embed_norm: False
-    final_norm: True
-    embedding_layer: absolute_pos
+    embed_norm: true
+    final_norm: true
+    embedding_layer: sans_pos
     loss_function: cross_entropy
     loss_kwargs:
       reduction: mean
     mlp_dropout_prob: 0.0
-    mlp_in_bias: False
+    mlp_in_bias: false
     mlp_layer: parallel_glu
-    mlp_out_bias: False
+    mlp_out_bias: false
+    normalization: rmsnorm
     norm_kwargs:
       eps: 1e-6
-    normalization: rmsnorm
     padding: unpadded
-    sparse_prediction: False
+    sparse_prediction: false
+    rotary_emb_dim: null # will be set to headdim by default
+    rotary_emb_base: 10000.0
+    rotary_emb_scale_base: null
+    rotary_emb_interleaved: false
     hidden_act: silu
     init_method: default
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False
-    first_attention_layer: null
-    first_bert_layer: null
-    first_mlp_layer: null
-
+    first_attention_layer: rope
+    first_bert_layer: prenorm
+    first_mlp_layer: glu
+    skip_first_prenorm: true
 
 # Dataloaders
 train_loader:
@@ -119,7 +123,7 @@ console_log_interval: 1ba
 
 callbacks:
   speed_monitor:
-    window_size: 500
+    window_size: 10
   lr_monitor: {}
 
 algorithms:
