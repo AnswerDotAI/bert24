@@ -13,7 +13,7 @@ import torch.nn as nn
 from src.utils import StrEnum
 from .configuration_bert import FlexBertConfig
 
-__all__ = ["init_weights", "ModuleType"]
+__all__ = ["init_weights", "ModuleType", "InitFnType"]
 
 
 class InitFnType(StrEnum):
@@ -144,20 +144,3 @@ def init_weights(
 
     if isinstance(module, nn.Embedding) and config.init_small_embedding:
         nn.init.uniform_(module.weight, a=-1e-4, b=1e-4)
-
-
-def init_normal(
-    module: Union[nn.Linear, nn.Embedding],
-    std: float,
-    init_cutoff_factor: Optional[float] = None,
-):
-    # weights
-    if init_cutoff_factor is not None:
-        cutoff_value = init_cutoff_factor * std
-        nn.init.trunc_normal_(module.weight, mean=0.0, std=std, a=-cutoff_value, b=cutoff_value)
-    else:
-        nn.init.normal_(module.weight, mean=0.0, std=std)
-
-    # biases
-    if isinstance(module, nn.Linear) and module.bias is not None:
-        nn.init.zeros_(module.bias)
