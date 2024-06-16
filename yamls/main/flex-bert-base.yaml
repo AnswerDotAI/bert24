@@ -47,7 +47,7 @@ model:
     padding: unpadded
     sparse_prediction: false
     hidden_act: silu
-    init_method: normal
+    init_method: default
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False

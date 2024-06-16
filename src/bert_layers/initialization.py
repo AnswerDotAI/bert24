@@ -29,6 +29,11 @@ class InitFnType(StrEnum):
     All weights are initialized from the same normal distribution.
     """
 
+    default = "default"
+    """
+    All weights are initialized with the default method from PyTorch.
+    """
+
     kaiming_normal = "kaiming_normal"
     """
     All weights are initialized with the Kaiming method from a normal distribution.
@@ -124,6 +129,8 @@ def init_weights(
             a=-cutoff_factor * std,
             b=cutoff_factor * std,
         )
+    elif config.init_method == InitFnType.default:
+        module.reset_parameters()
     else:
         raise NotImplementedError(config.init_method)
 

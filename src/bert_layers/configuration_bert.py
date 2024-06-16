@@ -73,7 +73,7 @@ class FlexBertConfig(TransformersBertConfig):
         use_fa2: bool = True,
         use_sdpa_attn_mask: bool = False,
         allow_embedding_resizing: bool = False,
-        init_method: str = "normal",
+        init_method: str = "default",
         init_std: float = 0.02,
         init_cutoff_factor: float = 2.0,
         init_small_embedding: bool = False,
