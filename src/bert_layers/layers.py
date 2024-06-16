@@ -526,15 +526,15 @@ LAYER2CLS = {
 def get_bert_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertLayerBase:
     try:
         bert_layer = (
-            config.first_bert_layer
-            if layer_id == 0 and getattr(config, "first_bert_layer", None) is not None
+            config.initial_bert_layer
+            if layer_id < config.num_initial_layers and getattr(config, "initial_bert_layer", None) is not None
             else config.bert_layer
         )
         return LAYER2CLS[maybe_add_padding(config, bert_layer)](config, layer_id=layer_id)
     except KeyError:
-        if layer_id == 0 and getattr(config, "first_bert_layer", None) is not None:
+        if layer_id < config.num_initial_layers and getattr(config, "initial_bert_layer", None) is not None:
             raise ValueError(
-                f"Invalid BERT layer type: {config.first_bert_layer=}, must be one of {LAYER2CLS.keys()}."
+                f"Invalid BERT layer type: {config.initial_bert_layer=}, must be one of {LAYER2CLS.keys()}."
                 f"{config.padding=} will be automatically prepended to `config.bert_layer` if unspecified."
             )
         else:

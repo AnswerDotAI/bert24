@@ -76,9 +76,10 @@ class FlexBertConfig(TransformersBertConfig):
         init_std: float = 0.02,
         init_cutoff_factor: float = 2.0,
         init_small_embedding: bool = False,
-        first_attention_layer: str | None = None,
-        first_bert_layer: str | None = None,
-        first_mlp_layer: str | None = None,
+        initial_attention_layer: str | None = None,
+        initial_bert_layer: str | None = None,
+        initial_mlp_layer: str | None = None,
+        num_initial_layers: int = 1,
         skip_first_prenorm: bool = False,
         **kwargs,
     ):
@@ -125,9 +126,10 @@ class FlexBertConfig(TransformersBertConfig):
             init_std (float): Standard deviation for initialization. Used for normal and full_megatron init.
             init_cutoff_factor (float): Cutoff factor for initialization. Used for normal and full_megatron init.
             init_small_embedding (bool): Initialize embeddings with RWKV small init.
-            first_attention_layer (str | None): Replace first attn_layer instance with this layer.
-            first_bert_layer (str | None): Replace first bert_layer instance with this layer.
-            first_mlp_layer (str | None): Replace first mlp_layer instance with this layer.
+            initial_attention_layer (str | None): Replace first `num_initial_layers` attention_layer instance with this layer.
+            initial_bert_layer (str | None): Replace first `num_initial_layers` bert_layer instance with this layer.
+            initial_mlp_layer (str | None): Replace first `num_initial_layers` mlp_layer instance with this layer.
+            num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
             **kwargs: Additional keyword arguments.
         """
@@ -172,9 +174,10 @@ class FlexBertConfig(TransformersBertConfig):
         self.init_std = init_std
         self.init_cutoff_factor = init_cutoff_factor
         self.init_small_embedding = init_small_embedding
-        self.first_attention_layer = first_attention_layer
-        self.first_bert_layer = first_bert_layer
-        self.first_mlp_layer = first_mlp_layer
+        self.initial_attention_layer = initial_attention_layer
+        self.initial_bert_layer = initial_bert_layer
+        self.initial_mlp_layer = initial_mlp_layer
+        self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
 
 

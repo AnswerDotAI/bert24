@@ -55,9 +55,10 @@ model:
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False
-    first_attention_layer: rope
-    first_bert_layer: prenorm
-    first_mlp_layer: glu
+    initial_attention_layer: rope
+    initial_bert_layer: prenorm
+    initial_mlp_layer: glu
+    num_initial_layers: 1
     skip_first_prenorm: true
 
 # Dataloaders

@@ -51,9 +51,11 @@ model:
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False
-    first_attention_layer: null
-    first_bert_layer: null
-    first_mlp_layer: null
+    initial_attention_layer: null
+    initial_bert_layer: null
+    initial_mlp_layer: null
+    num_initial_layers: 1
+    skip_first_prenorm: false
 
 
 # Dataloaders
