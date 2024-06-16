@@ -23,10 +23,11 @@ import torch.nn as nn
 import bert_padding
 
 from .activation import get_act_fn
-from .attention import BertAlibiUnpadAttention, get_attention_layer
-from .mlp import BertResidualGLU, get_mlp_layer
+from .attention import FlexBertAttentionBase, BertAlibiUnpadAttention, get_attention_layer
+from .mlp import FlexBertMLPBase, BertResidualGLU, get_mlp_layer
 from .configuration_bert import FlexBertConfig, maybe_add_padding
 from .normalization import get_norm_layer
+from .initialization import ModuleType, init_weights
 
 
 class BertAlibiLayer(nn.Module):
@@ -257,6 +258,23 @@ class BertPredictionHeadTransform(nn.Module):
 class FlexBertLayerBase(nn.Module):
     """A FlexBERT Layer base class for type hints."""
 
+    attn: FlexBertAttentionBase
+    mlp: FlexBertMLPBase
+
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__()
+        self.config = config
+        self.layer_id = layer_id
+
+    def _init_weights(self, reset_params: bool = False):
+        if hasattr(self, "attn"):
+            self.attn._init_weights(reset_params)
+        if hasattr(self, "mlp"):
+            self.mlp._init_weights(reset_params)
+
+    def reset_parameters(self):
+        self._init_weights(reset_params=True)
+
     def forward(self, hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:
         raise NotImplementedError("This is a base class and should not be used directly.")
 
@@ -264,12 +282,18 @@ class FlexBertLayerBase(nn.Module):
 class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.attn_norm = get_norm_layer(config)
-        self.attn = get_attention_layer(config)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.attn_norm.reset_parameters()
+            self.mlp_norm.reset_parameters()
 
     def forward(
         self,
@@ -295,15 +319,28 @@ class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
 class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT parallel attention and MLP blocks into a single layer using pre-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.attn_size = config.hidden_size * 3
         self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
-        self.attn = get_attention_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.norm.reset_parameters()
+
+        init_weights(
+            self.config,
+            self.Wqkvff,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
 
     def forward(
         self,
@@ -327,12 +364,18 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
 class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.attn_norm = get_norm_layer(config)
-        self.attn = get_attention_layer(config)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.attn_norm.reset_parameters()
+            self.mlp_norm.reset_parameters()
 
     def forward(
         self,
@@ -352,15 +395,28 @@ class FlexBertPaddedPreNormLayer(FlexBertLayerBase):
 class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.attn_size = config.hidden_size * 3
         self.mlp_size = config.intermediate_size * 2
         # Compute QKV and FF outputs at once
         self.Wqkvff = nn.Linear(config.hidden_size, self.attn_size + self.mlp_size, bias=config.attn_qkv_bias)
         self.norm = get_norm_layer(config)
-        self.attn = get_attention_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.norm.reset_parameters()
+
+        init_weights(
+            self.config,
+            self.Wqkvff,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
 
     def forward(
         self,
@@ -381,12 +437,18 @@ class FlexBertPaddedParallelPreNormLayer(FlexBertLayerBase):
 class FlexBertUnpadPostNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using post-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
-        self.attn = get_attention_layer(config)
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
         self.attn_norm = get_norm_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.attn_norm.reset_parameters()
+            self.mlp_norm.reset_parameters()
 
     def forward(
         self,
@@ -412,12 +474,17 @@ class FlexBertUnpadPostNormLayer(FlexBertLayerBase):
 class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using post-normalization."""
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
-        self.attn = get_attention_layer(config)
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
         self.attn_norm = get_norm_layer(config)
-        self.mlp = get_mlp_layer(config)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
         self.mlp_norm = get_norm_layer(config)
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.mlp_norm.reset_parameters()
 
     def forward(
         self,
@@ -444,9 +511,9 @@ LAYER2CLS = {
 }
 
 
-def get_bert_layer(config) -> FlexBertLayerBase:
+def get_bert_layer(config, layer_id: Optional[int] = None) -> FlexBertLayerBase:
     try:
-        return LAYER2CLS[maybe_add_padding(config, config.bert_layer)](config)
+        return LAYER2CLS[maybe_add_padding(config, config.bert_layer)](config, layer_id=layer_id)
     except KeyError:
         raise ValueError(
             f"Invalid BERT layer type: {config.bert_layer=}, must be one of {LAYER2CLS.keys()}. "
@@ -456,6 +523,16 @@ def get_bert_layer(config) -> FlexBertLayerBase:
 
 class FlexBertEncoderBase(nn.Module):
     """A FlexBERT base class for type hints."""
+
+    layers: nn.ModuleList
+
+    def _init_weights(self, reset_params: bool = False):
+        if hasattr(self, "layers"):
+            for layer in self.layers:
+                layer._init_weights(reset_params=reset_params)
+
+    def reset_parameters(self):
+        self._init_weights(reset_params=True)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("This is a base class and should not be used directly.")
@@ -473,7 +550,7 @@ class FlexBertUnpadEncoder(FlexBertEncoderBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.layers = nn.ModuleList([get_bert_layer(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -517,7 +594,7 @@ class FlexBertPaddedEncoder(FlexBertEncoderBase):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__()
-        self.layers = nn.ModuleList([get_bert_layer(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
