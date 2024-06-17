@@ -13,12 +13,17 @@ import torch.nn as nn
 from torch.nn import init
 
 from .configuration_bert import FlexBertConfig
+try:
+    from flash_attn.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
+
+except ImportError:
+    TritonRMSNorm = None
 
 
 class RMSNorm(nn.Module):
     """Llama2 RMSNorm implementation"""
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-5):
         """
         Initialize the RMSNorm normalization layer.
 
@@ -68,7 +73,7 @@ class RMSNorm(nn.Module):
 
 NORM2CLS = {
     "layernorm": nn.LayerNorm,
-    "rmsnorm": RMSNorm,
+    "rmsnorm": RMSNorm if TritonRMSNorm is None else TritonRMSNorm,
 }
 
 
