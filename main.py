@@ -139,7 +139,7 @@ def build_scheduler(cfg):
 
 
 def build_optimizer(cfg, model):
-    if cfg.get("filter_bias_and_bn", False):
+    if cfg.get("filter_bias_norm_wd", False):
         params = param_groups_weight_decay(model, weight_decay=cfg.weight_decay)
     else:
         params = model.parameters()

@@ -112,7 +112,6 @@ class SWAGJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
 

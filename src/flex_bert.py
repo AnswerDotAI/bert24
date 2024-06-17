@@ -111,8 +111,12 @@ def create_flex_bert_mlm(
     if "prenorm" in config.bert_layer:
         assert config.final_norm, "Final norm must be used with prenorm attention"
     else:
-        assert "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
-        assert not config.final_norm, "Final norm should not be used with postnorm attention"
+        assert (
+            "postnorm" in config.bert_layer
+        ), "config.bert_layer str must contain either prenorm or postnorm"
+        assert (
+            not config.final_norm
+        ), "Final norm should not be used with postnorm attention"
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -164,6 +168,7 @@ def create_flex_bert_classification(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    custom_eval_metrics: Optional[list] = [],
     multiple_choice: Optional[bool] = False,
 ):
     """FlexBERT classification model based on |:hugging_face:| Transformers.
@@ -189,6 +194,8 @@ def create_flex_bert_classification(
             initialize the model weights. If provided,
             the state dictionary stored at `pretrained_checkpoint` will be
             loaded into the model after initialization. Default: ``None``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to
+            evaluate the model. Default: ``[]``.
         multiple_choice (bool, optional): Whether the model is used for
             multiple choice tasks. Default: ``False``.
 
@@ -311,6 +318,10 @@ def create_flex_bert_classification(
         tokenizer=tokenizer,
         use_logits=True,
         metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
+        ],
         allow_embedding_resizing=model.config.allow_embedding_resizing,
     )
 

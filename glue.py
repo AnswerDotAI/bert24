@@ -25,7 +25,6 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.flex_bert as flex_bert_module
 import torch
-import transformers
 from composer import algorithms
 from composer.callbacks import (
     LRMonitor,

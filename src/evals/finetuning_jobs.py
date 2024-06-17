@@ -63,7 +63,7 @@ def build_dataloader(dataset, collate_fn=None, **kwargs):
 
     return DataLoader(
         dataset=dataset,
-        sampler=dist.get_sampler(dataset, drop_last=False, shuffle=False),
+        sampler=dist.get_sampler(dataset, drop_last=False, shuffle=True),
         collate_fn=(
             transformers.default_data_collator if collate_fn is None else collate_fn
         ),

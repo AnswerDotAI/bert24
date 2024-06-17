@@ -24,6 +24,7 @@ import math
 import bert_padding
 from .configuration_bert import FlexBertConfig, maybe_add_padding
 from .normalization import get_norm_layer
+from .initialization import ModuleType, init_weights
 import src.utils  # noqa: F401
 
 IMPL_USE_FLASH2 = False
@@ -40,8 +41,11 @@ except ImportError:
 
 try:
     from flash_attn.layers.rotary import RotaryEmbedding  # type: ignore
+    from .rotary import UnpaddedRotaryEmbedding  # type: ignore
+
 except ImportError:
     RotaryEmbedding = None
+    UnpaddedRotaryEmbedding = None
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +237,14 @@ class BertAlibiUnpadAttention(nn.Module):
 class FlexBertAttentionBase(nn.Module):
     """A FlexBERT attention base class for type hints."""
 
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__()
+        self.config = config
+        self.layer_id = layer_id
+
+    def _init_weights(self, reset_params: bool = False):
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
     def forward(self, hidden_states: torch.Tensor, attn_mask: torch.Tensor, **kwargs) -> torch.Tensor:
         raise NotImplementedError("This is a base class and should not be used directly.")
 
@@ -247,8 +259,8 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
     See `forward` method for additional detail.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -286,6 +298,22 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wqkv,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -373,8 +401,8 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
     See `forward` method for additional detail.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -411,6 +439,15 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -497,8 +534,8 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
     See `forward` method for additional detail.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -523,6 +560,22 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wqkv,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -586,8 +639,8 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
     See `forward` method for additional details.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -607,8 +660,8 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        assert RotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = RotaryEmbedding(
+        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = UnpaddedRotaryEmbedding(
             config.rotary_emb_dim,
             base=config.rotary_emb_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
@@ -617,6 +670,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
 
         self.use_fa2 = config.use_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
                 "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
@@ -635,6 +689,22 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wqkv,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -669,16 +739,11 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         # only needed for inference when we have KV cache
         seqlen_offset = 0
 
-        if IMPL_USE_FLASH2:
-            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
+        # (total_seqlen, 3, nheads, headdim)
+        qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
 
-            # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
-
-            # Apply RoPE
-            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
-            qkv = bert_padding.unpad_input_only(qkv, torch.squeeze(attn_mask) == 1)
-
+        if self.use_fa2:
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
@@ -702,14 +767,10 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 )
             attn = attn.view(bs, dim)
         else:
-            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, seqlen, _ = qkv.shape
-
-            # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-
-            # Apply RoPE
-            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
+            qkv = bert_padding.pad_input(
+                qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1]
+            )  # batch, max_seqlen, thd
+            unpad_bs, seqlen, *_ = qkv.shape
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
@@ -737,8 +798,8 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
     See `forward` method for additional details.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -773,6 +834,22 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wqkv,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -841,8 +918,8 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
     See `forward` method for additional details.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -861,8 +938,8 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        assert RotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = RotaryEmbedding(
+        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = UnpaddedRotaryEmbedding(
             config.rotary_emb_dim,
             base=config.rotary_emb_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
@@ -889,6 +966,15 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -923,16 +1009,11 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         # only needed for inference when we have KV cache
         seqlen_offset = 0
 
+        # (total_seqlen, 3, nheads, headdim)
+        qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+        qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
+
         if self.use_fa2:
-            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-
-            # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(-1, max_seqlen, 3, self.num_attention_heads, self.attn_head_size)
-
-            # Apply RoPE
-            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
-            qkv = bert_padding.unpad_input_only(qkv, torch.squeeze(attn_mask) == 1)
-
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
@@ -956,14 +1037,10 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                 )
             attn = attn.view(bs, dim)
         else:
-            qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, seqlen, _ = qkv.shape
-
-            # Reshape to (batch, seqlen, 3, nheads, headdim)
-            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-
-            # Apply RoPE
-            qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
+            qkv = bert_padding.pad_input(
+                qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1]
+            )  # batch, max_seqlen, thd
+            unpad_bs, seqlen, *_ = qkv.shape
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(
@@ -991,8 +1068,8 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
     See `forward` method for additional details.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -1029,6 +1106,15 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -1097,8 +1183,8 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
     See `forward` method for additional detail.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
@@ -1123,6 +1209,15 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.hidden_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(
         self,
@@ -1187,9 +1282,9 @@ ATTN2CLS = {
 }
 
 
-def get_attention_layer(config: FlexBertConfig) -> FlexBertAttentionBase:
+def get_attention_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertAttentionBase:
     try:
-        return ATTN2CLS[maybe_add_padding(config, config.attention_layer)](config)
+        return ATTN2CLS[maybe_add_padding(config, config.attention_layer)](config, layer_id=layer_id)
     except KeyError:
         raise ValueError(
             f"Invalid attention layer type: {config.attention_layer=}, must be one of {ATTN2CLS.keys()}. "

@@ -11,12 +11,15 @@
 # Copyright (c) 2018-2021, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2023, Tri Dao.
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
 from .configuration_bert import FlexBertConfig, maybe_add_padding
 from .activation import get_act_fn
 from .normalization import get_norm_layer
+from .initialization import ModuleType, init_weights
 
 
 class BertResidualGLU(nn.Module):
@@ -70,6 +73,17 @@ class BertResidualGLU(nn.Module):
 class FlexBertMLPBase(nn.Module):
     """A FlexBERT MLP base class for type hints."""
 
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__()
+        self.config = config
+        self.layer_id = layer_id
+
+    def _init_weights(self, reset_params: bool = False):
+        raise NotImplementedError("This is a base class and should not be used directly.")
+
+    def reset_parameters(self):
+        self._init_weights(reset_params=True)
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("This is a base class and should not be used directly.")
 
@@ -81,12 +95,28 @@ class FlexBertMLP(FlexBertMLPBase):
     and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.Wi = nn.Linear(config.hidden_size, config.intermediate_size, bias=config.mlp_in_bias)
         self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wi,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.intermediate_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """Compute new hidden states from current hidden states.
@@ -105,12 +135,28 @@ class FlexBertGLU(FlexBertMLPBase):
     and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
-        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size) * 2 , bias=config.mlp_in_bias)
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
+        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size) * 2, bias=config.mlp_in_bias)
         self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wi,
+            layer_dim=self.config.hidden_size,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
+        )
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.intermediate_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         input, gate = self.Wi(hidden_states).chunk(2, dim=-1)
@@ -124,11 +170,20 @@ class FlexBertParallelGLU(FlexBertMLPBase):
     and :class:`~transformers.model.bert.modeling_bert.SelfOutput` with a single module that has similar functionality.
     """
 
-    def __init__(self, config: FlexBertConfig):
-        super().__init__()
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
         self.act = get_act_fn(config.hidden_act)
         self.drop = nn.Dropout(config.mlp_dropout_prob) if config.mlp_dropout_prob > 0.0 else nn.Identity()
         self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_out_bias)
+
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(
+            self.config,
+            self.Wo,
+            layer_dim=self.config.intermediate_size,
+            layer_id=self.layer_id,
+            type_of_module=ModuleType.out_module,
+        )
 
     def forward(self, intermediate_ff: torch.Tensor) -> torch.Tensor:
         input, gate = intermediate_ff.chunk(2, dim=-1)
@@ -142,8 +197,8 @@ MLP2CLS = {
 }
 
 
-def get_mlp_layer(config: FlexBertConfig) -> FlexBertMLPBase:
+def get_mlp_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> FlexBertMLPBase:
     try:
-        return MLP2CLS[config.mlp_layer](config)
+        return MLP2CLS[config.mlp_layer](config, layer_id=layer_id)
     except KeyError:
         raise ValueError(f"Invalid MLP layer type: {config.mlp_layer=}, must be one of {MLP2CLS.keys()}.")

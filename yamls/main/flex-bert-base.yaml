@@ -47,6 +47,10 @@ model:
     padding: unpadded
     sparse_prediction: false
     hidden_act: silu
+    init_method: default
+    init_std: 0.02
+    init_cutoff_factor: 2.0
+    init_small_embedding: False
 
 # Dataloaders
 train_loader:
@@ -89,7 +93,7 @@ optimizer:
   - 0.98
   eps: 1.0e-06
   weight_decay: 1.0e-5 # Amount of weight decay regularization
-  filter_bias_and_bn: false # If True, doesn't apply weight decay to norm layers and biases
+  filter_bias_norm_wd: true # If True, doesn't apply weight decay to norm layers and biases
 
 # algorithms:
 
@@ -113,6 +117,11 @@ callbacks:
   speed_monitor:
     window_size: 500
   lr_monitor: {}
+
+algorithms:
+  gradient_clipping:
+    clipping_type: norm
+    clipping_threshold: 1.0
 
 # (Optional) W&B logging
 # loggers:

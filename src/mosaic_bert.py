@@ -146,6 +146,7 @@ def create_mosaic_bert_classification(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    custom_eval_metrics: Optional[list] = [],
     multiple_choice: Optional[bool] = False,
 ):
     """Mosaic BERT classification model based on |:hugging_face:| Transformers.
@@ -171,6 +172,8 @@ def create_mosaic_bert_classification(
             initialize the model weights. If provided,
             the state dictionary stored at `pretrained_checkpoint` will be
             loaded into the model after initialization. Default: ``None``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to
+            evaluate the model. Default: ``[]``.
         multiple_choice (bool, optional): Whether the model is used for
             multiple choice tasks. Default: ``False``.
 
@@ -296,7 +299,14 @@ def create_mosaic_bert_classification(
             metrics.append(BinaryF1Score())
 
     hf_model = HuggingFaceModel(
-        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
+        ],
     )
 
     # Padding for divisibility by 8
