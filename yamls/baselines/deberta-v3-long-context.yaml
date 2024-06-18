@@ -7,7 +7,7 @@ default_seed: 19
 precision: amp_bf16
 
 # Tokenizer for dataset creation
-tokenizer_name: microsoft/deberta-v3-large # microsoft/deberta-v3-base
+tokenizer_name: microsoft/deberta-v3-base # microsoft/deberta-v3-base
 
 # Base model config
 model:
@@ -42,7 +42,7 @@ scheduler:
 # Task configuration
 tasks:
   eurlex:
-    seeds: [461, 475]
+    seeds: [461, 475, 480]
     model_config:
       problem_type: multi_label_classification
     trainer_kwargs:

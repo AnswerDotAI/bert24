@@ -150,7 +150,7 @@ class EurlexJob(ClassificationJob):
         eval_interval: str = "800ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 512,
-        max_duration: Optional[str] = "2ep",
+        max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
@@ -180,7 +180,7 @@ class EurlexJob(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=5.0e-5,
+            lr=4.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-06,
             weight_decay=1.0e-06,
