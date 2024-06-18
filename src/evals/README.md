@@ -33,3 +33,22 @@ Long context evaluation suite can be run using the following command from the ro
 ```bash
 python glue.py yamls/baselines/deberta-v3-long-context.yaml
 ```
+
+# Results
+## Eurlex (micro-f1)
+- Deberta-v3-base (epochs=4, seq-length=512, bs=32, lr=5e-5, threshold=0.15)
+Training time: 1.4 hrs on 1xA40
+-------------------------------------------------------------
+Task                                              |
+-------------------------------------------------------------
+EURLEX                                            | 43.85
+-------------------------------------------------------------
+
+- Deberta-v3-large (epochs=4, seq-length=512, bs=32, lr=5e-5, threshold=0.15)
+Training time: 3.7 hrs on 1xA40
+
+-------------------------------------------------------------
+Task                                              |
+-------------------------------------------------------------
+EURLEX                                            | 55.87
+-------------------------------------------------------------

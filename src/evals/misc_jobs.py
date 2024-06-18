@@ -219,7 +219,6 @@ class QualityJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
             "drop_last": False,
         }
 
@@ -321,7 +320,6 @@ class UltrafeedbackJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
             "drop_last": False,
         }
         train_dataset = create_ultrafeedback_dataset(split="train", **dataset_kwargs)
@@ -339,7 +337,7 @@ class UltrafeedbackJob(ClassificationJob):
 
 class EurlexMultilabelF1Score(MultilabelF1Score):
     def __init__(self):
-        super().__init__(num_labels=4108, average='micro', threshold=0.01)
+        super().__init__(num_labels=4108, average='micro', threshold=0.15)
 
 
 class EurlexJob(ClassificationJob):
@@ -354,11 +352,11 @@ class EurlexJob(ClassificationJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "700ba",
+        eval_interval: str = "1400ba",
         scheduler: Optional[ComposerScheduler] = None,
-        max_sequence_length: Optional[int] = 768,
+        max_sequence_length: Optional[int] = 512,
         max_duration: Optional[str] = "1ep",
-        batch_size: Optional[int] = 16,
+        batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -387,7 +385,7 @@ class EurlexJob(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=1.0e-5,
+            lr=5.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-06,
             weight_decay=1.0e-06,
@@ -419,7 +417,6 @@ class EurlexJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
 
