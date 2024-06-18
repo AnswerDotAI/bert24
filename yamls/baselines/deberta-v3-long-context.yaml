@@ -7,7 +7,7 @@ default_seed: 19
 precision: amp_bf16
 
 # Tokenizer for dataset creation
-tokenizer_name: microsoft/deberta-v3-xsmall
+tokenizer_name: microsoft/deberta-v3-base # microsoft/deberta-v3-base
 
 # Base model config
 model:
@@ -15,7 +15,7 @@ model:
   use_pretrained: true
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
-  gradient_checkpointing: true
+  gradient_checkpointing: false
   model_config: {}
 
 # Saving
@@ -33,7 +33,7 @@ callbacks:
   lr_monitor: {}
   speed_monitor: {}
 
-# Scheduler
+# Scheduler`
 scheduler:
   name: linear_decay_with_warmup
   t_warmup: 0.06dur
@@ -41,19 +41,19 @@ scheduler:
 
 # Task configuration
 tasks:
-  ultrafeedback:
-    seeds: [19]
-    trainer_kwargs:
-      save_num_checkpoints_to_keep: 0
+  # ultrafeedback:
+  #   seeds: [19, 405]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0
 
   eurlex:
-    seeds: [19]
+    seeds: [461]
     model_config:
       problem_type: multi_label_classification
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
 
-  quality:
-    seeds: [19]
-    trainer_kwargs:
-      save_num_checkpoints_to_keep: 0
+  # quality:
+  #   seeds: [19]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0

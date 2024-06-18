@@ -339,13 +339,14 @@ class UltrafeedbackJob(ClassificationJob):
 
 class EurlexMultilabelF1Score(MultilabelF1Score):
     def __init__(self):
-        super().__init__(num_labels=4271)
+        super().__init__(num_labels=4108, average='micro', threshold=0.01)
+
 
 class EurlexJob(ClassificationJob):
     """Eurlex multi-label classification."""
 
     custom_eval_metrics = [EurlexMultilabelF1Score]
-    num_labels = 4271
+    num_labels = 4108
 
     def __init__(
         self,
@@ -353,11 +354,11 @@ class EurlexJob(ClassificationJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "350ba",
+        eval_interval: str = "700ba",
         scheduler: Optional[ComposerScheduler] = None,
-        max_sequence_length: Optional[int] = 2048,
+        max_sequence_length: Optional[int] = 768,
         max_duration: Optional[str] = "1ep",
-        batch_size: Optional[int] = 64,
+        batch_size: Optional[int] = 16,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -418,27 +419,21 @@ class EurlexJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": False,
+            "shuffle": True,
             "drop_last": False,
         }
 
         eurlex_train_dataset = create_eurlex_dataset(split="train", **dataset_kwargs)
         eurlex_eval_dataset = create_eurlex_dataset(split="validation", **dataset_kwargs)
-        eurlex_test_dataset = create_eurlex_dataset(split="test", **dataset_kwargs)
 
         # process labels: eurovoc_concepts ---
-        classes = sorted(list(set(chain(
-            *eurlex_train_dataset['eurovoc_concepts'], 
-            *eurlex_eval_dataset['eurovoc_concepts'],
-            *eurlex_test_dataset['eurovoc_concepts']
-            )
-        )))
-
-        class2id = {class_:id for id, class_ in enumerate(classes)}
+        train_classes = sorted(list(set(chain(*eurlex_train_dataset['eurovoc_concepts']))))
+        class2id = {class_:id for id, class_ in enumerate(train_classes)}
+        n_labels = len(train_classes)
 
         def generate_labels(example):
-            concepts = example['eurovoc_concepts']
-            labels = [0. for i in range(len(classes))]
+            concepts = set(example['eurovoc_concepts']).intersection(set(train_classes)) # not to introduce new concepts in validation
+            labels = [0. for i in range(n_labels)]
 
             for label in concepts:
                 label_id = class2id[label]
@@ -446,15 +441,15 @@ class EurlexJob(ClassificationJob):
             example['labels'] = labels
             return example
         
-        eurlex_train_dataset = eurlex_train_dataset.map(generate_labels, remove_columns='eurovoc_concepts')
-        eurlex_eval_dataset = eurlex_eval_dataset.map(generate_labels, remove_columns='eurovoc_concepts')
+        eurlex_train_dataset = eurlex_train_dataset.map(generate_labels, remove_columns=['eurovoc_concepts'])
+        eurlex_eval_dataset = eurlex_eval_dataset.map(generate_labels, remove_columns=['eurovoc_concepts'])
 
         self.train_dataloader = build_dataloader(eurlex_train_dataset, **dataloader_kwargs)
 
         eurlex_evaluator = Evaluator(
             label="long_context_eurlex",
             dataloader=build_dataloader(eurlex_eval_dataset, **dataloader_kwargs),
-            metric_names=["EurlexMultilabelF1Score"], # ["MulticlassAccuracy"],
+            metric_names=["EurlexMultilabelF1Score"],
         )
 
         self.evaluators = [eurlex_evaluator]
