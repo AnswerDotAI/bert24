@@ -60,8 +60,6 @@ TASK_NAME_TO_CLASS = {
     "multirc": superglue_jobs_module.MultiRCJob,
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
-    "quality": misc_jobs_module.QualityJob,
-    "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
     "eurlex": misc_jobs_module.EurlexJob,
 }
 
@@ -466,7 +464,7 @@ def train(config: om.DictConfig) -> None:
         # superglue:
         *{"boolq", "cb", "multirc", "wic"},
         # misc:
-        *{"swag", "quality", "ultrafeedback", "eurlex"},
+        *{"swag", "eurlex"},
     }
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path

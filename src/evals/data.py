@@ -149,24 +149,6 @@ def create_swag_dataset(**kwargs):
         },
     )
 
-def create_quality_dataset(**kwargs):
-    return create_eval_dataset(
-        **kwargs,
-        dataset_name="rbiswasfc/scrolls-quality-mcq",
-        dataset_subset="",
-        task_column_names={"rbiswasfc/scrolls-quality-mcq": ("question", "context", "A", "B", "C", "D")},
-    )
-
-
-def create_ultrafeedback_dataset(**kwargs):
-    return create_eval_dataset(
-        **kwargs,
-        dataset_name="rbiswasfc/ultrafeedback-binary-classification",
-        dataset_subset="",
-        task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
-    )
-
-
 def create_eurlex_dataset(**kwargs):
     return create_eval_dataset(
         **kwargs,

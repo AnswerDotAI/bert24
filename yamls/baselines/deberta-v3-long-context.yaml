@@ -2,7 +2,7 @@
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name: deberta-v3-xsmall-long-context-finetuning
+base_run_name: deberta-v3-long-context-finetuning
 default_seed: 19
 precision: amp_bf16
 
@@ -47,13 +47,3 @@ tasks:
       problem_type: multi_label_classification
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
-
-  # quality:
-  #   seeds: [19]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-
-  # ultrafeedback:
-  #   seeds: [19, 405]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
