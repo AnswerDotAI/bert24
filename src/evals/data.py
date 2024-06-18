@@ -170,7 +170,7 @@ def create_ultrafeedback_dataset(**kwargs):
 def create_eurlex_dataset(**kwargs):
     return create_eval_dataset(
         **kwargs,
-        dataset_name="pietrolesci/eurlex-57k",
-        dataset_subset="",
-        task_column_names={"pietrolesci/eurlex-57k": ("celex_id", "document_type", "title", "header", "recitals", "main_body", "text", "uid")},
+        dataset_name="coastalcph/lex_glue",
+        dataset_subset="eurlex",
+        task_column_names={"coastalcph/lex_glue": ("text",)},
     )

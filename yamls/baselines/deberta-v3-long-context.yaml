@@ -41,13 +41,8 @@ scheduler:
 
 # Task configuration
 tasks:
-  # ultrafeedback:
-  #   seeds: [19, 405]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-
   eurlex:
-    seeds: [461]
+    seeds: [461, 475]
     model_config:
       problem_type: multi_label_classification
     trainer_kwargs:
@@ -55,5 +50,10 @@ tasks:
 
   # quality:
   #   seeds: [19]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0
+
+  # ultrafeedback:
+  #   seeds: [19, 405]
   #   trainer_kwargs:
   #     save_num_checkpoints_to_keep: 0

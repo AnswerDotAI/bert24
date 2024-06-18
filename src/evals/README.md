@@ -3,9 +3,9 @@
 We are currently considering the following three benchmarks for the long context evaluation suite:
 
 ### EURLEX
-Source dataset: [pietrolesci/eurlex-57k](https://huggingface.co/datasets/pietrolesci/eurlex-57k)
-Task: Multi-label classification (4271 labels)
-Size: 57k examples (45k train, 6k validation, 6k test)
+Source dataset: [coastalcph/lex_glue](https://huggingface.co/datasets/coastalcph/lex_glue) (eurlex Subset)
+Task: Multi-label classification (100 labels)
+Size: 57k examples (55k train, 5k validation, 5k test)
 Context length: Mean -> 595 tokens, Std -> 416 tokens, Max -> 5.3k tokens*
 Domain: legislative documents
 Metric: micro-f1
@@ -36,19 +36,4 @@ python glue.py yamls/baselines/deberta-v3-long-context.yaml
 
 # Results
 ## Eurlex (micro-f1)
-- Deberta-v3-base (epochs=4, seq-length=512, bs=32, lr=5e-5, threshold=0.15)
-Training time: 1.4 hrs on 1xA40
--------------------------------------------------------------
-Task                                              |
--------------------------------------------------------------
-EURLEX                                            | 43.85
--------------------------------------------------------------
-
-- Deberta-v3-large (epochs=4, seq-length=512, bs=32, lr=5e-5, threshold=0.15)
-Training time: 3.7 hrs on 1xA40
-
--------------------------------------------------------------
-Task                                              |
--------------------------------------------------------------
-EURLEX                                            | 55.87
--------------------------------------------------------------
+- tbc
