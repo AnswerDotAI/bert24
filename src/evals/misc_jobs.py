@@ -133,7 +133,7 @@ class SWAGJob(ClassificationJob):
 
 class EurlexMultilabelF1Score(MultilabelF1Score):
     def __init__(self):
-        super().__init__(num_labels=100, average='micro', threshold=0.15)
+        super().__init__(num_labels=100, average='micro', threshold=0.5)
 
 class EurlexJob(ClassificationJob):
     """Eurlex multi-label classification."""
@@ -147,7 +147,7 @@ class EurlexJob(ClassificationJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "800ba",
+        eval_interval: str = "1600ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 512,
         max_duration: Optional[str] = "3ep",
@@ -180,7 +180,7 @@ class EurlexJob(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=4.0e-5,
+            lr=5.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-06,
             weight_decay=1.0e-06,

@@ -36,12 +36,15 @@ python glue.py yamls/baselines/deberta-v3-long-context.yaml
 
 # Results
 ## Eurlex (micro-f1)
+Training Time: ~200 mins
+
+```
 -----------------------------------------------------------------------------------------------------------------
 Job                                               | Dataset                  | Metric                     |
 -----------------------------------------------------------------------------------------------------------------
-EURLEX(seed=461)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 66.66
-EURLEX(seed=475)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 66.21
-EURLEX(seed=480)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 66.21
+EURLEX(seed=461)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 72.43
+EURLEX(seed=475)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 72.60
+EURLEX(seed=480)                                  | long_context_eurlex      | EurlexMultilabelF1Score    | 71.88
 -----------------------------------------------------------------------------------------------------------------
 
 
@@ -51,7 +54,6 @@ Collected Job Results:
 -------------------------------------------------------------
 Task                                              |
 -------------------------------------------------------------
-EURLEX                                            | 66.36
+EURLEX                                            | 72.30
 -------------------------------------------------------------
-
-Time: 73 mins
+```
