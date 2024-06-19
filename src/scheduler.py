@@ -139,14 +139,14 @@ class CosineInverseSqrtScheduler(ComposerScheduler):
     .. math::
         \alpha(t) = \begin{cases}
             \alpha_f + \frac{(1 - \alpha_f)}{2} \left[ \cos \left( \frac{1}{2}\pi \frac{t_{step}}{t_{cosine}} \right) + 1 \right], & \text{if } t_{step} \leq t_{cosine} \\
-            \frac{\alpha}{\sqrt{t_{step} + \beta}}, & \text{if } t_{step} > t_{cosine}
+            \frac{\gamma}{\sqrt{t_{step} + \delta}}, & \text{if } t_{step} > t_{cosine}
         \end{cases}
 
-    Where :math:`t_{cosine}` represents the half cosine decay duration, :math:`\alpha_f` represents the minimum learning rate multiplier, and
-    :math:`\alpha` and :math:`\beta` are chosen to ensure continuity of the scheduler and its derivative.
+    Where :math:`t_{cosine}` represents the half cosine decay duration, :math:`\alpha_f` represents the final learning rate multiplier, and
+    :math:`\gamma` and :math:`\delta` are chosen to ensure continuity of the scheduler and its derivative.
 
     This scheduler is a more flexible version of the multi-stage infinite scheduler proposed in *Stable LM 2 1.6B Technical Report*
-    <https://arxiv.org/abs/2402.17834>. To match that scheduler, keep at the default of ``t_cosine="0.25dur"``.
+    <https://arxiv.org/abs/2402.17834>. To match that scheduler, keep the default of ``t_cosine="0.25dur"``.
 
     .. warning::
             By default, initial warmup, cosine, and final cooldown schedules are **not** scaled according to any provided scale schedule ratio.
@@ -183,8 +183,8 @@ class CosineInverseSqrtScheduler(ComposerScheduler):
         self.alpha_f = alpha_f
         self.alpha_s = alpha_s
         self.scale_schedules = scale_schedules
-        self.alpha = None
-        self.beta = None
+        self.gamma = None
+        self.delta = None
         self._warmup_schedule = _get_scheduler(Schedule(warmup_schedule))
         self._cooldown_schedule = _get_scheduler(Schedule(cooldown_schedule))
         self._last_t_max = None
@@ -222,20 +222,20 @@ class CosineInverseSqrtScheduler(ComposerScheduler):
             return self._cooldown_schedule(
                 (v_step - (v_max - v_cooldown)) / v_cooldown,
                 start_y=self.cooldown_start,
-                finish_y=self.alpha_s,
+                finish_y=self.alpha_f,
             )
 
         v_adjusted_step = v_step - v_warmup
         if v_adjusted_step <= v_cosine:
             return _cosine_schedule(0.5 * v_adjusted_step / v_cosine, finish_y=self.alpha_f)
         else:
-            return _inverse_sqrt_schedule(v_adjusted_step, self.alpha, self.beta)
+            return _inverse_sqrt_schedule(v_adjusted_step, self.gamma, self.delta)
 
     def _finish_setup(self, t_max: Time[int], t_warmup: Time[int], t_cosine: Time[int], t_cooldown: Time[int]):
-        self.beta = t_cosine.value * (1 + self.alpha_f - math.pi * (1 - self.alpha_f)) / (math.pi * (1 - self.alpha_f))
-        self.alpha = (1 + self.alpha_f) / 2 * math.sqrt(t_cosine.value + self.beta)
+        self.delta = t_cosine.value * (1 + self.alpha_f - math.pi * (1 - self.alpha_f)) / (math.pi * (1 - self.alpha_f))
+        self.gamma = (1 + self.alpha_f) / 2 * math.sqrt(t_cosine.value + self.delta)
 
-        self.cooldown_start = _inverse_sqrt_schedule((t_max - t_cooldown - t_warmup).value, self.alpha, self.beta)
+        self.cooldown_start = _inverse_sqrt_schedule((t_max - t_cooldown - t_warmup).value, self.gamma, self.delta)
 
         if t_cooldown.value > 0 and self.alpha_f > self.cooldown_start:
             raise ValueError(
