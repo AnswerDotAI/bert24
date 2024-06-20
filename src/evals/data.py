@@ -148,3 +148,11 @@ def create_swag_dataset(**kwargs):
             "swag": ("sent1", "sent2", "ending0", "ending1", "ending2", "ending3")
         },
     )
+
+def create_eurlex_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="coastalcph/lex_glue",
+        dataset_subset="eurlex",
+        task_column_names={"coastalcph/lex_glue": ("text",)},
+    )

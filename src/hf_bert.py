@@ -11,7 +11,7 @@ from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccu
 from composer.models.huggingface import HuggingFaceModel
 from composer.utils.import_helpers import MissingConditionalImportError
 from torchmetrics import MeanSquaredError
-from torchmetrics.classification.accuracy import MulticlassAccuracy
+from torchmetrics.classification.accuracy import MulticlassAccuracy, MultilabelAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
 
@@ -245,6 +245,11 @@ def create_hf_bert_classification(
         ]
         if num_labels == 2:
             metrics.append(BinaryF1Score())
+            
+    if model_config.get('problem_type', '') == 'multi_label_classification':
+        metrics = [
+            MultilabelAccuracy(num_labels=num_labels, average="micro"),
+        ]
 
     return HuggingFaceModel(
         model=model,

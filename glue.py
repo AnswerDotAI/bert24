@@ -60,6 +60,7 @@ TASK_NAME_TO_CLASS = {
     "multirc": superglue_jobs_module.MultiRCJob,
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
+    "eurlex": misc_jobs_module.EurlexJob,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
@@ -246,6 +247,7 @@ def create_job_configs(
                     if "group" not in logger_config:
                         logger_config["group"] = main_config.base_run_name
                     logger_config["name"] = run_name
+            main_config.model.model_config.update(task_config.get("model_config", {})) # update with task specific model config
             task_seed_config = om.OmegaConf.create(
                 {
                     "task": task_name,
@@ -462,7 +464,7 @@ def train(config: om.DictConfig) -> None:
         # superglue:
         *{"boolq", "cb", "multirc", "wic"},
         # misc:
-        *{"swag"},
+        *{"swag", "eurlex"},
     }
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path
