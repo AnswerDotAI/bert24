@@ -4,6 +4,7 @@
 import os
 import sys
 import random
+import time
 
 import pytest
 import torch
@@ -39,7 +40,8 @@ layer_combinations = [
 @pytest.mark.skipif(not IMPL_USE_FLASH2, reason="Flash Attention is not installed")
 @pytest.mark.parametrize("padding", ["padded", "unpadded"])
 @pytest.mark.parametrize("layer,embedding,attention,mlp", layer_combinations)
-def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str):
+@pytest.mark.parametrize("different_first_layer", [False, True])
+def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str, different_first_layer: bool):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -57,6 +59,18 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     config.model.model_config.mlp_layer = mlp
     if layer == "postnorm":
         config.model.model_config.final_norm = False
+
+    if different_first_layer:
+        if layer != "parallel_prenorm":
+            pytest.skip("Only parallel_prenorm needs a different first layer")
+        config.model.model_config.initial_attention_layer = "rope" if attention == "rope_parallel" else "base"
+        config.model.model_config.initial_bert_layer = "prenorm"
+        config.model.model_config.initial_mlp_layer = "glu"
+        config.model.model_config.num_initial_layers = random.randint(1, 4)
+
+    if config.model.model_config.bert_layer in ["parallel_prenorm", "prenorm"] and random.random() < 0.5:
+        config.model.model_config.skip_first_prenorm = True
+        config.model.model_config.embed_norm = True
 
     # pick a random init type for testing
     config.model.model_config.init_fn = random.choice([member.value for member in InitFnType])
@@ -90,3 +104,13 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
 
     for param1, param2 in zip(model1.parameters(), model2.parameters()):
         torch.testing.assert_close(param1, param2, rtol=1e-2, atol=1e-3)
+
+    if different_first_layer:
+        nl = config.model.model_config.num_initial_layers
+        for m in range(2):
+            model = model1 if m == 0 else model2
+            for i in range(nl - 1):
+                assert isinstance(model.bert.encoder.layers[i], type(model.bert.encoder.layers[i + 1]))
+            assert not isinstance(model.bert.encoder.layers[nl - 1], type(model.bert.encoder.layers[nl]))
+            for i in range(nl, len(model1.bert.encoder.layers) - 1):
+                assert isinstance(model.bert.encoder.layers[i], type(model.bert.encoder.layers[i + 1]))

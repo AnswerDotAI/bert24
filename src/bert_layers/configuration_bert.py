@@ -35,7 +35,6 @@ class BertConfig(TransformersBertConfig):
 class FlexBertConfig(TransformersBertConfig):
     def __init__(
         self,
-        activation_function: str = "silu",
         attention_layer: str = "base",
         attention_probs_dropout_prob: float = 0.0,
         attn_out_bias: bool = False,
@@ -77,10 +76,64 @@ class FlexBertConfig(TransformersBertConfig):
         init_std: float = 0.02,
         init_cutoff_factor: float = 2.0,
         init_small_embedding: bool = False,
+        initial_attention_layer: str | None = None,
+        initial_bert_layer: str | None = None,
+        initial_mlp_layer: str | None = None,
+        num_initial_layers: int = 1,
+        skip_first_prenorm: bool = False,
         **kwargs,
     ):
+        """
+        Args:
+            attention_layer (str): Attention layer type.
+            attention_probs_dropout_prob (float): Dropout probability for attention probabilities.
+            attn_out_bias (bool): use bias in attention output projection.
+            attn_out_dropout_prob (float): Dropout probability for attention output.
+            attn_qkv_bias (bool): use bias for query, key, value linear layer(s).
+            bert_layer (str): BERT layer type.
+            decoder_bias (bool): use bias in decoder linear layer.
+            embed_dropout_prob (float): Dropout probability for embeddings.
+            embed_norm (bool): Normalize embedding output.
+            final_norm (bool): Add normalization after the final encoder layer and before head.
+            embedding_layer (str): Embedding layer type.
+            encoder_layer (str): Encoder layer type.
+            loss_function (str): Loss function to use.
+            loss_kwargs (dict): Keyword arguments for loss function.
+            mlp_dropout_prob (float): Dropout probability for MLP layers.
+            mlp_in_bias (bool): Use bias in MLP input linear layer.
+            mlp_layer (str): MLP layer type.
+            mlp_out_bias (bool): Use bias in MLP output linear layer.
+            norm_kwargs (dict): Keyword arguments for normalization layers.
+            normalization (str): Normalization type.
+            padding (str): Unpad inputs. Best with `use_fa2=True`.
+            head_class_act (str): Activation function for classification head.
+            head_class_bias (bool): Use bias in classification head linear layer(s).
+            head_class_dropout (float): Dropout probability for classification head.
+            head_class_norm (str): Normalization type for classification head.
+            head_pred_act (str): Activation function for prediction head.
+            head_pred_bias (bool): Use bias in prediction head linear layer(s).
+            head_pred_dropout (float): Dropout probability for prediction head.
+            head_pred_norm (bool): Normalize prediction head output.
+            pooling_type (str): Pooling type.
+            rotary_emb_dim (int | None): Rotary embedding dimension.
+            rotary_emb_base (float): Rotary embedding base.
+            rotary_emb_scale_base (float): Rotary embedding scale base.
+            rotary_emb_interleaved (bool): Use interleaved rotary embeddings.
+            use_fa2 (bool): Use FlashAttention2. Requires flash_attn package.
+            use_sdpa_attn_mask (bool): Pass a mask to SDPA. This will prevent SDPA from using the PyTorch FA2 kernel.
+            allow_embedding_resizing (bool): Embeddings will be automatically resized when they are smaller than the tokenizer vocab size.
+            init_method (str): Model layers initialization method.
+            init_std (float): Standard deviation for initialization. Used for normal and full_megatron init.
+            init_cutoff_factor (float): Cutoff factor for initialization. Used for normal and full_megatron init.
+            init_small_embedding (bool): Initialize embeddings with RWKV small init.
+            initial_attention_layer (str | None): Replace first `num_initial_layers` attention_layer instance with this layer.
+            initial_bert_layer (str | None): Replace first `num_initial_layers` bert_layer instance with this layer.
+            initial_mlp_layer (str | None): Replace first `num_initial_layers` mlp_layer instance with this layer.
+            num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
+            skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
+            **kwargs: Additional keyword arguments.
+        """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
-        self.activation_function = activation_function
         self.attention_layer = attention_layer
         self.attn_out_bias = attn_out_bias
         self.attn_out_dropout_prob = attn_out_dropout_prob
@@ -121,6 +174,11 @@ class FlexBertConfig(TransformersBertConfig):
         self.init_std = init_std
         self.init_cutoff_factor = init_cutoff_factor
         self.init_small_embedding = init_small_embedding
+        self.initial_attention_layer = initial_attention_layer
+        self.initial_bert_layer = initial_bert_layer
+        self.initial_mlp_layer = initial_mlp_layer
+        self.num_initial_layers = num_initial_layers
+        self.skip_first_prenorm = skip_first_prenorm
 
 
 PADDING = ["unpadded", "padded"]
