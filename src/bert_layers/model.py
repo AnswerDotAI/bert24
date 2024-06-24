@@ -82,6 +82,13 @@ from .initialization import ModuleType, init_weights
 logger = logging.getLogger(__name__)
 
 
+def _count_parameters(model: nn.Module, trainable: bool = True) -> int:
+    if trainable:
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    else:
+        return sum(p.numel() for p in model.parameters())
+
+
 class BertModel(BertPreTrainedModel):
     """Overall BERT model.
 
@@ -612,24 +619,10 @@ class BertForMultipleChoice(BertPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
 
-        input_ids = (
-            input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
-        )
-        attention_mask = (
-            attention_mask.view(-1, attention_mask.size(-1))
-            if attention_mask is not None
-            else None
-        )
-        token_type_ids = (
-            token_type_ids.view(-1, token_type_ids.size(-1))
-            if token_type_ids is not None
-            else None
-        )
-        position_ids = (
-            position_ids.view(-1, position_ids.size(-1))
-            if position_ids is not None
-            else None
-        )
+        input_ids = input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
+        attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
+        token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1)) if token_type_ids is not None else None
+        position_ids = position_ids.view(-1, position_ids.size(-1)) if position_ids is not None else None
         inputs_embeds = (
             inputs_embeds.view(-1, inputs_embeds.size(-2), inputs_embeds.size(-1))
             if inputs_embeds is not None
@@ -834,6 +827,20 @@ class FlexBertModel(BertPreTrainedModel):
     def reset_parameters(self):
         self._init_weights(reset_params=True)
 
+    def get_number_parameters(self, count_embeddings: bool = True, trainable: bool = True) -> int:
+        """Returns the number of parameters in the model.
+
+        Args:
+            count_embeddings: count the parameters in the embeddings layer, excluding position embeddings.
+            trainable: only count trainable parameters.
+        """
+        params = sum([_count_parameters(layer, trainable) for layer in self.encoder.layers])
+        if count_embeddings:
+            params += _count_parameters(self.embeddings, trainable)
+            if hasattr(self.embeddings, "position_embeddings"):
+                params -= _count_parameters(self.embeddings.position_embeddings, trainable)
+        return params
+
 
 class FlexBertForMaskedLM(BertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
@@ -957,6 +964,22 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
+    def get_number_parameters(
+        self, count_embeddings: bool = True, count_decoder: bool = False, trainable: bool = True
+    ) -> int:
+        """Returns the number of parameters in the model.
+
+        Args:
+            count_embeddings: count the parameters in the embeddings layer, excluding position embeddings.
+            count_decoder: count the parameters in the decoder layer if weights are not tied.
+            trainable: only count trainable parameters.
+        """
+        params = self.bert.get_number_parameters(count_embeddings, trainable)
+        params += _count_parameters(self.head, trainable)
+        if count_decoder and not self.config.tie_word_embeddings:
+            params += _count_parameters(self.decoder, trainable)
+        return params
+
 
 class FlexBertForSequenceClassification(BertPreTrainedModel):
     """Bert Model transformer with a sequence classification/regression head.
@@ -1066,6 +1089,18 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
             attentions=None,
         )
 
+    def get_number_parameters(self, count_embeddings: bool = True, trainable: bool = True) -> int:
+        """Returns the number of parameters in the model.
+
+        Args:
+            count_embeddings: count the parameters in the embeddings layer, excluding position embeddings.
+            trainable: only count trainable parameters.
+        """
+        params = self.bert.get_number_parameters(count_embeddings, trainable)
+        params += _count_parameters(self.head, trainable)
+        params += _count_parameters(self.classifier, trainable)
+        return params
+
 
 class FlexBertForMultipleChoice(BertPreTrainedModel):
     """
@@ -1136,19 +1171,9 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         num_choices = input_ids.shape[1]
 
-        input_ids = (
-            input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
-        )
-        attention_mask = (
-            attention_mask.view(-1, attention_mask.size(-1))
-            if attention_mask is not None
-            else None
-        )
-        position_ids = (
-            position_ids.view(-1, position_ids.size(-1))
-            if position_ids is not None
-            else None
-        )
+        input_ids = input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
+        attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
+        position_ids = position_ids.view(-1, position_ids.size(-1)) if position_ids is not None else None
 
         output = self.bert(
             input_ids,
@@ -1175,3 +1200,15 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
             hidden_states=None,
             attentions=None,
         )
+
+    def get_number_parameters(self, count_embeddings: bool = True, trainable: bool = True) -> int:
+        """Returns the number of parameters in the model.
+
+        Args:
+            count_embeddings: count the parameters in the embeddings layer, excluding position embeddings.
+            trainable: only count trainable parameters.
+        """
+        params = self.bert.get_number_parameters(count_embeddings, trainable)
+        params += _count_parameters(self.head, trainable)
+        params += _count_parameters(self.classifier, trainable)
+        return params
