@@ -83,6 +83,7 @@ class FlexBertConfig(TransformersBertConfig):
         num_initial_layers: int = 1,
         skip_first_prenorm: bool = False,
         generator_num_hidden_layers: int = 6,
+        rtd_lambda: float = 1.0,
         **kwargs,
     ):
         """
@@ -133,6 +134,8 @@ class FlexBertConfig(TransformersBertConfig):
             initial_mlp_layer (str | None): Replace first `num_initial_layers` mlp_layer instance with this layer.
             num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
+            generator_num_hidden_layers (int): Number of hidden layers in the RTD MLM generator.
+            rtd_lambda (float): Lambda for RTD loss.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -183,6 +186,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
         self.generator_num_hidden_layers = generator_num_hidden_layers
+        self.rtd_lambda = rtd_lambda
 
 
 PADDING = ["unpadded", "padded"]

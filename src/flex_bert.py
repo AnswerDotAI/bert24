@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
+from typing import Any, Dict, Mapping, Optional, Union
+
+from torch import Tensor
 
 # Add src folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -20,9 +22,12 @@ from omegaconf import DictConfig, OmegaConf
 import bert_layers as bert_layers_module
 import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
+
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
-from torchmetrics import MeanSquaredError
+from composer.devices import DeviceCPU
+
+from torchmetrics import MeanSquaredError, Metric
 from torchmetrics.classification.accuracy import MulticlassAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
@@ -104,30 +109,24 @@ def create_flex_bert_mlm(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     if "prenorm" in config.bert_layer:
         assert config.final_norm, "Final norm must be used with prenorm attention"
     else:
-        assert (
-            "postnorm" in config.bert_layer
-        ), "config.bert_layer str must contain either prenorm or postnorm"
-        assert (
-            not config.final_norm
-        ), "Final norm should not be used with postnorm attention"
+        assert "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
+        assert not config.final_norm, "Final norm should not be used with postnorm attention"
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = bert_layers_module.FlexBertForReplacedTokenDetection.from_composer(
+        model = bert_layers_module.FlexBertForMaskedLM.from_composer(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.FlexBertForReplacedTokenDetection(config)
+        model = bert_layers_module.FlexBertForMaskedLM(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
@@ -144,7 +143,13 @@ def create_flex_bert_mlm(
         MaskedAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics, allow_embedding_resizing=model.config.allow_embedding_resizing)
+    hf_model = HuggingFaceModel(
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        allow_embedding_resizing=model.config.allow_embedding_resizing,
+    )
 
     # Padding for divisibility by 8
     # We have to do it again here because wrapping by HuggingFaceModel changes it
@@ -153,6 +158,49 @@ def create_flex_bert_mlm(
     hf_model.model.resize_token_embeddings(config.vocab_size)
 
     return hf_model
+
+
+class MLMCrossEntropy(LanguageCrossEntropy):
+    mlm_metric = True
+
+
+class MLMAccuracy(MaskedAccuracy):
+    mlm_metric = True
+
+
+class RTDCrossEntropy(LanguageCrossEntropy):
+    rtd_metric = True
+
+
+class RTDAccuracy(MaskedAccuracy):
+    rtd_metric = True
+
+
+class RTDModel(HuggingFaceModel):
+    def eval_forward(self, batch, outputs: Optional[Any] = None):
+        outputs = self.forward(batch) if outputs is None else outputs
+        self.labels = batch.pop("labels")
+        return outputs
+
+    def update_metric(self, batch: Any, outputs: Any, metric: Metric) -> Dict:
+        if metric.device.type == "cpu":
+            self.labels = DeviceCPU().batch_to_device(self.labels)
+
+        if getattr(metric, "needs_batch", False):
+            raise ValueError(f"Unsupported metric {metric=}")
+
+        if getattr(metric, "rtd_metric", False):
+            metric_result = metric.update(outputs["rtd_logits"], outputs["rtd_labels"])
+        elif getattr(metric, "mlm_metric", False):
+            metric_result = metric.update(outputs["mlm_logits"], self.labels)
+        else:
+            metric_result = metric.update(outputs, self.labels)
+        if metric_result is not None:
+            # Add the metric name once for each datapoint in the batch
+            metric_result["metric_name"] = [metric.__class__.__name__ for _ in range(0, batch["input_ids"].shape[0])]
+        else:
+            metric_result = {}
+        return metric_result
 
 
 def create_flex_bert_rtd(
@@ -236,11 +284,11 @@ def create_flex_bert_rtd(
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = bert_layers_module.FlexBertForMaskedLM.from_composer(
+        model = bert_layers_module.FlexBertForReplacedTokenDetection.from_composer(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.FlexBertForMaskedLM(config)
+        model = bert_layers_module.FlexBertForReplacedTokenDetection(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
@@ -253,11 +301,13 @@ def create_flex_bert_rtd(
 
     metrics = [
         # vocab size no longer arg in composer
-        LanguageCrossEntropy(ignore_index=-100),
-        MaskedAccuracy(ignore_index=-100),
+        MLMCrossEntropy(ignore_index=-100),
+        MLMAccuracy(ignore_index=-100),
+        RTDCrossEntropy(ignore_index=-100),
+        RTDAccuracy(ignore_index=-100),
     ]
 
-    hf_model = HuggingFaceModel(
+    hf_model = RTDModel(
         model=model,
         tokenizer=tokenizer,
         use_logits=True,
@@ -390,18 +440,14 @@ def create_flex_bert_classification(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = model_cls.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config
-        )
+        model = model_cls.from_composer(pretrained_checkpoint=pretrained_checkpoint, config=config)
     else:
         model = model_cls(config)
 
