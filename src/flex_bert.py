@@ -15,17 +15,17 @@ from typing import Optional
 # Add src folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
-from omegaconf import DictConfig, OmegaConf
-
 import bert_layers as bert_layers_module
-import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
+from omegaconf import DictConfig, OmegaConf
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification.accuracy import MulticlassAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
+
+import src.bert_layers.configuration_bert as configuration_bert_module
 
 all = ["create_flex_bert_mlm", "create_flex_bert_classification"]
 
@@ -104,9 +104,7 @@ def create_flex_bert_mlm(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     if "prenorm" in config.bert_layer:
         assert config.final_norm, "Final norm must be used with prenorm attention"
@@ -164,6 +162,7 @@ def create_flex_bert_classification(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    custom_eval_metrics: Optional[list] = [],
     multiple_choice: Optional[bool] = False,
 ):
     """FlexBERT classification model based on |:hugging_face:| Transformers.
@@ -189,6 +188,7 @@ def create_flex_bert_classification(
             initialize the model weights. If provided,
             the state dictionary stored at `pretrained_checkpoint` will be
             loaded into the model after initialization. Default: ``None``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to evaluate the model. Default: ``[]``.
         multiple_choice (bool, optional): Whether the model is used for
             multiple choice tasks. Default: ``False``.
 
@@ -270,18 +270,14 @@ def create_flex_bert_classification(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = model_cls.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config
-        )
+        model = model_cls.from_composer(pretrained_checkpoint=pretrained_checkpoint, config=config)
     else:
         model = model_cls(config)
 
@@ -311,6 +307,10 @@ def create_flex_bert_classification(
         tokenizer=tokenizer,
         use_logits=True,
         metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
+        ],
         allow_embedding_resizing=model.config.allow_embedding_resizing,
     )
 
