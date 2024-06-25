@@ -12,17 +12,17 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import evaluate
 import torch
 import torchmetrics
-
 from composer import ComposerModel
 from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
+
 from src.evals.data import create_superglue_dataset
 from src.evals.finetuning_jobs import (
+    ClassificationJob,
     build_dataloader,
     multiple_choice_collate_fn,
-    ClassificationJob,
 )
 
 
@@ -85,14 +85,11 @@ class BoolQJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        boolq_eval_dataset = create_superglue_dataset(
-            split="validation", **dataset_kwargs
-        )
+        boolq_eval_dataset = create_superglue_dataset(split="validation", **dataset_kwargs)
         boolq_evaluator = Evaluator(
             label="superglue_boolq",
             dataloader=build_dataloader(boolq_eval_dataset, **dataloader_kwargs),
@@ -102,7 +99,6 @@ class BoolQJob(ClassificationJob):
 
 
 class CBMetric(torchmetrics.Metric):
-
     def __init__(self):
         super().__init__()
         self.hf_metric = evaluate.load("super_glue", "cb")
@@ -177,7 +173,6 @@ class CBJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
@@ -245,10 +240,7 @@ class COPAJob(ClassificationJob):
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
                 first_sentences = [[context] * 2 for context in inp["premise"]]
-                second_sentences = [
-                    [inp["choice1"][i], inp["choice2"][i]]
-                    for i in range(len(inp["choice1"]))
-                ]
+                second_sentences = [[inp["choice1"][i], inp["choice2"][i]] for i in range(len(inp["choice1"]))]
 
                 first_sentences = sum(first_sentences, [])
                 second_sentences = sum(second_sentences, [])
@@ -261,10 +253,7 @@ class COPAJob(ClassificationJob):
                     truncation=True,
                 )
 
-                return {
-                    k: [v[i : i + 2] for i in range(0, len(v), 2)]
-                    for k, v in tokenized_examples.items()
-                }
+                return {k: [v[i : i + 2] for i in range(0, len(v), 2)] for k, v in tokenized_examples.items()}
 
             return tokenize_fn
 
@@ -279,15 +268,12 @@ class COPAJob(ClassificationJob):
             "batch_size": self.batch_size,
             "collate_fn": multiple_choice_collate_fn,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
 
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        copa_eval_dataset = create_superglue_dataset(
-            split="validation", **dataset_kwargs
-        )
+        copa_eval_dataset = create_superglue_dataset(split="validation", **dataset_kwargs)
         copa_evaluator = Evaluator(
             label="superglue_copa",
             dataloader=build_dataloader(copa_eval_dataset, **dataloader_kwargs),
@@ -386,10 +372,7 @@ class MultiRCJob(ClassificationJob):
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
                 return tokenizer(
-                    text=[
-                        f"{inp['paragraph'][i]} {inp['question'][i]}"
-                        for i in range(len(inp["paragraph"]))
-                    ],
+                    text=[f"{inp['paragraph'][i]} {inp['question'][i]}" for i in range(len(inp["paragraph"]))],
                     text_pair=inp["answer"],
                     padding="max_length",
                     max_length=max_seq_length,
@@ -429,15 +412,12 @@ class MultiRCJob(ClassificationJob):
             "batch_size": self.batch_size,
             "collate_fn": collate_fn,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
 
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        multirc_eval_dataset = create_superglue_dataset(
-            split="validation", **dataset_kwargs
-        )
+        multirc_eval_dataset = create_superglue_dataset(split="validation", **dataset_kwargs)
         multirc_evaluator = Evaluator(
             label="superglue_multirc",
             dataloader=build_dataloader(multirc_eval_dataset, **dataloader_kwargs),
@@ -505,14 +485,11 @@ class WiCJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_superglue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        wic_eval_dataset = create_superglue_dataset(
-            split="validation", **dataset_kwargs
-        )
+        wic_eval_dataset = create_superglue_dataset(split="validation", **dataset_kwargs)
         wic_evaluator = Evaluator(
             label="superglue_wic",
             dataloader=build_dataloader(wic_eval_dataset, **dataloader_kwargs),

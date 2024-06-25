@@ -14,8 +14,9 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
+
 from src.evals.data import create_glue_dataset
-from src.evals.finetuning_jobs import build_dataloader, ClassificationJob
+from src.evals.finetuning_jobs import ClassificationJob, build_dataloader
 
 
 class MNLIJob(ClassificationJob):
@@ -77,17 +78,12 @@ class MNLIJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        mnli_eval_dataset = create_glue_dataset(
-            split="validation_matched", **dataset_kwargs
-        )
-        mnli_eval_mismatched_dataset = create_glue_dataset(
-            split="validation_mismatched", **dataset_kwargs
-        )
+        mnli_eval_dataset = create_glue_dataset(split="validation_matched", **dataset_kwargs)
+        mnli_eval_mismatched_dataset = create_glue_dataset(split="validation_mismatched", **dataset_kwargs)
         mnli_evaluator = Evaluator(
             label="glue_mnli",
             dataloader=build_dataloader(mnli_eval_dataset, **dataloader_kwargs),
@@ -95,9 +91,7 @@ class MNLIJob(ClassificationJob):
         )
         mnli_evaluator_mismatched = Evaluator(
             label="glue_mnli_mismatched",
-            dataloader=build_dataloader(
-                mnli_eval_mismatched_dataset, **dataloader_kwargs
-            ),
+            dataloader=build_dataloader(mnli_eval_mismatched_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [mnli_evaluator, mnli_evaluator_mismatched]
@@ -162,7 +156,6 @@ class RTEJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -235,7 +228,6 @@ class QQPJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -308,7 +300,6 @@ class COLAJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -381,7 +372,6 @@ class MRPCJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -454,7 +444,6 @@ class QNLIJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -527,7 +516,6 @@ class SST2Job(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -600,7 +588,6 @@ class STSBJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
