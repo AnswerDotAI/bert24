@@ -1,0 +1,10 @@
+{"dataset": "orionweller/books_mds", "size": "1.4M", "instances": 55609}
+{"dataset": "orionweller/wikipedia_mds", "size": "1.1M", "instances": 6171220}
+{"dataset": "orionweller/wikipedia_mds", "size": "1.1M", "instances": 6171220}
+{"dataset": "orionweller/megawika_mds", "size": "2.9M", "instances": 3190607}
+{"dataset": "orionweller/cc_news_mds", "size": "2.6M", "instances": 11422317}
+{"dataset": "orionweller/algebraic-stack_mds", "size": "316K", "instances": 2831500}
+{"dataset": "orionweller/algebraic-stack_mds_incremental", "size": 10.383186603, "instances": 2831500}
+{"dataset": "orionweller/pes2o_mds_incremental", "size": 85.66189547, "instances": 38811179}
+{"dataset": "orionweller/starcoder_mds_incremental", "size": 194.149137075, "instances": 206640114}
+{"dataset": "orionweller/caselaw-access-project", "split_name": "train", "config_name": null, "size": 20.063021489, "instances": 6678483}

@@ -10,7 +10,7 @@ sources:
   - name: c4
     source_coefficient: 1
   - name: starcoder
-    source_coefficient: 1
+    source_coefficient: 0  # Remove code
   - name: reddit
     source_coefficient: 1
   - name: pes2o
@@ -20,19 +20,19 @@ sources:
   - name: wiki
     source_coefficient: 1
   - name: tulu_flan
-    source_coefficient: 50  # "sample_coefficients" in `dolma_mixtures.py` will be printed out to visualize what % of full dataset this is (2.27x).
-  - name: stackexchange
     source_coefficient: 1
+  - name: stackexchange
+    source_coefficient: 0
   - name: cc_news
     source_coefficient: 1
   - name: open_web_math_train
-    source_coefficient: 1
+    source_coefficient: 0   # Remove math
   - name: algebraic_stack_train
-    source_coefficient: 1
+    source_coefficient: 0  # Remove math
   - name: books
     source_coefficient: 1
   - name: megawika
     source_coefficient: 1
 source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
-hf_out_path: answerdotai/dolma_20bn_no_instruct
+hf_out_path: orionweller/dolma_20bn_no_math_code_v2

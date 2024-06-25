@@ -20,7 +20,7 @@ sources:
   - name: wiki
     source_coefficient: 1
   - name: tulu_flan
-    source_coefficient: 1
+    source_coefficient: 50  # "sample_coefficients" in `dolma_mixtures.py` will be printed out to visualize what % of full dataset this is (2.27x).
   - name: stackexchange
     source_coefficient: 1
   - name: cc_news
@@ -35,4 +35,4 @@ sources:
     source_coefficient: 1
 source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
-hf_out_path: answerdotai/dolma_20bn_stratified_sample
+hf_out_path: orionweller/dolma_20bn_instruct_upsample_v2

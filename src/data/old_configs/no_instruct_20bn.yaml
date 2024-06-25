@@ -20,7 +20,7 @@ sources:
   - name: wiki
     source_coefficient: 1
   - name: tulu_flan
-    source_coefficient: 1
+    source_coefficient: 0
   - name: stackexchange
     source_coefficient: 1
   - name: cc_news
@@ -32,7 +32,7 @@ sources:
   - name: books
     source_coefficient: 1
   - name: megawika
-    source_coefficient: 17  # Since we are downsampling by 15-20x, 17x relative coefficient will result in using ~ entire wikipedia.
+    source_coefficient: 1
 source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
-hf_out_path: answerdotai/dolma_20bn_wiki_upsample
+hf_out_path: orionweller/dolma_20bn_no_instruct_v2

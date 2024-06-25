@@ -10,7 +10,7 @@ sources:
   - name: c4
     source_coefficient: 1
   - name: starcoder
-    source_coefficient: 0  # Remove code
+    source_coefficient: 1
   - name: reddit
     source_coefficient: 1
   - name: pes2o
@@ -18,21 +18,21 @@ sources:
   - name: arxiv
     source_coefficient: 1
   - name: wiki
-    source_coefficient: 1
+    source_coefficient: 17 # Since we are downsampling by 15-20x, 17x relative coefficient will result in using ~ entire wikipedia.
   - name: tulu_flan
     source_coefficient: 1
   - name: stackexchange
-    source_coefficient: 0
+    source_coefficient: 1
   - name: cc_news
     source_coefficient: 1
   - name: open_web_math_train
-    source_coefficient: 0   # Remove math
+    source_coefficient: 1
   - name: algebraic_stack_train
-    source_coefficient: 0  # Remove math
+    source_coefficient: 1
   - name: books
     source_coefficient: 1
   - name: megawika
-    source_coefficient: 1
+    source_coefficient: 2  
 source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
-hf_out_path: answerdotai/dolma_20bn_no_math_code
+hf_out_path: orionweller/dolma_20bn_wiki_upsample_v2
