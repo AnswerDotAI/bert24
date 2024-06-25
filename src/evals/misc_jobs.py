@@ -14,11 +14,12 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
+
 from src.evals.data import create_swag_dataset
 from src.evals.finetuning_jobs import (
+    ClassificationJob,
     build_dataloader,
     multiple_choice_collate_fn,
-    ClassificationJob,
 )
 
 
@@ -79,8 +80,7 @@ class SWAGJob(ClassificationJob):
                 first_sentences = [[context] * 4 for context in inp["sent1"]]
                 question_headers = inp["sent2"]
                 second_sentences = [
-                    [f"{header} {inp[end][i]}" for end in ending_names]
-                    for i, header in enumerate(question_headers)
+                    [f"{header} {inp[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
                 ]
 
                 first_sentences = sum(first_sentences, [])
@@ -93,10 +93,7 @@ class SWAGJob(ClassificationJob):
                     max_length=max_seq_length,
                     truncation=True,
                 )
-                return {
-                    k: [v[i : i + 4] for i in range(0, len(v), 4)]
-                    for k, v in tokenized_examples.items()
-                }
+                return {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
 
             return tokenize_fn
 
@@ -110,7 +107,6 @@ class SWAGJob(ClassificationJob):
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": 0,
-            "shuffle": True,
             "drop_last": False,
         }
 
