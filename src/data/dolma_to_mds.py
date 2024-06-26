@@ -158,39 +158,39 @@ def sample_dolma(repo_name, debug, section):
 
     # for each folder, download it and save it in a temp directory
     with tempfile.TemporaryDirectory() as tmp_cache_dir:
-        # for folder in tqdm.tqdm(folders_in_dataset):
-        #     if folder not in ["README.md", "data"]:
-        #         try:
-        #             huggingface_hub.snapshot_download(repo_id=args.repo_name, allow_patterns=f"{folder}/index.json", repo_type="dataset", cache_dir=tmp_cache_dir)
-        #         except Exception as e:
-        #             print(f"Failed to download {folder} with error: {e}")
-        #             huggingface_hub.snapshot_download(repo_id=args.repo_name, allow_patterns=f"{folder}/index.json", repo_type="dataset", cache_dir=tmp_cache_dir)
+        for folder in tqdm.tqdm(folders_in_dataset):
+            if folder not in ["README.md", "data"]:
+                try:
+                    huggingface_hub.snapshot_download(repo_id=args.repo_name, allow_patterns=f"{folder}/index.json", repo_type="dataset", cache_dir=tmp_cache_dir)
+                except Exception as e:
+                    print(f"Failed to download {folder} with error: {e}")
+                    huggingface_hub.snapshot_download(repo_id=args.repo_name, allow_patterns=f"{folder}/index.json", repo_type="dataset", cache_dir=tmp_cache_dir)
 
 
-        # # locate the root of the MDS files with glob, which is the folder above the index.json files
-        # json_files = glob.glob(tmp_cache_dir + "/**/index.json", recursive=True)
-        # root_folders = set([os.path.dirname(os.path.dirname(json_file)) for json_file in json_files])
-        # assert len(root_folders) == 1, f"Expected one root folder, got {len(root_folders)}: {root_folders}"
-        # root_folder = root_folders.pop()
+        # locate the root of the MDS files with glob, which is the folder above the index.json files
+        json_files = glob.glob(tmp_cache_dir + "/**/index.json", recursive=True)
+        root_folders = set([os.path.dirname(os.path.dirname(json_file)) for json_file in json_files])
+        assert len(root_folders) == 1, f"Expected one root folder, got {len(root_folders)}: {root_folders}"
+        root_folder = root_folders.pop()
 
         # now we have all the folders in the temp directory, we can combine them
         # use Mosiac's `merge_index` to combine the indexes
         all_files = huggingface_hub.list_repo_tree(args.repo_name, repo_type="dataset", recursive=True)
         string_files = [item.path for item in all_files]
         json_files = [item for item in string_files if item.endswith("index.json") and item != "index.json"]
-        # if "index.json" not in string_files:
-        #     print(f"Merging at root folder: {root_folder}")
-        #     _merge_index_from_root(root_folder)
+        if "index.json" not in string_files:
+            print(f"Merging at root folder: {root_folder}")
+            _merge_index_from_root(root_folder)
 
-        #     # now push the new index.json file up to the hub
-        #     print(f"Uploading to {args.repo_name}")
-        #     api = huggingface_hub.HfApi()
-        #     api.upload_file(
-        #         path_or_fileobj=root_folder + "/index.json",
-        #         path_in_repo="index.json",
-        #         repo_id=args.repo_name,
-        #         repo_type="dataset",
-        #     )
+            # now push the new index.json file up to the hub
+            print(f"Uploading to {args.repo_name}")
+            api = huggingface_hub.HfApi()
+            api.upload_file(
+                path_or_fileobj=root_folder + "/index.json",
+                path_in_repo="index.json",
+                repo_id=args.repo_name,
+                repo_type="dataset",
+            )
 
         # now to not get confused, let's change the olds ones
         fs = HfFileSystem()
@@ -200,15 +200,6 @@ def sample_dolma(repo_name, debug, section):
         for json_file in tqdm.tqdm(json_files):
             last_two_dirs = "/".join(json_file.split("/")[-2:])
             fs.mv(f"{base_dir}/{last_two_dirs}", f"{base_dir}/{last_two_dirs.replace('index.json', 'index_old.json')}")      
-
-            
-        # download the root folder only
-        # huggingface_hub.snapshot_download(repo_id=args.repo_name, allow_patterns=f"index.json", repo_type="dataset", cache_dir=tmp_cache_dir)
-        # print(f"Getting details about the dataset")
-        # size_of_folder = fs.du(base_dir)
-        # dataset = StreamingDataset(local=root_folder, shuffle=False, split=None, batch_size=1)
-        # with open("dataset_info.jsonl", "a") as f:
-        #     f.write(json.dumps({"dataset": args.repo_name, "size": size_of_folder / 1e9, "instances": len(dataset)}) + "\n")
 
 
 
