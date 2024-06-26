@@ -15,6 +15,7 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.flex_bert as flex_bert_module
 import src.text_data as text_data_module
+from src.callbacks.scheduled_gc import ScheduledGarbageCollector
 from composer import Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
 from composer.loggers import WandBLogger
@@ -114,6 +115,8 @@ def build_callback(name, kwargs):
         return OptimizerMonitor(
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
         )
+    elif name == "scheduled_gc":
+        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 10000))
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
