@@ -25,7 +25,7 @@ from composer.optim.scheduler import (
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
-from src.scheduler import WarmupStableDecayScheduler
+from src.scheduler import WarmupStableDecayScheduler, CosineInverseSqrtScheduler
 from composer.utils import dist, reproducibility
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
@@ -133,7 +133,19 @@ def build_scheduler(cfg):
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "warmup_stable_decay":
-        return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
+        return WarmupStableDecayScheduler(
+            t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f, t_decay=cfg.get("t_decay", "0.1dur")
+        )
+    elif cfg.name == "cosine_inverse_sqrt":
+        return CosineInverseSqrtScheduler(
+            t_warmup=cfg.t_warmup,
+            t_cooldown=cfg.t_cooldown,
+            t_cosine=cfg.get("t_cosine", "0.25dur"),
+            alpha_f=cfg.alpha_f,
+            alpha_s=cfg.get("alpha_s", 0.0),
+            warmup_schedule=cfg.get("warmup_schedule", "linear"),
+            cooldown_schedule=cfg.get("cooldown_schedule", "linear"),
+        )
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
