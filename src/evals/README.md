@@ -57,3 +57,20 @@ Task                                              |
 EURLEX                                            | 72.30
 -------------------------------------------------------------
 ```
+
+## Ablation Evals
+
+For hf-bert:
+```bash
+python ablation_eval.py yamls/ablations/hf-bert-ablation-eval.yaml
+```
+
+For flex-bert:
+```bash
+python ablation_eval.py yamls/ablations/flex-bert-ablation-eval.yaml
+```
+
+For mosaic-bert:
+```bash
+python ablation_eval.py yamls/ablations/mosaic-bert-ablation-eval.yaml
+```
