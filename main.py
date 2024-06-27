@@ -95,6 +95,8 @@ def build_algorithm(name, kwargs):
         return algorithms.Alibi(**kwargs)
     elif name == "gated_linear_units":
         return algorithms.GatedLinearUnits(**kwargs)
+    elif name == "seq_warmup":
+        return algorithms.SeqLengthWarmup(**kwargs)
     else:
         raise ValueError(f"Not sure how to build algorithm: {name}")
 
