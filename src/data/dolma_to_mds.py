@@ -17,21 +17,15 @@ from datasets import load_dataset, Dataset, DatasetDict, interleave_datasets
 from streaming.base.util import _merge_index_from_root, merge_index
 from transformers import set_seed, AutoTokenizer
 from streaming import MDSWriter, StreamingDataset
-
 from huggingface_hub import HfFileSystem
 
 from dolma_urls import DOLMA_URLS
+from utils import MDS_COLS_TEXT
 
 
 set_seed(11111111)
 
 FILES_INFO = None
-
-columns = {
-        'text': 'str',
-        'id': 'str'
-        # we can ignore the other fields, they're not used in training
-}
 
 
 def folder_exists_in_huggingface_dataset(repo_name, folder_name):
@@ -126,7 +120,7 @@ def sample_dolma(repo_name, debug, section):
         # if there exists an index.json file skip this step
         if not os.path.exists(f"{split_name}/index.json"):
             print(f"Creating {split_name}")
-            with MDSWriter(out=split_name, columns=columns, compression='zstd') as train_writer:
+            with MDSWriter(out=split_name, columns=MDS_COLS_TEXT, compression='zstd') as train_writer:
                 # if we're sampling everything, just return the entire dataset
                 with open(sampled_dataset_path, "r") as fin:
                     for line in tqdm.tqdm(fin):

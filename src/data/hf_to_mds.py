@@ -17,21 +17,15 @@ from datasets import load_dataset, Dataset, DatasetDict, interleave_datasets
 from streaming.base.util import _merge_index_from_root, merge_index
 from transformers import set_seed, AutoTokenizer
 from streaming import MDSWriter, StreamingDataset
-
 from huggingface_hub import HfFileSystem
 
 from dolma_urls import DOLMA_URLS
+from utils import MDS_COLS_TEXT
 
 
 set_seed(11111111)
 
 FILES_INFO = None
-
-columns = {
-        'text': 'str',
-        'id': 'str'
-        # we can ignore the other fields, they're not used in training
-}
 
 
 
@@ -100,7 +94,7 @@ def sample_hf(upload_repo, repo_name, split_name, config_name):
         tmp_cache_dir = f"{repo_name.replace('/', '-')}---{split_name_dirsafe}---{config_name_dirsafe}"
         if not os.path.isfile(os.path.join(tmp_cache_dir, "index.json")):
             print(f"Writing to MDS...")
-            with MDSWriter(out=tmp_cache_dir, columns=columns, compression='zstd') as train_writer:
+            with MDSWriter(out=tmp_cache_dir, columns=MDS_COLS_TEXT, compression='zstd') as train_writer:
                 for item in tqdm.tqdm(dataset):
                     train_writer.write(item)
 
