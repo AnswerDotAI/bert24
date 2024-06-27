@@ -112,10 +112,12 @@ global_train_batch_size: 4096
 
 # System
 seed: 17
-device_eval_batch_size: 128
 device_train_microbatch_size: 128
 # device_train_microbatch_size: auto
 precision: amp_bf16
+
+global_eval_batch_size: 256
+device_eval_batch_size: 64
 
 # Logging
 progress_bar: false
