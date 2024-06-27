@@ -33,6 +33,4 @@ sources:
     source_coefficient: 1
   - name: megawika
     source_coefficient: 1
-source_coefficient_type: relative_proportion
 target_tokens: 20000000000 # 20bn
-hf_out_path: orionweller/dolma_20bn_no_math_code_v2

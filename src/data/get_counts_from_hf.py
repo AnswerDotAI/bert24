@@ -19,7 +19,7 @@ from transformers import set_seed, AutoTokenizer
 from streaming import MDSWriter, StreamingDataset
 
 from huggingface_hub import HfFileSystem
-from utils import ALL_REPOS
+from data_utils import ALL_REPOS
 
 
 def get_counts_for_repo(repo, args):

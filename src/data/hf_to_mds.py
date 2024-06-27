@@ -20,7 +20,7 @@ from streaming import MDSWriter, StreamingDataset
 from huggingface_hub import HfFileSystem
 
 from dolma_urls import DOLMA_URLS
-from utils import MDS_COLS_TEXT
+from data_utils import MDS_COLS_TEXT
 
 
 set_seed(11111111)

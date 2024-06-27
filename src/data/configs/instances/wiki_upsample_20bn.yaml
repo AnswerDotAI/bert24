@@ -1,0 +1,36 @@
+sources:
+- name: cc_en_middle
+  num_instances: 3794864
+- name: falcon
+  num_instances: 5861386
+- name: cc_en_tail
+  num_instances: 975072
+- name: cc_en_head
+  num_instances: 2618639
+- name: c4
+  num_instances: 2463970
+- name: starcoder
+  num_instances: 1501320
+- name: reddit
+  num_instances: 4178135
+- name: pes2o
+  num_instances: 2382202
+- name: arxiv
+  num_instances: 20734
+- name: wiki
+  num_instances: 1496908
+- name: tulu_flan
+  num_instances: 446424
+- name: stackexchange
+  num_instances: 467399
+- name: cc_news
+  num_instances: 138846
+- name: open_web_math_train
+  num_instances: 148691
+- name: algebraic_stack_train
+  num_instances: 8741
+- name: books
+  num_instances: 431
+- name: megawika
+  num_instances: 101114
+target_tokens: 20000000000

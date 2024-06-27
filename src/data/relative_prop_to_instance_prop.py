@@ -13,7 +13,6 @@ import pandas as pd
 import time
 from transformers import AutoTokenizer
 
-from source_stats import simple_splitter, main as compute_corpus_stats
 
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
@@ -32,7 +31,7 @@ def relative_to_instance(args):
 
     # contains `tokens_per_instance`, `instance_proportions`, and `num_instances` for each source
     existing_cts = pd.read_csv(args.dolma_ground_truth)
-    source2instances = dict(zip(existing_cts["source"], existing_cts["num_instances"]))
+    source2instances = dict(zip(existing_cts["sources"], existing_cts["num_instances"]))
 
     # get the scaled amount of instances we need, based on the token adjustment ratio
     # NOTE: appx, since the number of tokens per instance is appx
@@ -46,23 +45,23 @@ def relative_to_instance(args):
     print(f"Targeting {target_tokens} tokens with the following sampling fractions by source:")
     print("\n".join(f"\t- {k} -> {round(v, 4)}" for k, v in final_proportions.items()))
 
-    breakpoint()
     # make a new config file with the instance numbers instead
-
-    # write this out to the relative_configs folder that will be used for sampling (one dir up)
-    out_fn = Path(args.config).parent / "relative_configs" / args.config.name
-    out_fn.parent.mkdir(exist_ok=True)
+    # write this out to the instance config folder that will be used for sampling (one dir up)
+    out_fn = args.config.replace("relative", "instances")
+    # replace sources with the `final_proportions` dict
+    config["sources"] = [{"name": k, "num_instances": round(v)} for k, v in final_proportions.items()]
     with open(out_fn, 'w') as file:
         yaml.dump(config, file)
-
-    print(f"Written to {out_fn}")
-
+    print(f"New config file written to {out_fn}")
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--dolma_ground_truth", type=Path, required=True)
+    parser.add_argument("--dolma_ground_truth", type=str, default="statistics/dolma_ground_truth.csv")
     args = parser.parse_args()
 
     relative_to_instance(args)
+
+    # example usage:
+    #   python relative_prop_to_instance_prop.py --config configs/relative/stratified_20bn.yaml

@@ -11,7 +11,7 @@ import datasets
 from streaming import StreamingDataset
 
 from hf_to_mds import push_to_hub_incrementally
-from utils import SOURCE_MAP, MDS_COLS_TOKENIZED, MDS_COLS_TEXT
+from data_utils import SOURCE_MAP, MDS_COLS_TOKENIZED, MDS_COLS_TEXT
 
 set_seed(123456789)
 
@@ -77,7 +77,7 @@ def sample_dataset_from_config(args):
 
                 source_hf_repo = SOURCE_MAP[source_name]
                 remote = f'hf://datasets/{source_hf_repo}/'
-                dataset = StreamingDataset(remote=remote, shuffle=True, split=None, batch_size=1)
+                dataset = StreamingDataset(remote=remote, shuffle=True, split=None, batch_size=1, cache_limit="50GB")
 
                 for idx, instance in tqdm.tqdm(dataset):
                     if args.debug and idx > 100:
@@ -135,3 +135,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sample_dataset_from_config(args)
+
+    # example usage:
+    #   python sample_dataset_from_config.py -c configs/instances/stratified_20bn.yaml -d
