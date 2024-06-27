@@ -461,7 +461,8 @@ def train(config: om.DictConfig) -> None:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    round_1_task_names = {"mnli", "eurlex"}
+    # round_1_task_names = {"mnli", "eurlex"}
+    round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
 
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path
@@ -490,7 +491,7 @@ def train(config: om.DictConfig) -> None:
 
     # Builds round 2 configs and runs them
     round_2_task_names = {
-        "mnli": {"boolq", "wic"},
+        # "mnli": {"boolq", "wic"},
     }
     round_2_job_configs = []
     for dependent_task_name in round_2_task_names:
