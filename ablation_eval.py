@@ -248,15 +248,17 @@ def create_job_configs(
                         logger_config["group"] = main_config.base_run_name
                     logger_config["name"] = run_name
 
-            if "model_config" not in main_config.model:
-                main_config.model.model_config = {}
-            main_config.model.model_config.update(task_config.get("model_config", {})) # update with task specific model config
+            model_kwargs = copy.deepcopy(main_config.model) # Create a copy of model config to avoid modifying the main_config
+            if "model_config" not in model_kwargs:
+                model_kwargs.model_config = {}
+            model_kwargs.model_config.update(task_config.get("model_config", {})) # update with task specific model config
+
             task_seed_config = om.OmegaConf.create(
                 {
                     "task": task_name,
                     "job_name": run_name,
                     "seed": task_seed,
-                    "model": main_config.model,
+                    "model": model_kwargs,
                     "tokenizer_name": main_config.tokenizer_name,
                     "scheduler": main_config.scheduler,
                     "load_path": pretrained_checkpoint_path,
@@ -461,8 +463,8 @@ def train(config: om.DictConfig) -> None:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    # round_1_task_names = {"mnli", "eurlex"}
-    round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
+    round_1_task_names = {"mnli", "eurlex"}
+    # round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
 
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path
@@ -491,7 +493,7 @@ def train(config: om.DictConfig) -> None:
 
     # Builds round 2 configs and runs them
     round_2_task_names = {
-        # "mnli": {"boolq", "wic"},
+        "mnli": {"boolq", "wic"},
     }
     round_2_job_configs = []
     for dependent_task_name in round_2_task_names:

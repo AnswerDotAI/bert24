@@ -150,7 +150,7 @@ class EurlexJob(ClassificationJob):
         eval_interval: str = "1600ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 512,
-        max_duration: Optional[str] = "3ep",
+        max_duration: Optional[str] = "4ep",
         batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
