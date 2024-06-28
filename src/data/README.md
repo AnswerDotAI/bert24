@@ -17,9 +17,5 @@ Thanks to the MDS format, it is simple and quick to get the number of instances 
 #### Calculating the tokens in a dataset
 We can gather the number of total tokens and the tokens per instance using `python source_stats.py`. This is still in progress.  
 
-
 ## Config format
 TODO: copy from old README
-
-## Statistics
-Various statistics can be found in the [statistics](path_to_stats) folder, such as the number of tokens per instance and size and instances numbers of the subsets.
