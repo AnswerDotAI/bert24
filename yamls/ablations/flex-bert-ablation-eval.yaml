@@ -53,8 +53,8 @@ model:
 
 # Loading
 # # (fill this in with the composer checkpoint from the end of pre-training a Mosaic BERT)
-# starting_checkpoint_load_path: latest-rank0.pt
-# local_pretrain_checkpoint_folder: ./checkpoints/512_flex-bert-base-uncased_dolma_rope_prenorm_layernorm_swiglu-1e3
+starting_checkpoint_load_path: latest-rank0.pt
+local_pretrain_checkpoint_folder: /home/shared/512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3
 
 # Saving
 save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
