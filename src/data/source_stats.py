@@ -1,45 +1,51 @@
 import argparse
 import huggingface_hub
 from collections import Counter
-from datasets import load_dataset
-from tqdm import tqdm
+from datasets import load_dataset, Dataset
+import tqdm
 import tempfile
 from pathlib import Path
 import multiprocessing
 import re
-
 import numpy as np
 import pandas as pd
 import math
 import json
+import os
+from transformers import AutoTokenizer
+from streaming import StreamingDataset
+from streaming.base.util import clean_stale_shared_memory
+
+from data_utils import ALL_REPOS, MDS_COLS_TEXT
 
 
-DOLMA_HF_EXCLUDE_KEYS = [".gitattributes", "README.md"]
-NUM_PROC = int(math.ceil(0.75 * multiprocessing.cpu_count()))
+NUM_PROC = int(math.ceil(0.35 * multiprocessing.cpu_count()))
 
+model_name = "gpt2"
 
-def simple_splitter(text: str) -> int:
-    return len(re.split(r"\W+", text))
+def main(out_fn, dataset_max_size):
+    tokenizer = AutoTokenizer.from_pretrained(model_name, fast=True)
 
+    # load all lines in out_fn
+    percentiles_out_path = str(out_fn).replace(".csv", ".jsonl")
+    cached_sources = set()
+    if os.path.exists(percentiles_out_path):
+        with open(str(out_fn).replace(".csv", ".jsonl"), "r") as f:
+            for line in f:
+                cached_sources.add(json.loads(line)["source"])
 
-def main(dolma_hf_path, tokenizer, out_fn):
-    data_dirs = list(map(lambda x: x.path, huggingface_hub.list_repo_tree(dolma_hf_path, repo_type="dataset")))
-    data_dirs = list(filter(lambda x: x not in DOLMA_HF_EXCLUDE_KEYS, data_dirs))
-
-    sources = Counter(["_".join(x.split("_")[:-1]) for x in data_dirs])
-
-    print(sources.most_common())
 
     percentiles = [1, 99] + list(range(0, 101, 5))
-    percentiles_out = open(str(out_fn).replace(".csv", ".jsonl"), "w")
     print(f"Saving source-level token count percentiles to {str(out_fn).replace('.csv', '.jsonl')}")
     stats = []
     tokens_for_source = []
-    prev_src = "_".join(data_dirs[0].split("_")[:-1])
-    for data_dir in tqdm(data_dirs):
-        source = "_".join(data_dir.split("_")[:-1])
-        print(f"Processing {source}... with data_dir {data_dir}")
+    current_repos_to_do = [item for item in ALL_REPOS if item.split("/")[-1] not in cached_sources]
+    prev_src = current_repos_to_do[0].split("/")[-1]
+    percentiles_out = open(percentiles_out_path, "a")
 
+    for data_dir in tqdm.tqdm(current_repos_to_do):
+        source = data_dir.split("/")[-1]
+        print(f"Processing {source}... with data_dir {data_dir}")
         if source != prev_src:
             # add percentiles and reset
             tokens_np = np.array(tokens_for_source)
@@ -50,30 +56,53 @@ def main(dolma_hf_path, tokenizer, out_fn):
                 "percentiles": {p: v for p, v in zip(percentiles, percentile_stats_all)}
             }
             tokens_for_source = []
-            percentiles_out.write(json.dumps({prev_src: percentile_stats}) + "\n")
+            percentiles_out.write(json.dumps({prev_src: percentile_stats, "source": prev_src}) + "\n")
             percentiles_out.flush()
     
         prev_src = source
 
         with tempfile.TemporaryDirectory() as tmp_cache_dir:
-            dataset = load_dataset(dolma_hf_path, data_dir=data_dir, split="train", cache_dir=tmp_cache_dir)
+            remote = f'hf://datasets/orionweller/{source}/'
+            token_lens = []
+            pool = []
+            clean_stale_shared_memory()
+            for idx, instance in tqdm.tqdm(enumerate(StreamingDataset(remote=remote, shuffle=False, split=None, batch_size=1, predownload=dataset_max_size))):
+                pool.append(instance)
+                if idx > dataset_max_size:
+                    break
+                if len(pool) > 1000:
+                    hf_dataset = Dataset.from_list(pool)
+                    try:
+                        tokens = hf_dataset.map(
+                            lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
+                            num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
+                        )["num_tokens"]
+                    except Exception as e:
+                        print(f"Error processing {source} at idx {idx}")
+                        print(e)
+                        tokens = hf_dataset.map(
+                            lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
+                            num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
+                        )["num_tokens"]
+                    token_lens.extend([len(item["input_ids"]) for item in tokens])
+                    hf_dataset.cleanup_cache_files()
+                    pool = []
 
-            # Return all column names in dataset
-            remove_columns = dataset.column_names
-
-            tokens = dataset.map(
+            hf_dataset = Dataset.from_list(pool)
+            tokens = hf_dataset.map(
                 lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
-                num_proc=NUM_PROC, remove_columns=remove_columns
+                num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
             )["num_tokens"]
-            tokens_for_source.extend(tokens)
+            token_lens.extend([len(item["input_ids"]) for item in tokens])
+
+            tokens_for_source.extend(token_lens)
 
             # This is overkill, but just in case
-            dataset.cleanup_cache_files()
+            hf_dataset.cleanup_cache_files()
 
             stats.append({
                 "source": source,
-                "num_tokens": sum(tokens),
-                "shards": 1,
+                "num_tokens": sum(token_lens)
             })
 
     # do the percentile calculation for the last source also
@@ -103,12 +132,12 @@ def main(dolma_hf_path, tokenizer, out_fn):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Measure Dolma token count per data source.")
-
-    parser.add_argument("--dolma_hf_path", type=str, default="orionweller/dolma_20_percent_sample", help="Path to Dolma data on HF.")
-    parser.add_argument("--tokenizer", type=callable, default=simple_splitter, help="Tokenizer function to use.")
-    parser.add_argument("--out_fn", type=Path, default=Path(__file__).resolve().parent / "source_stats.csv", help="Output file for source stats.")
-
+    parser = argparse.ArgumentParser(description="Measure token count per data source.")
+    parser.add_argument("--out_fn", type=Path, default=Path(__file__).resolve().parent / "statistics" / "source_stats.csv", help="Output file for source stats.")
+    parser.add_argument("--dataset_max_size", type=int, default=100000, help="Maximum number of instances to load at once.")
     args = parser.parse_args()
     
-    main(args.dolma_hf_path, args.tokenizer, args.out_fn)
+    main(args.out_fn, args.dataset_max_size)
+
+    # example usage:
+    #   python source_stats.py --dataset_max_size 100000
