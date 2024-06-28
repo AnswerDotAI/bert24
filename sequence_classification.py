@@ -59,7 +59,10 @@ def update_batch_size_info(cfg: DictConfig):
         else:
             cfg.device_eval_microbatch_size = cfg.device_train_microbatch_size
 
-    global_eval_batch_size, device_eval_microbatch_size = cfg.global_eval_batch_size, cfg.device_eval_microbatch_size
+    global_eval_batch_size, device_eval_microbatch_size = (
+        cfg.get("global_eval_batch_size", global_batch_size),
+        cfg.device_eval_microbatch_size,
+    )
     device_eval_batch_size = global_eval_batch_size // dist.get_world_size()
     if isinstance(device_eval_microbatch_size, int):
         if device_eval_microbatch_size > device_eval_microbatch_size:
