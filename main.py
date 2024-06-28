@@ -27,6 +27,7 @@ from composer.optim.scheduler import (
     LinearWithWarmupScheduler,
 )
 from src.scheduler import WarmupStableDecayScheduler, CosineInverseSqrtScheduler
+from src.trainer import CustomTrainer
 from composer.utils import dist, reproducibility
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
@@ -284,11 +285,15 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
 
     algorithms = [build_algorithm(name, algorithm_cfg) for name, algorithm_cfg in cfg.get("algorithms", {}).items()]
 
+    # Batch rampup
+    inital_global_train_batch_size = cfg.get("inital_global_train_batch_size", None)
+    initial_per_device_train_batch_size = inital_global_train_batch_size // dist.get_world_size() if inital_global_train_batch_size else None
+
     if cfg.get("run_name") is None:
         cfg.run_name = os.environ.get("COMPOSER_RUN_NAME", "bert")
 
     # Build the Trainer
-    trainer = Trainer(
+    trainer = CustomTrainer(
         run_name=cfg.run_name,
         seed=cfg.seed,
         model=model,
@@ -319,6 +324,8 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         autoresume=cfg.get("autoresume", None),
         fsdp_config=cfg.get("fsdp_config", None),
         compile_config=cfg.get("compile_config", None),
+        batch_rampup=cfg.get("batch_rampup", None),
+        initial_per_device_train_batch_size=initial_per_device_train_batch_size,
     )
 
     print("Logging config...")
