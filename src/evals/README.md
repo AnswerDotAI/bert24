@@ -77,28 +77,15 @@ python ablation_eval.py yamls/ablations/mosaic-bert-ablation-eval.yaml
 
 ## Results
 
-**flex-bert random init**
-```
------------------------------------------------------------------------------------------------------------------
-Job                                               | Dataset                  | Metric                     |
------------------------------------------------------------------------------------------------------------------
-MNLI(seed=23)                                     | glue_mnli_mismatched     | MulticlassAccuracy         | 63.80
-EURLEX(seed=23)                                   | long_context_eurlex      | EurlexMultilabelF1Score    | 64.01
-BOOLQ(seed=23)                                    | superglue_boolq          | MulticlassAccuracy         | 64.13
-WIC(seed=23)                                      | superglue_wic            | MulticlassAccuracy         | 55.64
------------------------------------------------------------------------------------------------------------------
-```
-
-
 **flex-bert pre-trained (512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3)**
 ```
 -----------------------------------------------------------------------------------------------------------------
 Job                                               | Dataset                  | Metric                     |
 -----------------------------------------------------------------------------------------------------------------
-MNLI(seed=23)                                     | glue_mnli_mismatched     | MulticlassAccuracy         | 76.47
-EURLEX(seed=23)                                   | long_context_eurlex      | EurlexMultilabelF1Score    | 67.66
-BOOLQ(seed=23)                                    | superglue_boolq          | MulticlassAccuracy         | 72.45
-WIC(seed=23)                                      | superglue_wic            | MulticlassAccuracy         | 64.73
+MNLI(seed=23)                                     | glue_mnli_mismatched     | MulticlassAccuracy         | 84.53
+EURLEX(seed=23)                                   | long_context_eurlex      | EurlexMultilabelF1Score    | 71.85
+BOOLQ(seed=23)                                    | superglue_boolq          | MulticlassAccuracy         | 78.35
+WIC(seed=23)                                      | superglue_wic            | MulticlassAccuracy         | 65.99
 -----------------------------------------------------------------------------------------------------------------
 ```
 

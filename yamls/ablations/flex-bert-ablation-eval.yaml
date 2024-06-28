@@ -24,10 +24,10 @@ model:
     attn_out_dropout_prob: 0.0
     attn_qkv_bias: false
     use_fa2: True
-    bert_layer: prenorm
+    bert_layer: postnorm # prenorm
     embed_dropout_prob: 0.0
-    embed_norm: false
-    final_norm: true
+    embed_norm: true # false
+    final_norm: false # true
     embedding_layer: sans_pos
     loss_function: cross_entropy
     loss_kwargs:
@@ -39,9 +39,9 @@ model:
     normalization: layernorm
     norm_kwargs:
       eps: 1e-6
-    hidden_act: silu
-    head_pred_act: silu
-    activation_function: silu # better safe than sorry
+    hidden_act: gelu
+    head_pred_act: gelu
+    activation_function: gelu # silu # better safe than sorry
     padding: unpadded
     sparse_prediction: false
     rotary_emb_dim: null # will be set to headdim by default
