@@ -17,8 +17,7 @@ from transformers import AutoTokenizer
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
 
-
-DOLMA_TOTAL_TOKENS = 1715100000000 # 1.715 Trillion tokens
+TOTAL_TOKENS = 1000000000
 
 
 def relative_to_instance(args):
@@ -27,10 +26,10 @@ def relative_to_instance(args):
         config = yaml.safe_load(file)
     
     target_tokens = config["target_tokens"]
-    token_adjustment_ratio = target_tokens / DOLMA_TOTAL_TOKENS
+    token_adjustment_ratio = target_tokens / TOTAL_TOKENS
 
     # contains `tokens_per_instance`, `instance_proportions`, and `num_instances` for each source
-    existing_cts = pd.read_csv(args.dolma_ground_truth)
+    existing_cts = pd.read_csv(args.ground_truth)
     source2instances = dict(zip(existing_cts["sources"], existing_cts["num_instances"]))
 
     # get the scaled amount of instances we need, based on the token adjustment ratio
@@ -58,7 +57,7 @@ def relative_to_instance(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--dolma_ground_truth", type=str, default="statistics/dolma_ground_truth.csv")
+    parser.add_argument("--ground_truth", type=str, default="statistics/ground_truth.csv")
     args = parser.parse_args()
 
     relative_to_instance(args)

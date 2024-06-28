@@ -126,5 +126,4 @@ if __name__ == "__main__":
     sample_hf(args.upload_repo, args.repo_name, args.repo_split, args.repo_config)
 
     # example usage:
-    #   python hf_to_mds.py -r HuggingFaceFW/fineweb-edu -c sample-10BT -s train -u orionweller/fineweb-edu-10B 
-    #   python hf_to_mds.py -r TeraflopAI/Caselaw_Access_Project -s train -u orionweller/caselaw-access-project
+    #   python hf_to_mds.py -r HF_DATASET -c CONFIG -s SPLIT -u HF_SAVE_PATH 

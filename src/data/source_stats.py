@@ -19,11 +19,12 @@ from streaming.base.util import clean_stale_shared_memory
 from data_utils import ALL_REPOS, MDS_COLS_TEXT
 
 
-NUM_PROC = int(math.ceil(0.75 * multiprocessing.cpu_count()))
+NUM_PROC = int(math.ceil(0.35 * multiprocessing.cpu_count()))
 
+model_name = "gpt2"
 
 def main(out_fn, dataset_max_size):
-    tokenizer = AutoTokenizer.from_pretrained("allenai/OLMo-7B-hf")
+    tokenizer = AutoTokenizer.from_pretrained(model_name, fast=True)
 
     # load all lines in out_fn
     percentiles_out_path = str(out_fn).replace(".csv", ".jsonl")
@@ -62,20 +63,38 @@ def main(out_fn, dataset_max_size):
 
         with tempfile.TemporaryDirectory() as tmp_cache_dir:
             remote = f'hf://datasets/orionweller/{source}/'
-            all_data = []
-            for idx, instance in tqdm.tqdm(enumerate(StreamingDataset(remote=remote, shuffle=False, split=None, batch_size=1, cache_limit="1GB"))):
-                all_data.append(instance)
+            token_lens = []
+            pool = []
+            clean_stale_shared_memory()
+            for idx, instance in tqdm.tqdm(enumerate(StreamingDataset(remote=remote, shuffle=False, split=None, batch_size=1, predownload=dataset_max_size))):
+                pool.append(instance)
                 if idx > dataset_max_size:
                     break
-            clean_stale_shared_memory()
-            hf_dataset = Dataset.from_list(all_data)
-            
-            # Return all column names in dataset
+                if len(pool) > 1000:
+                    hf_dataset = Dataset.from_list(pool)
+                    try:
+                        tokens = hf_dataset.map(
+                            lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
+                            num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
+                        )["num_tokens"]
+                    except Exception as e:
+                        print(f"Error processing {source} at idx {idx}")
+                        print(e)
+                        tokens = hf_dataset.map(
+                            lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
+                            num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
+                        )["num_tokens"]
+                    token_lens.extend([len(item["input_ids"]) for item in tokens])
+                    hf_dataset.cleanup_cache_files()
+                    pool = []
+
+            hf_dataset = Dataset.from_list(pool)
             tokens = hf_dataset.map(
                 lambda row: {"num_tokens": tokenizer(row["text"]), "batched": True},
                 num_proc=NUM_PROC, remove_columns=MDS_COLS_TEXT.keys()
             )["num_tokens"]
-            token_lens = [len(item["input_ids"]) for item in tokens]
+            token_lens.extend([len(item["input_ids"]) for item in tokens])
+
             tokens_for_source.extend(token_lens)
 
             # This is overkill, but just in case
