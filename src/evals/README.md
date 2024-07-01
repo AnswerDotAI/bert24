@@ -57,3 +57,48 @@ Task                                              |
 EURLEX                                            | 72.30
 -------------------------------------------------------------
 ```
+
+## Ablation Evals
+
+For hf-bert:
+```bash
+python ablation_eval.py yamls/ablations/hf-bert-ablation-eval.yaml
+```
+
+For flex-bert:
+```bash
+python ablation_eval.py yamls/ablations/flex-bert-ablation-eval.yaml
+```
+
+For mosaic-bert:
+```bash
+python ablation_eval.py yamls/ablations/mosaic-bert-ablation-eval.yaml
+```
+
+## Results
+
+**flex-bert pre-trained (512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3)**
+```
+-----------------------------------------------------------------------------------------------------------------
+Job                                               | Dataset                  | Metric                     |
+-----------------------------------------------------------------------------------------------------------------
+MNLI(seed=23)                                     | glue_mnli_mismatched     | MulticlassAccuracy         | 84.53
+EURLEX(seed=23)                                   | long_context_eurlex      | EurlexMultilabelF1Score    | 71.85
+BOOLQ(seed=23)                                    | superglue_boolq          | MulticlassAccuracy         | 78.35
+WIC(seed=23)                                      | superglue_wic            | MulticlassAccuracy         | 65.99
+-----------------------------------------------------------------------------------------------------------------
+```
+
+**hf-bert**
+```
+-----------------------------------------------------------------------------------------------------------------
+Job                                               | Dataset                  | Metric                     |
+-----------------------------------------------------------------------------------------------------------------
+MNLI(seed=23)                                     | glue_mnli_mismatched     | MulticlassAccuracy         | 85.24
+EURLEX(seed=23)                                   | long_context_eurlex      | EurlexMultilabelF1Score    | 70.29
+BOOLQ(seed=23)                                    | superglue_boolq          | MulticlassAccuracy         | 79.66
+WIC(seed=23)                                      | superglue_wic            | MulticlassAccuracy         | 65.67
+-----------------------------------------------------------------------------------------------------------------
+```
+
+WIC & BoolQ runs use the MNLI fine-tuned checkpoints.

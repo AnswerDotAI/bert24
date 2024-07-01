@@ -23,7 +23,7 @@ import transformers
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
 from torchmetrics import MeanSquaredError
-from torchmetrics.classification.accuracy import MulticlassAccuracy
+from torchmetrics.classification.accuracy import MulticlassAccuracy, MultilabelAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
 
@@ -312,6 +312,11 @@ def create_flex_bert_classification(
         ]
         if num_labels == 2:
             metrics.append(BinaryF1Score())
+    
+    if model_config.get('problem_type', '') == 'multi_label_classification':
+        metrics = [
+            MultilabelAccuracy(num_labels=num_labels, average="micro"),
+        ]
 
     hf_model = HuggingFaceModel(
         model=model,
