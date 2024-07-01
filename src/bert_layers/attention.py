@@ -546,8 +546,8 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
         self.p_dropout = config.attention_probs_dropout_prob
-        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size)
-        self.Wo = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size, bias=config.attn_qkv_bias)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
@@ -810,8 +810,8 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
         self.p_dropout = config.attention_probs_dropout_prob
-        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size)
-        self.Wo = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Wqkv = nn.Linear(config.hidden_size, 3 * self.all_head_size, bias=config.attn_qkv_bias)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
@@ -1080,7 +1080,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
         self.p_dropout = config.attention_probs_dropout_prob
-        self.Wo = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
@@ -1195,7 +1195,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
         self.p_dropout = config.attention_probs_dropout_prob
-        self.Wo = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Wo = nn.Linear(config.hidden_size, config.hidden_size, bias=config.attn_out_bias)
         self.out_drop = (
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
