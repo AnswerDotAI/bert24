@@ -3,33 +3,35 @@
 
 import os
 import sys
-from typing import Optional, cast
 import warnings
+from typing import Optional, cast
 
 from torch import nn
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
-import src.hf_bert as hf_bert_module
-import src.mosaic_bert as mosaic_bert_module
-import src.flex_bert as flex_bert_module
-import src.text_data as text_data_module
-from src.callbacks.scheduled_gc import ScheduledGarbageCollector
-from composer import Trainer, algorithms, Evaluator
+from composer import Evaluator, Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
+from composer.core import DataSpec
 from composer.loggers import WandBLogger
 from composer.optim import DecoupledAdamW
-from torch.optim import AdamW
 from composer.optim.scheduler import (
     ConstantWithWarmupScheduler,
     CosineAnnealingWithWarmupScheduler,
     LinearWithWarmupScheduler,
 )
-from src.scheduler import WarmupStableDecayScheduler, CosineInverseSqrtScheduler
 from composer.utils import dist, reproducibility
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
+from torch.optim import AdamW
+
+import src.flex_bert as flex_bert_module
+import src.hf_bert as hf_bert_module
+import src.mosaic_bert as mosaic_bert_module
+import src.text_data as text_data_module
+from src.callbacks.scheduled_gc import ScheduledGarbageCollector
+from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -212,6 +214,10 @@ def build_optimizer(cfg, model):
         raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
 
 
+def get_num_tokens_in_batch_unpadded(batch: dict):
+    return batch["attention_mask"].sum().item()
+
+
 def build_dataloader(cfg, tokenizer, device_batch_size):
     if cfg.name == "text":
         return text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
@@ -269,6 +275,8 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         model.tokenizer,
         cfg.global_train_batch_size // dist.get_world_size(),
     )
+    if cfg.model.model_config.get("padding", None) == "unpadded":
+        train_loader = DataSpec(train_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
     print("Building eval loader...")
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
     eval_loader = build_dataloader(
