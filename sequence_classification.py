@@ -15,7 +15,7 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.flex_bert as flex_bert_module
 import transformers
-from composer import Trainer, algorithms
+from composer import Trainer, algorithms, Evaluator
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
 from composer.core.types import Dataset
 from composer.loggers import WandBLogger
@@ -51,12 +51,28 @@ def update_batch_size_info(cfg: DictConfig):
     cfg.n_gpus = dist.get_world_size()
     cfg.device_train_batch_size = device_train_batch_size
     cfg.device_train_microbatch_size = device_microbatch_size
-    # Safely set `device_eval_batch_size` if not provided by user
-    if "device_eval_batch_size" not in cfg:
+
+    # Safely set `device_eval_microbatch_size` if not provided by user
+    if "device_eval_microbatch_size" not in cfg:
         if cfg.device_train_microbatch_size == "auto":
-            cfg.device_eval_batch_size = 1
+            cfg.device_eval_microbatch_size = 1
         else:
-            cfg.device_eval_batch_size = cfg.device_train_microbatch_size
+            cfg.device_eval_microbatch_size = cfg.device_train_microbatch_size
+
+    global_eval_batch_size, device_eval_microbatch_size = (
+        cfg.get("global_eval_batch_size", global_batch_size),
+        cfg.device_eval_microbatch_size,
+    )
+    device_eval_batch_size = global_eval_batch_size // dist.get_world_size()
+    if isinstance(device_eval_microbatch_size, int):
+        if device_eval_microbatch_size > device_eval_microbatch_size:
+            print(
+                f"WARNING: device_eval_microbatch_size > device_eval_batch_size, "
+                f"will be reduced from {device_eval_microbatch_size} -> {device_eval_batch_size}."
+            )
+            device_eval_microbatch_size = device_eval_batch_size
+    cfg.device_eval_batch_size = device_eval_batch_size
+    cfg.device_eval_microbatch_size = device_eval_microbatch_size
     return cfg
 
 
@@ -248,7 +264,12 @@ def train(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) 
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
     eval_loader = build_my_dataloader(
         cfg.eval_loader,
-        global_eval_batch_size // dist.get_world_size(),
+        cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
+    )
+    eval_evaluator = Evaluator(
+        label="eval",
+        dataloader=eval_loader,
+        device_eval_microbatch_size=cfg.get("device_eval_microbatch_size", None),
     )
 
     # Optimizer
@@ -276,7 +297,7 @@ def train(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) 
         model=model,
         algorithms=algorithms,
         train_dataloader=train_loader,
-        eval_dataloader=eval_loader,
+        eval_dataloader=eval_evaluator,
         train_subset_num_batches=cfg.get("train_subset_num_batches", -1),
         eval_subset_num_batches=cfg.get("eval_subset_num_batches", -1),
         optimizers=optimizer,

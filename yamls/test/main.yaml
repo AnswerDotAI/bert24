@@ -68,10 +68,11 @@ max_duration: 10ba
 eval_interval: 10ba
 eval_subset_num_batches: 20 # For code testing, evaluate on a subset of 20 batches
 global_train_batch_size: 16
+global_eval_batch_size: 16
 
 # System
 seed: 17
-device_eval_batch_size: 16
+device_eval_microbatch_size: 16
 device_train_microbatch_size: 16
 precision: fp32
 

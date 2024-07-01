@@ -51,7 +51,7 @@ global_train_batch_size: 4
 
 # System
 seed: 17
-device_eval_batch_size: 4
+device_eval_microbatch_size: 4
 device_train_microbatch_size: 2
 precision: fp32
 
