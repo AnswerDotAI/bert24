@@ -15,6 +15,8 @@ model:
   use_pretrained: true
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
+  model_config:
+    deterministic_fa2: true
 
 # Saving
 save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints

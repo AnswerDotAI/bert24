@@ -13,6 +13,8 @@ tokenizer_name: bert-base-uncased
 model:
   pretrained_model_name: prajjwal1/bert-tiny
   tokenizer_name: ${tokenizer_name}
+  model_config:
+    deterministic_fa2: true
 
 # Loading
 starting_checkpoint_load_path:      # Start from scratch for the sake of testing
