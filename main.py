@@ -218,11 +218,14 @@ def get_num_tokens_in_batch_unpadded(batch: dict):
     return batch["attention_mask"].sum().item()
 
 
-def build_dataloader(cfg, tokenizer, device_batch_size):
+def build_dataloader(cfg, tokenizer, device_batch_size, count_padding_tokens=True):
     if cfg.name == "text":
-        return text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
+        data_loader = text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
     else:
         raise ValueError(f"Not sure how to build dataloader with config: {cfg}")
+    if not count_padding_tokens:
+        data_loader = DataSpec(data_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
+    return data_loader
 
 
 def build_model(cfg: DictConfig):
@@ -270,13 +273,13 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
 
     # Dataloaders
     print("Building train loader...")
+    count_padding_tokens = cfg.get("count_padding_tokens", True)
     train_loader = build_dataloader(
         cfg.train_loader,
         model.tokenizer,
         cfg.global_train_batch_size // dist.get_world_size(),
+        count_padding_tokens,
     )
-    if cfg.model.model_config.get("padding", None) == "unpadded":
-        train_loader = DataSpec(train_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
     print("Building eval loader...")
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
     eval_loader = build_dataloader(
