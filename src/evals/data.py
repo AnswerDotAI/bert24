@@ -156,3 +156,19 @@ def create_eurlex_dataset(**kwargs):
         dataset_subset="eurlex",
         task_column_names={"coastalcph/lex_glue": ("text",)},
     )
+
+def create_ultrafeedback_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="rbiswasfc/ultrafeedback-binary-classification",
+        dataset_subset="",
+        task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
+    )
+
+def create_mmlu_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="rbiswasfc/MMLU-Pro",
+        dataset_subset="",
+        task_column_names={"rbiswasfc/MMLU-Pro": ("question", "options", "answer", "category", "cot_content", "src", "question_id")},
+    )

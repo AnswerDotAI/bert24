@@ -15,8 +15,8 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
-from torchmetrics.classification import MultilabelF1Score
-from src.evals.data import create_swag_dataset, create_eurlex_dataset
+from torchmetrics.classification import MultilabelF1Score, MulticlassAUROC
+from src.evals.data import create_swag_dataset, create_eurlex_dataset, create_ultrafeedback_dataset, create_mmlu_dataset
 from src.evals.finetuning_jobs import (
     build_dataloader,
     multiple_choice_collate_fn,
@@ -250,3 +250,210 @@ class EurlexJob(ClassificationJob):
         )
 
         self.evaluators = [eurlex_evaluator]
+
+class UltrafeedbackAUROC(MulticlassAUROC):
+    def __init__(self):
+        super().__init__(num_classes=2)
+
+class UltrafeedbackJob(ClassificationJob):
+    """ultrafeedback binary classification."""
+
+    custom_eval_metrics = [UltrafeedbackAUROC]
+    num_labels = 2
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "300ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        max_sequence_length: Optional[int] = 2048,
+        max_duration: Optional[str] = "3ep",
+        batch_size: Optional[int] = 64,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="rbiswasfc/ultrafeedback-binary-classification",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        self.optimizer = DecoupledAdamW(
+            self.model.parameters(),
+            lr=1.0e-5,
+            betas=(0.9, 0.98),
+            eps=1.0e-06,
+            weight_decay=1.0e-06,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(inp):
+                first_sentences = [
+                    f"{prompt} {tokenizer.sep_token} {response_a}" for prompt, response_a in zip(inp['prompt'], inp['response_a'])
+                ]
+
+                second_sentences = inp["response_b"]
+
+                tokenized_examples = tokenizer(
+                    first_sentences,
+                    second_sentences,
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+                return tokenized_examples
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+            "tokenize_fn_factory": tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": 0,
+            "drop_last": False,
+        }
+        train_dataset = create_ultrafeedback_dataset(split="train", **dataset_kwargs)
+        
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+        ultrafeedback_eval_dataset = create_ultrafeedback_dataset(
+            split="test", **dataset_kwargs
+        )
+        ultrafeedback_evaluator = Evaluator(
+            label="long_context_ultrafeedback",
+            dataloader=build_dataloader(ultrafeedback_eval_dataset, **dataloader_kwargs),
+            metric_names=["UltrafeedbackAUROC"],
+        )
+        self.evaluators = [ultrafeedback_evaluator]
+
+
+
+class MMLUPro(ClassificationJob):
+    """MMLUPro."""
+
+    multiple_choice = True
+    num_labels = 10
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "100ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        max_sequence_length: Optional[int] = 512,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 32,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="rbiswasfc/MMLU-Pro",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        self.optimizer = DecoupledAdamW(
+            self.model.parameters(),
+            lr=5.0e-6,
+            betas=(0.9, 0.98),
+            eps=1.0e-6,
+            weight_decay=5.0e-06,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(inp):
+                num_options = 10
+
+                first_sentences = [[question] * num_options for question in inp["question"]]
+                second_sentences = [option_list for option_list in inp["options"]]
+
+                first_sentences = list(chain(*first_sentences))
+                second_sentences = list(chain(*second_sentences))
+
+                tokenized_examples = tokenizer(
+                    first_sentences,
+                    second_sentences,
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+
+                return {k: [v[i : i + num_options] for i in range(0, len(v), num_options)] for k, v in tokenized_examples.items()}
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+            "tokenize_fn_factory": tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": 0,
+            "drop_last": False,
+        }
+
+        train_dataset = create_mmlu_dataset(split="train", **dataset_kwargs)
+        train_dataset = train_dataset.rename_column('answer_index', 'labels')
+
+        self.train_dataloader = build_dataloader(
+            train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
+        )
+        eval_dataset = create_mmlu_dataset(split="test", **dataset_kwargs)
+        eval_dataset = eval_dataset.rename_column('answer_index', 'labels')
+
+        mmlu_evaluator = Evaluator(
+            label="mmlu_pro",
+            dataloader=build_dataloader(
+                eval_dataset,
+                collate_fn=multiple_choice_collate_fn,
+                **dataloader_kwargs,
+            ),
+            metric_names=["MulticlassAccuracy"],
+        )
+        self.evaluators = [mmlu_evaluator]

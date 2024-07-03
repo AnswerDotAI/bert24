@@ -61,6 +61,9 @@ TASK_NAME_TO_CLASS = {
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
     "eurlex": misc_jobs_module.EurlexJob,
+    "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
+    "mmlu_pro": misc_jobs_module.MMLUPro,
+
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
@@ -463,7 +466,7 @@ def train(config: om.DictConfig) -> None:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    round_1_task_names = {"mnli", "eurlex"}
+    round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mmlu_pro"}
     # round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
 
     round_1_job_configs = create_job_configs(
