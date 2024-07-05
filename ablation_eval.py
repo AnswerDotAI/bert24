@@ -289,6 +289,7 @@ def run_job_worker(
 ) -> Any:
     """Instantiates the job object and runs it."""
     # need to set seed before model initialization for determinism
+    reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
     instantiated_job = task_cls(

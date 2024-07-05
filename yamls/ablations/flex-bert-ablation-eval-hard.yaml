@@ -1,0 +1,106 @@
+# Whether to run the various GLUE jobs serially or in parallel (use parallel=True to take advantage of multiple GPUs)
+parallel: true
+
+# Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
+base_run_name:  flex-bert
+default_seed: 19
+precision: amp_bf16
+
+# Tokenizer for dataset creation
+tokenizer_name: bert-base-uncased
+
+# Base model config
+model:
+  name: flex_bert
+  use_pretrained: true
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: ${tokenizer_name}
+  model_config:
+    num_attention_heads: 12 # bert-base default
+    num_hidden_layers: 12 # bert-base default
+    attention_layer: rope
+    attention_probs_dropout_prob: 0.0
+    attn_out_bias: false
+    attn_out_dropout_prob: 0.0
+    attn_qkv_bias: false
+    use_fa2: false
+    bert_layer: postnorm # prenorm
+    embed_dropout_prob: 0.0
+    embed_norm: true # false
+    final_norm: false # true
+    embedding_layer: sans_pos
+    loss_function: cross_entropy
+    loss_kwargs:
+      reduction: mean
+    mlp_dropout_prob: 0.0
+    mlp_in_bias: false
+    mlp_layer: glu
+    mlp_out_bias: false
+    normalization: layernorm
+    norm_kwargs:
+      eps: 1e-6
+    hidden_act: gelu
+    head_pred_act: gelu
+    activation_function: gelu # silu # better safe than sorry
+    padding: unpadded
+    sparse_prediction: false
+    rotary_emb_dim: null # will be set to headdim by default
+    rotary_emb_base: 10000.0
+    rotary_emb_scale_base: null
+    rotary_emb_interleaved: false
+    head_class_norm: None
+    head_class_act: "tanh"
+
+# Loading
+# # (fill this in with the composer checkpoint from the end of pre-training a Mosaic BERT)
+starting_checkpoint_load_path: latest-rank0.pt
+local_pretrain_checkpoint_folder: /home/shared/512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3
+
+# Saving
+save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
+save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
+
+# (Optional) W&B logging
+loggers:
+  wandb:
+    project: ablations_eval_additional # Fill this in if using W&B
+    entity: bert24 # Fill this in if using W&B
+# Callbacks
+callbacks:
+  lr_monitor: {}
+  speed_monitor: {}
+
+# Scheduler
+scheduler:
+  name: linear_decay_with_warmup
+  t_warmup: 0.06dur
+  alpha_f: 0.0
+
+# Task configuration
+tasks:
+  # mnli:
+  #   seeds: [23]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 1
+  # boolq:
+  #   seeds: [23]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0
+  # wic:
+  #   seeds: [23]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0
+  # eurlex:
+  #   seeds: [23]
+  #   trainer_kwargs:
+  #     save_num_checkpoints_to_keep: 0
+  #   model_config:
+  #     problem_type: multi_label_classification
+  ultrafeedback:
+    seeds: [361, 461]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  mmlu_pro:
+    seeds: [361, 461]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
