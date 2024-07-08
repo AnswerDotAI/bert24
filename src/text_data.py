@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from transformers.tokenization_utils_base import BatchEncoding
-    
+
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
 
 
@@ -157,8 +157,8 @@ class StreamingTextDataset(StreamingDataset):
         return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
 
     def _read_binary_tokenized_sample(self, sample: BatchEncoding):
-        seq_len = sample['len'] if 'len' in sample else len(sample['input_ids'])
-        
+        seq_len = sample["len"] if "len" in sample else len(sample["input_ids"])
+
         input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64)[: self.max_seq_len].copy()
         attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64)[: self.max_seq_len].copy()
 
@@ -170,8 +170,8 @@ class StreamingTextDataset(StreamingDataset):
             input_ids = np.pad(input_ids, (0, pad_len), constant_values=self.tokenizer.pad_token_id)
             attention_mask = np.pad(attention_mask, (0, pad_len), constant_values=0)
         elif pad_len < 0:
-            input_ids = input_ids[:self.max_seq_len]
-            attention_mask = attention_mask[:self.max_seq_len]
+            input_ids = input_ids[: self.max_seq_len]
+            attention_mask = attention_mask[: self.max_seq_len]
 
         token_type_ids = np.zeros(self.max_seq_len, dtype=np.int64)
 
@@ -179,10 +179,10 @@ class StreamingTextDataset(StreamingDataset):
             data={
                 "input_ids": input_ids.tolist(),
                 "attention_mask": attention_mask.tolist(),
-                "token_type_ids": token_type_ids.tolist()
-                },
+                "token_type_ids": token_type_ids.tolist(),
+            },
             n_sequences=1,
-            )
+        )
 
     # How to process a sample
     def __getitem__(self, idx: int) -> Union[Dict[str, Any], torch.Tensor]:
@@ -349,7 +349,7 @@ if __name__ == "__main__":
         },
         "drop_last": False,
         "num_workers": 4,
-        "pin_memory": True
+        "pin_memory": True,
     }
     cfg = om.create(cfg)
     device_batch_size = 2
