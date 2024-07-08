@@ -157,9 +157,6 @@ class StreamingTextDataset(StreamingDataset):
         return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
 
     def _read_binary_tokenized_sample(self, sample: BatchEncoding):
-        pad_token_id = self.tokenizer.pad_token_id
-        # print('pad token id : ', pad_token_id)
-
         seq_len = sample['len'] if 'len' in sample else len(sample['input_ids'])
         
         input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64)[: self.max_seq_len].copy()
@@ -170,7 +167,7 @@ class StreamingTextDataset(StreamingDataset):
 
         # pad or truncate input_ids and attention_mask
         if pad_len > 0:
-            input_ids = np.pad(input_ids, (0, pad_len), constant_values=pad_token_id)
+            input_ids = np.pad(input_ids, (0, pad_len), constant_values=self.tokenizer.pad_token_id)
             attention_mask = np.pad(attention_mask, (0, pad_len), constant_values=0)
         elif pad_len < 0:
             input_ids = input_ids[:self.max_seq_len]
@@ -185,7 +182,6 @@ class StreamingTextDataset(StreamingDataset):
                 "token_type_ids": token_type_ids.tolist()
                 },
             n_sequences=1,
-            
             )
 
     # How to process a sample
