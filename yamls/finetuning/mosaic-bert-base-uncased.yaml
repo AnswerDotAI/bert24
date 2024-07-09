@@ -21,6 +21,8 @@ model:
   num_labels: 2 # <-- Make sure to update these after you modify the starter script!
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
+  model_config:
+    deterministic_fa2: true
 
 # Dataloaders (make sure to update these after you modify the starter script!)
 train_loader:

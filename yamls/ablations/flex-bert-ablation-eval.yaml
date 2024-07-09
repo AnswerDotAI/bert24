@@ -50,6 +50,7 @@ model:
     rotary_emb_interleaved: false
     head_class_norm: None
     head_class_act: "tanh"
+    deterministic_fa2: true
 
 # Loading
 # # (fill this in with the composer checkpoint from the end of pre-training a Mosaic BERT)

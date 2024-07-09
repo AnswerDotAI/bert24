@@ -75,6 +75,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.p_dropout = config.attention_probs_dropout_prob
         self.Wqkv = nn.Linear(self.all_head_size, 3 * config.hidden_size)
+        self.deterministic_fa2 = getattr(config, "deterministic_fa2", False)
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2:
@@ -136,6 +137,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                     alibi_slopes=slopes,
                 )
                 attention = attention.to(orig_dtype)  # type: ignore
@@ -145,6 +147,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                     alibi_slopes=slopes,
                 )
         else:
@@ -277,6 +280,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
@@ -360,6 +364,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -368,6 +373,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -418,6 +424,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
@@ -493,6 +500,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -501,6 +509,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -552,6 +561,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -607,10 +617,10 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
@@ -669,6 +679,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         )
 
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -756,6 +767,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -764,6 +776,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -817,6 +830,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         )
 
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         if config.rotary_emb_dim is None:
@@ -887,10 +901,10 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
@@ -947,6 +961,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         )
 
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
@@ -1026,6 +1041,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1034,6 +1050,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     cu_seqlens=cu_seqlens,
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -1086,6 +1103,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         )
 
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -1152,10 +1170,10 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
@@ -1200,6 +1218,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
         self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -1249,10 +1268,10 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout)
+                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d

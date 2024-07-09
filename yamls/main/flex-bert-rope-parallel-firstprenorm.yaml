@@ -60,6 +60,7 @@ model:
     initial_mlp_layer: glu
     num_initial_layers: 1
     skip_first_prenorm: true
+    deterministic_fa2: false
 
 # Dataloaders
 train_loader:
