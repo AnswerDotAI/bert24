@@ -16,7 +16,7 @@ from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from torchmetrics.classification import MultilabelF1Score, MulticlassAUROC
-from src.evals.data import create_swag_dataset, create_eurlex_dataset, create_ultrafeedback_dataset, create_mmlu_dataset
+from src.evals.data import create_swag_dataset, create_eurlex_dataset, create_ultrafeedback_dataset, create_mmlu_semipro_dataset, create_mmlu_amature_dataset
 from src.evals.finetuning_jobs import (
     build_dataloader,
     multiple_choice_collate_fn,
@@ -352,8 +352,11 @@ class UltrafeedbackJob(ClassificationJob):
 
 
 
-class MMLUPro(ClassificationJob):
-    """MMLUPro."""
+class MMLUSemiPro(ClassificationJob):
+    """MMLUSemiPro
+    50/50 train/test split of MMLU-Pro, stratified by both question category and Llama-3-8B-Instruct 5-shot question correctness,
+    ensuring that for every category, there's an equal number of questions that Llama-3 gets right in both train and test.
+    """
 
     multiple_choice = True
     num_labels = 10
@@ -381,7 +384,7 @@ class MMLUPro(ClassificationJob):
             tokenizer_name=tokenizer_name,
             job_name=job_name,
             seed=seed,
-            task_name="rbiswasfc/MMLU-Pro",
+            task_name="answerdotai/MMLU-SemiPro",
             eval_interval=eval_interval,
             scheduler=scheduler,
             max_sequence_length=max_sequence_length,
@@ -407,8 +410,9 @@ class MMLUPro(ClassificationJob):
             def tokenize_fn(inp):
                 num_options = 10
 
+                default_option = 'NA'
                 first_sentences = [[question] * num_options for question in inp["question"]]
-                second_sentences = [option_list for option_list in inp["options"]]
+                second_sentences = [option_list + [default_option]*(num_options - len(option_list)) for option_list in inp["options"]]
 
                 first_sentences = list(chain(*first_sentences))
                 second_sentences = list(chain(*second_sentences))
@@ -438,17 +442,128 @@ class MMLUPro(ClassificationJob):
             "drop_last": False,
         }
 
-        train_dataset = create_mmlu_dataset(split="train", **dataset_kwargs)
+        train_dataset = create_mmlu_semipro_dataset(split="train", **dataset_kwargs)
         train_dataset = train_dataset.rename_column('answer_index', 'labels')
 
         self.train_dataloader = build_dataloader(
             train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
         )
-        eval_dataset = create_mmlu_dataset(split="test", **dataset_kwargs)
+        eval_dataset = create_mmlu_semipro_dataset(split="test", **dataset_kwargs)
         eval_dataset = eval_dataset.rename_column('answer_index', 'labels')
 
         mmlu_evaluator = Evaluator(
-            label="mmlu_pro",
+            label="mmlu_semipro",
+            dataloader=build_dataloader(
+                eval_dataset,
+                collate_fn=multiple_choice_collate_fn,
+                **dataloader_kwargs,
+            ),
+            metric_names=["MulticlassAccuracy"],
+        )
+        self.evaluators = [mmlu_evaluator]
+
+
+
+
+class MMLUAmateur(ClassificationJob):
+    """MMLUAmateur
+    """
+
+    multiple_choice = True
+    num_labels = 10
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "100ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        max_sequence_length: Optional[int] = 512,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 32,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="answerdotai/MMLU-Amateur2",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        self.optimizer = DecoupledAdamW(
+            self.model.parameters(),
+            lr=5.0e-6,
+            betas=(0.9, 0.98),
+            eps=1.0e-6,
+            weight_decay=5.0e-06,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(inp):
+                num_options = 10
+
+                default_option = 'NA'
+                first_sentences = [[question] * num_options for question in inp["question"]]
+                second_sentences = [option_list + [default_option]*(num_options - len(option_list)) for option_list in inp["options"]]
+
+                first_sentences = list(chain(*first_sentences))
+                second_sentences = list(chain(*second_sentences))
+
+                tokenized_examples = tokenizer(
+                    first_sentences,
+                    second_sentences,
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+
+                return {k: [v[i : i + num_options] for i in range(0, len(v), num_options)] for k, v in tokenized_examples.items()}
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+            "tokenize_fn_factory": tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": 0,
+            "drop_last": False,
+        }
+
+        train_dataset = create_mmlu_amature_dataset(split="train", **dataset_kwargs)
+        train_dataset = train_dataset.rename_column('answer_index', 'labels')
+
+        self.train_dataloader = build_dataloader(
+            train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
+        )
+        eval_dataset = create_mmlu_amature_dataset(split="test", **dataset_kwargs)
+        eval_dataset = eval_dataset.rename_column('answer_index', 'labels')
+
+        mmlu_evaluator = Evaluator(
+            label="mmlu_amateur",
             dataloader=build_dataloader(
                 eval_dataset,
                 collate_fn=multiple_choice_collate_fn,

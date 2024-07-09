@@ -102,3 +102,10 @@ WIC(seed=23)                                      | superglue_wic            | M
 ```
 
 WIC & BoolQ runs use the MNLI fine-tuned checkpoints.
+
+
+## Hard Evals
+For flex-bert:
+```bash
+python ablation_eval.py yamls/ablations/flex-bert-ablation-eval-hard.yaml
+```

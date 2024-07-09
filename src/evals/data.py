@@ -165,10 +165,18 @@ def create_ultrafeedback_dataset(**kwargs):
         task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
     )
 
-def create_mmlu_dataset(**kwargs):
+def create_mmlu_semipro_dataset(**kwargs):
     return create_eval_dataset(
         **kwargs,
-        dataset_name="rbiswasfc/MMLU-Pro",
+        dataset_name="answerdotai/MMLU-SemiPro",
         dataset_subset="",
-        task_column_names={"rbiswasfc/MMLU-Pro": ("question", "options", "answer", "category", "cot_content", "src", "question_id")},
+        task_column_names={"answerdotai/MMLU-SemiPro": ("question", "options", "answer", "category", "cot_content", "src", "question_id", "llama_pred", "llama_correct")},
+    )
+
+def create_mmlu_amature_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="answerdotai/MMLU-Amateur2",
+        dataset_subset="",
+        task_column_names={"answerdotai/MMLU-Amateur2": ("question", "options", "answer", "category", "cot_content", "src", "question_id", "llama_pred", "llama_correct")},
     )
