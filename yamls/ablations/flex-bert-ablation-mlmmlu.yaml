@@ -79,24 +79,12 @@ scheduler:
 
 # Task configuration
 tasks:
-  mlmmlu_amateur:
-    seeds: [24, 461, 872]
+  mlmmlu_amateur_semipro:
+    seeds: [24, 461]
     trainer_kwargs:
-      dataset_subset: Amateur
-      save_num_checkpoints_to_keep: 0
-  mlmmlu_semipro:
-    seeds: [24, 461, 872]
-    trainer_kwargs:
-      dataset_subset: Semipro
       save_num_checkpoints_to_keep: 0
 
-  mlmmlu_reserve:
-    seeds: [24, 461, 872]
+  mlmmlu_rookie_reserve:
+    seeds: [24, 461]
     trainer_kwargs:
-      dataset_subset: Reserve
-      save_num_checkpoints_to_keep: 0
-  mlmmlu_rookie:
-    seeds: [24, 461, 872]
-    trainer_kwargs:
-      dataset_subset: Rookie
       save_num_checkpoints_to_keep: 0

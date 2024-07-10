@@ -2,12 +2,12 @@
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name: hf-bert-deberta-v3-xsmall
+base_run_name: hf-bert-deberta-v3-base
 default_seed: 19
 precision: amp_bf16
 
 # Tokenizer for dataset creation
-tokenizer_name: microsoft/deberta-v3-xsmall
+tokenizer_name: microsoft/deberta-v3-base
 
 # Base model config
 model:
@@ -40,46 +40,12 @@ scheduler:
 
 # Task configuration
 tasks:
-  # mlmmlu_amateur:
-  #   seeds: [24, 461, 872]
-  #   trainer_kwargs:
-  #     dataset_subset: Amateur
-  #     save_num_checkpoints_to_keep: 0
-  # mlmmlu_semipro:
-  #   seeds: [24, 461, 872]
-  #   trainer_kwargs:
-  #     dataset_subset: Semipro
-  #     save_num_checkpoints_to_keep: 0
-
-  # mlmmlu_reserve:
-  #   seeds: [24, 461, 872]
-  #   trainer_kwargs:
-  #     dataset_subset: Reserve
-  #     save_num_checkpoints_to_keep: 0
-  # mlmmlu_rookie:
-  #   seeds: [24, 461, 872]
-  #   trainer_kwargs:
-  #     dataset_subset: Rookie
-  #     save_num_checkpoints_to_keep: 0
-
-  mlmmlu_amateur:
+  mlmmlu_amateur_semipro:
     seeds: [24]
     trainer_kwargs:
-      dataset_subset: Amateur
-      save_num_checkpoints_to_keep: 0
-  mlmmlu_semipro:
-    seeds: [24]
-    trainer_kwargs:
-      dataset_subset: Semipro
       save_num_checkpoints_to_keep: 0
 
-  mlmmlu_reserve:
+  mlmmlu_rookie_reserve:
     seeds: [24]
     trainer_kwargs:
-      dataset_subset: Reserve
-      save_num_checkpoints_to_keep: 0
-  mlmmlu_rookie:
-    seeds: [24]
-    trainer_kwargs:
-      dataset_subset: Rookie
       save_num_checkpoints_to_keep: 0

@@ -351,8 +351,7 @@ class UltrafeedbackJob(ClassificationJob):
         self.evaluators = [ultrafeedback_evaluator]
 
 
-
-class MLMMLUPro(ClassificationJob):
+class MLMMLUAmateurSemipro(ClassificationJob):
     """MLMMLU for Amateur & Semipro
     """
     multiple_choice = True
@@ -376,7 +375,6 @@ class MLMMLUPro(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
-        dataset_subset = kwargs.pop("dataset_subset")
 
         super().__init__(
             model=model,
@@ -442,30 +440,42 @@ class MLMMLUPro(ClassificationJob):
             "drop_last": False,
         }
 
-        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset=dataset_subset, **dataset_kwargs)
-        eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset=dataset_subset, **dataset_kwargs)
+        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset='Amateur', **dataset_kwargs)
+        amateur_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Amateur', **dataset_kwargs)
+        semipro_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Semipro', **dataset_kwargs)
 
         train_dataset = train_dataset.rename_column('answer_index', 'labels')
-        eval_dataset = eval_dataset.rename_column('answer_index', 'labels')
-        
+        amateur_eval_dataset = amateur_eval_dataset.rename_column('answer_index', 'labels')
+        semipro_eval_dataset = semipro_eval_dataset.rename_column('answer_index', 'labels')
+
         self.train_dataloader = build_dataloader(
             train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
         )
 
-        evaluator = Evaluator(
-            label=f"mlmmlu_{dataset_subset}",
+        amateur_evaluator = Evaluator(
+            label=f"mlmmlu_amateur",
             dataloader=build_dataloader(
-                eval_dataset,
+                amateur_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
                 **dataloader_kwargs,
             ),
             metric_names=["MulticlassAccuracy"],
         )
 
-        self.evaluators = [evaluator]
+        semipro_evaluator = Evaluator(
+            label=f"mlmmlu_semipro",
+            dataloader=build_dataloader(
+                semipro_eval_dataset,
+                collate_fn=multiple_choice_collate_fn,
+                **dataloader_kwargs,
+            ),
+            metric_names=["MulticlassAccuracy"],
+        )
+
+        self.evaluators = [amateur_evaluator, semipro_evaluator]
 
 
-class MLMMLU(ClassificationJob):
+class MLMMLUReserveRookie(ClassificationJob):
     """MLMMLU for Reserve & Rookie
     """
 
@@ -490,7 +500,6 @@ class MLMMLU(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
-        dataset_subset = kwargs.pop("dataset_subset")
 
         super().__init__(
             model=model,
@@ -556,24 +565,36 @@ class MLMMLU(ClassificationJob):
             "drop_last": False,
         }
 
-        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset=dataset_subset, **dataset_kwargs)
-        eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset=dataset_subset, **dataset_kwargs)
+        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset='Rookie', **dataset_kwargs)
+        rookie_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Rookie', **dataset_kwargs)
+        reserve_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Reserve', **dataset_kwargs)
 
         train_dataset = train_dataset.rename_column('answer', 'labels')
-        eval_dataset = eval_dataset.rename_column('answer', 'labels')
-        
+        rookie_eval_dataset = rookie_eval_dataset.rename_column('answer', 'labels')
+        reserve_eval_dataset = reserve_eval_dataset.rename_column('answer', 'labels')
+
         self.train_dataloader = build_dataloader(
             train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
         )
 
-        evaluator = Evaluator(
-            label=f"mlmmlu_{dataset_subset}",
+        rookie_evaluator = Evaluator(
+            label="mlmmlu_rookie",
             dataloader=build_dataloader(
-                eval_dataset,
+                rookie_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
                 **dataloader_kwargs,
             ),
             metric_names=["MulticlassAccuracy"],
         )
 
-        self.evaluators = [evaluator]
+        reserve_evaluator = Evaluator(
+            label="mlmmlu_reserve",
+            dataloader=build_dataloader(
+                reserve_eval_dataset,
+                collate_fn=multiple_choice_collate_fn,
+                **dataloader_kwargs,
+            ),
+            metric_names=["MulticlassAccuracy"],
+        )
+
+        self.evaluators = [rookie_evaluator, reserve_evaluator]
