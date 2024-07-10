@@ -14,8 +14,10 @@ parser.add_argument(
 )
 parser.add_argument("--wandb_run", type=str, help="Name of a wandb run")
 parser.add_argument("--wandb_project", type=str, default="bert24")
+parser.add_argument("--output_dir", type=str, default=".eval_configs/")
 
 args = parser.parse_args()
+os.makedirs(args.output_dir, exist_ok=True)
 
 
 def ordered_yaml_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
@@ -243,7 +245,7 @@ tasks["wic"] = wic
 new_config["tasks"] = tasks
 
 # Write the new configuration to a YAML file
-output_filename = f"{ckpt_path}_evaluation.yaml"
+output_filename = f"{args.output_dir}/{ckpt_path}_evaluation.yaml"
 with open(output_filename, "w") as file:
     ordered_yaml_dump(new_config, file, default_flow_style=False)
 
