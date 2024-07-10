@@ -109,3 +109,14 @@ For flex-bert:
 ```bash
 python ablation_eval.py yamls/ablations/flex-bert-ablation-eval-hard.yaml
 ```
+
+## MLMMLU
+For flex-bert:
+```bash
+python ablation_eval.py yamls/ablations/flex-bert-ablation-mlmmlu.yaml
+```
+
+For hf-bert:
+```bash
+python ablation_eval.py yamls/ablations/hf-bert-ablation-mlmmlu.yaml
+```

@@ -453,7 +453,7 @@ class MLMMLUPro(ClassificationJob):
         )
 
         evaluator = Evaluator(
-            label=f"mmlu_{dataset_subset}",
+            label=f"mlmmlu_{dataset_subset}",
             dataloader=build_dataloader(
                 eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
@@ -513,7 +513,7 @@ class MLMMLU(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=5.0e-6,
+            lr=8.0e-6,
             betas=(0.9, 0.98),
             eps=1.0e-6,
             weight_decay=5.0e-06,
@@ -567,7 +567,7 @@ class MLMMLU(ClassificationJob):
         )
 
         evaluator = Evaluator(
-            label=f"mmlu_{dataset_subset}",
+            label=f"mlmmlu_{dataset_subset}",
             dataloader=build_dataloader(
                 eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
