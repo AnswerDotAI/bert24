@@ -159,8 +159,8 @@ class StreamingTextDataset(StreamingDataset):
     def _read_binary_tokenized_sample(self, sample: BatchEncoding):
         seq_len = sample["len"] if "len" in sample else len(sample["input_ids"])
 
-        input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64)[: self.max_seq_len].copy()
-        attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64)[: self.max_seq_len].copy()
+        input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64).copy()
+        attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64).copy()
 
         # calculate padding
         pad_len = self.max_seq_len - seq_len
