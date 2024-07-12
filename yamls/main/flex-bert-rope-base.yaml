@@ -55,6 +55,7 @@ model:
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False
+    deterministic_fa2: false
 
 # Dataloaders
 train_loader:

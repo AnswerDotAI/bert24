@@ -17,6 +17,8 @@ model:
   name: mosaic_bert
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
+  model_config:
+    deterministic_fa2: true
 
 # Loading
 # (fill this in with the composer checkpoint from the end of pre-training a Mosaic BERT)

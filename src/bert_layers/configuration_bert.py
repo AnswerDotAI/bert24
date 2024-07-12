@@ -11,6 +11,7 @@ class BertConfig(TransformersBertConfig):
         normalization: str = "layernorm",
         attention_probs_dropout_prob: float = 0.0,
         head_pred_act: str = "gelu",
+        deterministic_fa2: bool = False,
         **kwargs,
     ):
         """Configuration class for MosaicBert.
@@ -30,6 +31,7 @@ class BertConfig(TransformersBertConfig):
         self.alibi_starting_size = alibi_starting_size
         self.normalization = normalization
         self.head_pred_act = head_pred_act
+        self.deterministic_fa2 = deterministic_fa2
 
 
 class FlexBertConfig(TransformersBertConfig):
@@ -81,6 +83,7 @@ class FlexBertConfig(TransformersBertConfig):
         initial_mlp_layer: str | None = None,
         num_initial_layers: int = 1,
         skip_first_prenorm: bool = False,
+        deterministic_fa2: bool = False,
         **kwargs,
     ):
         """
@@ -131,6 +134,7 @@ class FlexBertConfig(TransformersBertConfig):
             initial_mlp_layer (str | None): Replace first `num_initial_layers` mlp_layer instance with this layer.
             num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
+            deterministic_fa2 (bool): Use Flash Attention 2 deterministic mode. This is slower then the default non-deterministic mode.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -179,6 +183,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.initial_mlp_layer = initial_mlp_layer
         self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
+        self.deterministic_fa2 = deterministic_fa2
 
 
 PADDING = ["unpadded", "padded"]
