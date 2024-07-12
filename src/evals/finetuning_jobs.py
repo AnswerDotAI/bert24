@@ -183,7 +183,6 @@ class FineTuneJob:
 
         collected_metrics: Dict[str, Dict[str, Any]] = {}
         for eval_name, metrics in trainer.state.eval_metrics.items():
-            collected_metrics = {}
             for name, metric in metrics.items():
                 if hasattr(metric, "compute_final"):
                     result = metric.compute_final()

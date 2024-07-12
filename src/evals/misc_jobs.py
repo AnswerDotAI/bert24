@@ -397,7 +397,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=5.0e-6,
+            lr=2.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-6,
             weight_decay=5.0e-06,
@@ -522,7 +522,7 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=8.0e-6,
+            lr=1.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-6,
             weight_decay=5.0e-06,

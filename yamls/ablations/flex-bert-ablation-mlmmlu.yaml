@@ -2,7 +2,7 @@
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name:  flex-bert
+base_run_name:  flex-bert-high-lr-3ep
 default_seed: 19
 precision: amp_bf16
 
@@ -80,11 +80,12 @@ scheduler:
 # Task configuration
 tasks:
   mlmmlu_amateur_semipro:
-    seeds: [24, 461]
+    seeds: [24, 61]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
+      max_duration: 3ep
 
   mlmmlu_rookie_reserve:
-    seeds: [24, 461]
+    seeds: [24, 61]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0

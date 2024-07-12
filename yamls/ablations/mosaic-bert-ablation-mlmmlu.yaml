@@ -2,20 +2,19 @@
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name: hf-bert-deberta-v3-base-high-lr-3ep
+base_run_name: mosaic-bert
 default_seed: 19
 precision: amp_bf16
 
 # Tokenizer for dataset creation
-tokenizer_name: microsoft/deberta-v3-base
+tokenizer_name: bert-base-uncased
 
 # Base model config
 model:
-  name: hf_bert
+  name: mosaic_bert
   use_pretrained: true
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
-  gradient_checkpointing: false
 
 # Saving
 save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints
@@ -50,4 +49,3 @@ tasks:
     seeds: [24, 61]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
-      max_duration: 3ep

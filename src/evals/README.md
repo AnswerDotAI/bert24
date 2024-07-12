@@ -120,3 +120,8 @@ For hf-bert:
 ```bash
 python ablation_eval.py yamls/ablations/hf-bert-ablation-mlmmlu.yaml
 ```
+
+For mosaic-bert:
+```bash
+python ablation_eval.py yamls/ablations/mosaic-bert-ablation-mlmmlu.yaml
+```
