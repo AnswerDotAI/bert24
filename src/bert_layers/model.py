@@ -708,6 +708,7 @@ class FlexBertPredictionHead(nn.Module):
 class FlexBertPoolingHead(nn.Module):
     def __init__(self, config: FlexBertConfig):
         super().__init__()
+        self.config = config
         self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_class_bias)
         self.act = get_act_fn(config.head_class_act) if config.head_class_act else nn.Identity()
         self.norm = get_norm_layer(config) if config.head_class_norm else nn.Identity()
