@@ -111,17 +111,63 @@ python ablation_eval.py yamls/ablations/flex-bert-ablation-eval-hard.yaml
 ```
 
 ## MLMMLU
-For flex-bert:
+### Flex-bert:
 ```bash
 python ablation_eval.py yamls/ablations/flex-bert-ablation-mlmmlu.yaml
+```
+```
+-----------------------------------------------------------------------------------------------------------------
+Job                                               | Dataset                  | Metric                     |
+-----------------------------------------------------------------------------------------------------------------
+MLMMLU(seed=24)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 34.91
+MLMMLU(seed=24)                                   | mlmmlu_semipro           | MulticlassAccuracy         | 27.70
+MLMMLU(seed=61)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 33.75
+MLMMLU(seed=61)                                   | mlmmlu_semipro           | MulticlassAccuracy         | 26.75
+MLMMLU(seed=24)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 34.33
+MLMMLU(seed=24)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 30.56
+MLMMLU(seed=61)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 34.93
+MLMMLU(seed=61)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 31.35
+-----------------------------------------------------------------------------------------------------------------
 ```
 
 For hf-bert:
 ```bash
 python ablation_eval.py yamls/ablations/hf-bert-ablation-mlmmlu.yaml
 ```
+```
+-----------------------------------------------------------------------------------------------------------------
+Job                                               | Dataset                  | Metric                     |
+-----------------------------------------------------------------------------------------------------------------
+MLMMLU(seed=24)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 37.85
+MLMMLU(seed=24)                                   | mlmmlu_semipro           | MulticlassAccuracy         | 28.13
+MLMMLU(seed=61)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 35.45
+2MLMMLU(seed=24)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 45.73
+MLMMLU(seed=24)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 38.56
+MLMMLU(seed=61)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 48.37
+MLMMLU(seed=61)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 39.77
+-----------------------------------------------------------------------------------------------------------------
+```
 
 For mosaic-bert:
 ```bash
 python ablation_eval.py yamls/ablations/mosaic-bert-ablation-mlmmlu.yaml
 ```
+
+```
+-----------------------------------------------------------------------------------------------------------------
+Job                                               | Dataset                  | Metric                     |
+-----------------------------------------------------------------------------------------------------------------
+MLMMLU(seed=24)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 30.52
+MLMMLU(seed=24)                                   | mlmmlu_semipro           | MulticlassAccuracy         | 22.91
+MLMMLU(seed=61)                                   | mlmmlu_amateur           | MulticlassAccuracy         | 31.14
+MLMMLU(seed=61)                                   | mlmmlu_semipro           | MulticlassAccuracy         | 23.29
+MLMMLU(seed=24)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 32.10
+MLMMLU(seed=24)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 29.13
+MLMMLU(seed=61)                                   | mlmmlu_rookie            | MulticlassAccuracy         | 31.52
+MLMMLU(seed=61)                                   | mlmmlu_reserve           | MulticlassAccuracy         | 28.86
+-----------------------------------------------------------------------------------------------------------------
+```
+
+
+
+NB: There maybe slight differences in the observed scores for mosaic-bert, likely due to fa2.
