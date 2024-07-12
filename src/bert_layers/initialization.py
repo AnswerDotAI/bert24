@@ -4,6 +4,10 @@
 # Copyright 2023 OLMo Authors
 # License: Apache-2.0
 
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
+# License: Apache-2.0
+
 import math
 from typing import Optional, Union
 
@@ -31,7 +35,7 @@ class InitFnType(StrEnum):
 
     default = "default"
     """
-    All weights are initialized with the default method from PyTorch.
+    All weights are initialized with the default HuggingFace Bert method. Set init_std=0.02 to match.
     """
 
     kaiming_normal = "kaiming_normal"
@@ -111,7 +115,7 @@ def init_weights(
             std = config.init_std
         elif type_of_module == ModuleType.out_module:
             # for attn_out, ff_out
-            std = config.init_std / math.sqrt(2.0 * config.n_layers)
+            std = config.init_std / math.sqrt(2.0 * config.num_hidden_layers)
         elif type_of_module == ModuleType.emb:
             # positional embeddings (wpe)
             # token embeddings (wte)
@@ -130,7 +134,18 @@ def init_weights(
             b=cutoff_factor * std,
         )
     elif config.init_method == InitFnType.default:
-        module.reset_parameters()
+        # default hugging face bert initialization
+        # normalization layers already init to ones and zeros
+        if isinstance(module, nn.Linear):
+            # Slightly different from the TF version which uses truncated_normal for initialization
+            # cf https://github.com/pytorch/pytorch/pull/5617
+            module.weight.data.normal_(mean=0.0, std=config.init_std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=config.init_std)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
     else:
         raise NotImplementedError(config.init_method)
 
@@ -140,7 +155,7 @@ def init_weights(
 
         if config.init_method == InitFnType.normal and getattr(module, "_is_residual", False):
             with torch.no_grad():
-                module.weight.div_(math.sqrt(2 * config.n_layers))
+                module.weight.div_(math.sqrt(2 * config.num_hidden_layers))
 
     if isinstance(module, nn.Embedding) and config.init_small_embedding:
         nn.init.uniform_(module.weight, a=-1e-4, b=1e-4)

@@ -727,6 +727,14 @@ class FlexBertPoolingHead(nn.Module):
 
         return self.drop(self.norm(self.act(self.dense(output))))
 
+    def _init_weights(self, reset_params: bool = False):
+        init_weights(self.config, self.dense, self.config.hidden_size, type_of_module=ModuleType.out_module)
+        if reset_params and hasattr(self.norm, "reset_parameters"):
+            self.norm.reset_parameters()
+
+    def reset_parameters(self):
+        self._init_weights(reset_params=True)
+
 
 ###################
 # FlexBert Models
@@ -815,11 +823,8 @@ class FlexBertModel(BertPreTrainedModel):
         return encoder_outputs
 
     def _init_weights(self, reset_params: bool = False):
+        self.embeddings._init_weights(reset_params)
         self.encoder._init_weights(reset_params)
-
-        # Let the layers handle themselves.
-        for layer in self.encoder.layers:
-            layer._init_weights(reset_params)
 
         if reset_params and self.config.final_norm:
             self.final_norm.reset_parameters()
@@ -861,10 +866,10 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         self.loss_fn = nn.CrossEntropyLoss() if not hasattr(config, "loss_function") else get_loss_fn(config)
 
         # Initialize weights and apply final processing
-        self.post_init()
+        self._init_weights()
 
     def _init_weights(self, reset_params: bool = False):
-        super()._init_weights(reset_params)
+        self.bert._init_weights(reset_params)
         self.head._init_weights(reset_params)
 
         # Output weights.
@@ -998,7 +1003,12 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         # Initialize weights and apply final processing
-        self.post_init()
+        self._init_weights()
+
+    def _init_weights(self, reset_params: bool = False):
+        self.bert._init_weights(reset_params)
+        self.head._init_weights(reset_params)
+        init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
 
     @classmethod
     def from_composer(
@@ -1123,7 +1133,12 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
-        self.post_init()
+        self._init_weights()
+
+    def _init_weights(self, reset_params: bool = False):
+        self.bert._init_weights(reset_params)
+        self.head._init_weights(reset_params)
+        init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
 
     @classmethod
     def from_composer(
