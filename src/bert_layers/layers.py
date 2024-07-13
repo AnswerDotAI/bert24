@@ -337,7 +337,7 @@ class FlexBertUnpadParallelPreNormLayer(FlexBertLayerBase):
 
     def _init_weights(self, reset_params: bool = False):
         super()._init_weights(reset_params)
-        if reset_params:
+        if reset_params and hasattr(self.norm, "reset_parameters"):
             self.norm.reset_parameters()
 
         init_weights(
