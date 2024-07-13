@@ -107,6 +107,7 @@ class StreamingTextDataset(StreamingDataset):
         shuffle: bool = False,
         shuffle_algo: str = "py1s",
         shuffle_seed: int = 9176,
+        cache_limit: Optional[int] = None,
         **kwargs: Dict[str, Any],
     ):
         group_method = kwargs.pop("group_method", None)
@@ -144,6 +145,7 @@ class StreamingTextDataset(StreamingDataset):
             shuffle=shuffle,
             shuffle_algo=shuffle_algo,
             shuffle_seed=shuffle_seed,
+            cache_limit=cache_limit,
         )
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
@@ -288,6 +290,7 @@ def build_text_dataloader(
         shuffle=cfg.dataset.get("shuffle", False),
         shuffle_algo=cfg.dataset.get("shuffle_algo", "py1s"),
         shuffle_seed=cfg.dataset.get("shuffle_seed", 9176),
+        cache_limit=cfg.dataset.get("cache_limit", None),
     )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
