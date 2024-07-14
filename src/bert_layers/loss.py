@@ -5,12 +5,19 @@ import inspect
 import torch.nn as nn
 from .configuration_bert import FlexBertConfig
 
+try:
+    from flash_attn.losses.cross_entropy import CrossEntropyLoss
+except ImportError:
+    CrossEntropyLoss = None
 
 LOSS2CLS = {
     "cross_entropy": nn.CrossEntropyLoss,
     "binary_cross_entropy": nn.BCEWithLogitsLoss,
     "mean_squared_error": nn.MSELoss,
 }
+
+if CrossEntropyLoss is not None:
+    LOSS2CLS["fa_cross_entropy"] = CrossEntropyLoss
 
 
 def get_loss_fn(config: FlexBertConfig) -> nn.Module:

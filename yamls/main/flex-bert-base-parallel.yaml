@@ -16,6 +16,7 @@ run_name: flex-bert-base-parallel
 # Model
 model:
   name: flex_bert
+  recompute_metric_loss: false # recompute metric loss, use if passing label_smoothing to record non-label-smoothed loss as a metric
   pretrained_model_name: ${tokenizer_name}
   tokenizer_name: ${tokenizer_name}
   # FlexBERT 'base' generally uses the default architecture values for from the Hugging Face BertConfig object
@@ -34,7 +35,7 @@ model:
     embed_norm: False
     final_norm: True
     embedding_layer: absolute_pos
-    loss_function: cross_entropy
+    loss_function: fa_cross_entropy
     loss_kwargs:
       reduction: mean
     mlp_dropout_prob: 0.0

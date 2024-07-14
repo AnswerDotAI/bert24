@@ -45,6 +45,7 @@ See :file:`./mosaic_bert.py` for utilities to simplify working with MosaicBERT i
 of the core Mosaic BERT classes.
 """
 
+from dataclasses import dataclass
 import logging
 import os
 import sys
@@ -64,6 +65,7 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutput,
 )
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
+from transformers.modeling_outputs import ModelOutput
 
 import bert_padding as bert_padding_module
 from .loss import get_loss_fn
@@ -742,6 +744,41 @@ class FlexBertPoolingHead(nn.Module):
 ###################
 
 
+@dataclass
+class MaskedLMOutputZLoss(ModelOutput):
+    """
+    Base class for masked language models outputs.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Masked language modeling (MLM) loss.
+        ce_loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Cross entropy loss.
+        z_loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Z loss.
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    ce_loss: Optional[torch.FloatTensor] = None
+    z_loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+
+
 class FlexBertModel(BertPreTrainedModel):
     """Overall BERT model.
 
@@ -865,6 +902,8 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         self.decoder.weight = decoder_weights
 
         self.loss_fn = nn.CrossEntropyLoss() if not hasattr(config, "loss_function") else get_loss_fn(config)
+        self.fa_ce = getattr(config, "loss_function", "cross_entropy") == "fa_cross_entropy"
+        self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
 
         # Initialize weights and apply final processing
         self._init_weights()
@@ -939,7 +978,18 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         logits = self.decoder(self.head(output))
         loss = None
         if labels is not None:
-            loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
+            if self.return_z_loss:
+                loss, z_loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
+                return MaskedLMOutputZLoss(
+                    loss=loss,
+                    ce_loss=loss - z_loss,
+                    z_loss=z_loss,
+                    logits=logits,
+                    hidden_states=None,
+                    attentions=None,
+                )
+            else:
+                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
 
         return MaskedLMOutput(
             loss=loss,
