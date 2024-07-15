@@ -16,6 +16,8 @@ from streaming import Stream, StreamingDataset
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
+from transformers.tokenization_utils_base import BatchEncoding
+
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
 
 
@@ -105,6 +107,7 @@ class StreamingTextDataset(StreamingDataset):
         shuffle: bool = False,
         shuffle_algo: str = "py1s",
         shuffle_seed: int = 9176,
+        cache_limit: Optional[int] = None,
         **kwargs: Dict[str, Any],
     ):
         group_method = kwargs.pop("group_method", None)
@@ -142,6 +145,7 @@ class StreamingTextDataset(StreamingDataset):
             shuffle=shuffle,
             shuffle_algo=shuffle_algo,
             shuffle_seed=shuffle_seed,
+            cache_limit=cache_limit,
         )
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
@@ -154,18 +158,43 @@ class StreamingTextDataset(StreamingDataset):
 
         return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
 
-    def _read_binary_tokenized_sample(self, sample):
-        return torch.from_numpy(np.frombuffer(sample["tokens"], dtype=np.int64)[: self.max_seq_len].copy())
+    def _read_binary_tokenized_sample(self, sample: BatchEncoding):
+        seq_len = sample["len"] if "len" in sample else len(sample["input_ids"])
+
+        input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64).copy()
+        attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64).copy()
+
+        # calculate padding
+        pad_len = self.max_seq_len - seq_len
+
+        # pad or truncate input_ids and attention_mask
+        if pad_len > 0:
+            input_ids = np.pad(input_ids, (0, pad_len), constant_values=self.tokenizer.pad_token_id)
+            attention_mask = np.pad(attention_mask, (0, pad_len), constant_values=0)
+        elif pad_len < 0:
+            input_ids = input_ids[: self.max_seq_len]
+            attention_mask = attention_mask[: self.max_seq_len]
+
+        token_type_ids = np.zeros(self.max_seq_len, dtype=np.int64)
+
+        return BatchEncoding(
+            data={
+                "input_ids": input_ids.tolist(),
+                "attention_mask": attention_mask.tolist(),
+                "token_type_ids": token_type_ids.tolist(),
+            },
+            n_sequences=1,
+        )
 
     # How to process a sample
     def __getitem__(self, idx: int) -> Union[Dict[str, Any], torch.Tensor]:
         sample = super().__getitem__(idx)
         if "text" in sample:
             token_sample = self._tokenize(sample)
-        elif "tokens" in sample:
+        elif "input_ids" in sample:
             token_sample = self._read_binary_tokenized_sample(sample)
         else:
-            raise RuntimeError("StreamingTextDataset needs samples to have a `text` or `tokens` column")
+            raise RuntimeError("StreamingTextDataset needs samples to have a `text` or `input_ids` column")
         return token_sample
 
 
@@ -261,6 +290,7 @@ def build_text_dataloader(
         shuffle=cfg.dataset.get("shuffle", False),
         shuffle_algo=cfg.dataset.get("shuffle_algo", "py1s"),
         shuffle_seed=cfg.dataset.get("shuffle_seed", 9176),
+        cache_limit=cfg.dataset.get("cache_limit", None),
     )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
@@ -322,6 +352,7 @@ if __name__ == "__main__":
         },
         "drop_last": False,
         "num_workers": 4,
+        "pin_memory": True,
     }
     cfg = om.create(cfg)
     device_batch_size = 2
