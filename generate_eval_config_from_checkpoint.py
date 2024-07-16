@@ -123,11 +123,12 @@ def get_wandb_config(run_name):
 input_config = None
 
 if "pt" in args.checkpoint:
-    ckpt = args.checkpoint
-    ckpt_path = args.checkpoint.split("/")[:-1]
+    ckpt = Path(args.checkpoint).name # args.checkpoint
+    ckpt_path = str(Path(args.checkpoint).parent)
 else:
-    ckpt = args.checkpoint + "/latest-rank0.pt"
-    ckpt_path = args.checkpoint
+    ckpt = "latest-rank0.pt"
+    ckpt_path = args.checkpoint.rstrip("/")
+ckpt_id = ckpt_path.split("/")[-1]
 
 if args.train_config:
     with open(args.train_config, "r") as file:
@@ -135,8 +136,8 @@ if args.train_config:
 else:
     # Specify the run name
     print("Attemptong to find config file within checkpoint folder...")
-    yaml_file = ckpt + ".yaml"
-    yaml_file_alt = ckpt + "/" + ckpt + ".yaml"
+    yaml_file = ckpt_path + ".yaml"
+    yaml_file_alt = ckpt_path + "/" + ckpt_id + ".yaml"
 
     if os.path.exists(yaml_file):
         with open(yaml_file, "r") as file:
@@ -173,7 +174,7 @@ new_config["tokenizer_name"] = safe_get(input_config, "tokenizer_name")
 model_config = OrderedDict()
 model_config["name"] = safe_get(input_config, "model", {}).get("name")
 model_config["use_pretrained"] = True
-model_config["pretrained_model_name"] = "${tokenizer_name}"
+model_config["pretrained_model_name"] = safe_get(input_config, "model", {}).get("pretrained_model_name") # "${tokenizer_name}"
 model_config["tokenizer_name"] = "${tokenizer_name}"
 
 model_config_inner = OrderedDict()
@@ -190,7 +191,7 @@ if model_config:
     new_config["model"] = model_config
 
 new_config["starting_checkpoint_load_path"] = ckpt
-new_config["local_pretrain_checkpoint_folder"] = ckpt_path + "/"
+new_config["local_pretrain_checkpoint_folder"] = ckpt_path # + "/"
 new_config["save_finetune_checkpoint_prefix"] = "./finetuned-checkpoints"
 new_config["save_finetune_checkpoint_folder"] = "${save_finetune_checkpoint_prefix}/${base_run_name}"
 
@@ -211,15 +212,15 @@ tasks = OrderedDict()
 mnli = OrderedDict()
 
 
-mmlu_amateur_semipro = OrderedDict()
-mmlu_amateur_semipro["seeds"] = [23, 42]
-mmlu_amateur_semipro["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
-tasks["mmlu_amateur_semipro"] = mmlu_amateur_semipro
+mlmmlu_amateur_semipro = OrderedDict()
+mlmmlu_amateur_semipro["seeds"] = [23, 42]
+mlmmlu_amateur_semipro["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+tasks["mlmmlu_amateur_semipro"] = mlmmlu_amateur_semipro
 
-mmlu_rookie_reserve = OrderedDict()
-mmlu_rookie_reserve["seeds"] = [23, 42]
-mmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
-tasks["mmlu_rookie_reserve"] = mmlu_rookie_reserve
+mlmmlu_rookie_reserve = OrderedDict()
+mlmmlu_rookie_reserve["seeds"] = [23, 42]
+mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
 eurlex = OrderedDict()
 eurlex["seeds"] = [23, 42, 6033]
@@ -245,7 +246,7 @@ tasks["wic"] = wic
 new_config["tasks"] = tasks
 
 # Write the new configuration to a YAML file
-output_filename = f"{args.output_dir}/{ckpt_path}_evaluation.yaml"
+output_filename = f"{args.output_dir}/{ckpt_id}_evaluation.yaml"
 with open(output_filename, "w") as file:
     ordered_yaml_dump(new_config, file, default_flow_style=False)
 

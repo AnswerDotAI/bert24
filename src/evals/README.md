@@ -171,3 +171,16 @@ MLMMLU(seed=61)                                   | mlmmlu_reserve           | M
 
 
 NB: There maybe slight differences in the observed scores for mosaic-bert, likely due to fa2.
+
+
+# Generate config for ablations
+```
+python generate_eval_config_from_checkpoint.py \
+--checkpoint /home/shared/data-ablations/checkpoints/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality \
+--train_config /home/shared/data-ablations/configs/1024_mosaic-bert-base-uncased_20bn_cc_high_quality_1e-3.yaml \
+--output_dir ./yamls/ablations
+```
+
+```bash
+python ablation_eval.py yamls/ablations/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality_evaluation.yaml
+```
