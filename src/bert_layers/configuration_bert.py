@@ -12,6 +12,7 @@ class BertConfig(TransformersBertConfig):
         attention_probs_dropout_prob: float = 0.0,
         head_pred_act: str = "gelu",
         deterministic_fa2: bool = False,
+        allow_embedding_resizing: bool = False,
         **kwargs,
     ):
         """Configuration class for MosaicBert.
@@ -26,12 +27,14 @@ class BertConfig(TransformersBertConfig):
             embed_dropout_prob (float): Dropout probability for the embedding layer.
             attn_out_dropout_prob (float): Dropout probability for the attention output layer.
             mlp_dropout_prob (float): Dropout probability for the MLP layer.
+            allow_embedding_resizing (bool): Embeddings will be automatically resized when they are smaller than the tokenizer vocab size.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size
         self.normalization = normalization
         self.head_pred_act = head_pred_act
         self.deterministic_fa2 = deterministic_fa2
+        self.allow_embedding_resizing = allow_embedding_resizing
 
 
 class FlexBertConfig(TransformersBertConfig):

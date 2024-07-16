@@ -13,7 +13,6 @@ from typing import Optional
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import bert_layers as bert_layers_module
-import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
@@ -21,6 +20,8 @@ from torchmetrics import MeanSquaredError
 from torchmetrics.classification.accuracy import MulticlassAccuracy, MultilabelAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
+
+import src.bert_layers.configuration_bert as configuration_bert_module
 
 all = ["create_mosaic_bert_mlm", "create_mosaic_bert_classification"]
 
@@ -96,9 +97,7 @@ def create_mosaic_bert_mlm(
     if not pretrained_model_name:
         pretrained_model_name = "bert-base-uncased"
 
-    config = configuration_bert_module.BertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.BertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -127,7 +126,11 @@ def create_mosaic_bert_mlm(
     ]
 
     hf_model = HuggingFaceModel(
-        model=model, tokenizer=tokenizer, use_logits=True, metrics=metrics
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        allow_embedding_resizing=model.config.allow_embedding_resizing,
     )
 
     # Padding for divisibility by 8
@@ -271,9 +274,7 @@ def create_mosaic_bert_classification(
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = model_cls.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config
-        )
+        model = model_cls.from_composer(pretrained_checkpoint=pretrained_checkpoint, config=config)
     else:
         model = model_cls(config)
 
@@ -297,16 +298,19 @@ def create_mosaic_bert_classification(
         ]
         if num_labels == 2:
             metrics.append(BinaryF1Score())
-    
-    if model_config.get('problem_type', '') == 'multi_label_classification':
+
+    if model_config.get("problem_type", "") == "multi_label_classification":
         metrics = [
             MultilabelAccuracy(num_labels=num_labels, average="micro"),
         ]
-
+    allow_embedding_resizing = (
+        model.config.allow_embedding_resizing if hasattr(model.config, "allow_embedding_resizing") else False
+    )
     hf_model = HuggingFaceModel(
         model=model,
         tokenizer=tokenizer,
         use_logits=True,
+        allow_embedding_resizing=allow_embedding_resizing,
         metrics=metrics,
         eval_metrics=[
             *metrics,
