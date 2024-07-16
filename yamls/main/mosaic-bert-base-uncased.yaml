@@ -25,6 +25,7 @@ model:
     num_attention_heads: 12 # bert-base default
     num_hidden_layers: 12 # bert-base default
     attention_probs_dropout_prob: 0.0 # This can be non zero with Flash Attention 2
+    deterministic_fa2: false
 
 # Dataloaders
 train_loader:

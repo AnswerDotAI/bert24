@@ -368,6 +368,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         max_sequence_length: Optional[int] = 384,
         max_duration: Optional[str] = "2ep",
         batch_size: Optional[int] = 32,
+        device_train_microbatch_size: Optional[int] = 2,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -387,6 +388,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
+            device_train_microbatch_size=device_train_microbatch_size,
             load_path=load_path,
             save_folder=save_folder,
             loggers=loggers,
@@ -397,7 +399,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=5.0e-6,
+            lr=2.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-6,
             weight_decay=5.0e-06,
@@ -522,7 +524,7 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=8.0e-6,
+            lr=1.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-6,
             weight_decay=5.0e-06,

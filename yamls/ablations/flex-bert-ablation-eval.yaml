@@ -47,6 +47,9 @@ model:
     use_fa2: false
     head_class_norm: null
     head_class_act: tanh
+
+# Loading
+# # (fill this in with the composer checkpoint from the end of pre-training a Mosaic BERT)
 starting_checkpoint_load_path: latest-rank0.pt
 local_pretrain_checkpoint_folder: /home/shared/512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3
 save_finetune_checkpoint_prefix: ./bert-finetune-checkpoints

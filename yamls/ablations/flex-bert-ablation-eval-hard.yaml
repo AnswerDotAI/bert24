@@ -2,7 +2,7 @@
 parallel: true
 
 # Basic run configuration, additional details will be added to this name for each GLUE task, and each random seed
-base_run_name:  flex-bert
+base_run_name:  flex-bert-hard
 default_seed: 19
 precision: amp_bf16
 
@@ -79,51 +79,12 @@ scheduler:
 
 # Task configuration
 tasks:
-  # mnli:
-  #   seeds: [23]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 1
-  # boolq:
-  #   seeds: [23]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-  # wic:
-  #   seeds: [23]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-  # eurlex:
-  #   seeds: [23]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-  #   model_config:
-  #     problem_type: multi_label_classification
-  # ultrafeedback:
-  #   seeds: [361, 461]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-  # mmlu_semipro:
-  #   seeds: [24, 67, 786, 765]
-  #   trainer_kwargs:
-  #     save_num_checkpoints_to_keep: 0
-
-  mlmmlu_amateur:
-    seeds: [24]
+  ultrafeedback:
+    seeds: [361, 461]
     trainer_kwargs:
-      dataset_subset: Amateur
       save_num_checkpoints_to_keep: 0
-  mlmmlu_semipro:
-    seeds: [24]
+  mlmmlu_amateur_semipro:
+    seeds: [24, 61]
     trainer_kwargs:
-      dataset_subset: Semipro
       save_num_checkpoints_to_keep: 0
-
-  mlmmlu_reserve:
-    seeds: [24]
-    trainer_kwargs:
-      dataset_subset: Reserve
-      save_num_checkpoints_to_keep: 0
-  mlmmlu_rookie:
-    seeds: [24]
-    trainer_kwargs:
-      dataset_subset: Rookie
-      save_num_checkpoints_to_keep: 0
+      max_duration: 3ep

@@ -183,7 +183,6 @@ class FineTuneJob:
 
         collected_metrics: Dict[str, Dict[str, Any]] = {}
         for eval_name, metrics in trainer.state.eval_metrics.items():
-            collected_metrics = {}
             for name, metric in metrics.items():
                 if hasattr(metric, "compute_final"):
                     result = metric.compute_final()
@@ -232,6 +231,7 @@ class ClassificationJob(FineTuneJob):
         loggers: Optional[List[LoggerDestination]] = None,
         callbacks: Optional[List[Callback]] = None,
         precision: Optional[str] = None,
+        device_train_microbatch_size: Optional[int] = None,
         **kwargs,
     ):
         if task_name is None:
@@ -254,6 +254,7 @@ class ClassificationJob(FineTuneJob):
         self.loggers = loggers
         self.callbacks = callbacks
         self.precision = precision
+        self.device_train_microbatch_size = device_train_microbatch_size
 
         # These will be set by the subclasses for specific GLUE tasks
         self.train_dataloader = None
@@ -261,6 +262,10 @@ class ClassificationJob(FineTuneJob):
         self.optimizer = None
 
     def get_trainer(self, device: Optional[Union[Device, str]] = None):
+        if self.device_train_microbatch_size is None:
+            if torch.cuda.device_count() > 0:
+                self.device_train_microbatch_size = "auto"
+
         return Trainer(
             model=self.model,
             optimizers=self.optimizer,
@@ -272,9 +277,7 @@ class ClassificationJob(FineTuneJob):
             save_folder=self.save_folder,
             max_duration=self.max_duration,
             seed=self.seed,
-            device_train_microbatch_size=(
-                "auto" if torch.cuda.device_count() > 0 else None
-            ),
+            device_train_microbatch_size=self.device_train_microbatch_size,
             load_weights_only=True,
             load_strict_model_weights=False,
             loggers=self.loggers,
