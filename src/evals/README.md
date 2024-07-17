@@ -174,13 +174,41 @@ NB: There maybe slight differences in the observed scores for mosaic-bert, likel
 
 
 # Generate config for ablations
+
+## Create cofig by specifying checkpoint & config path
 ```
 python generate_eval_config_from_checkpoint.py \
 --checkpoint /home/shared/data-ablations/checkpoints/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality \
 --train_config /home/shared/data-ablations/configs/1024_mosaic-bert-base-uncased_20bn_cc_high_quality_1e-3.yaml \
---output_dir ./yamls/ablations
 ```
 
+## Create config from the matching wandb run
+```
+python generate_eval_config_from_checkpoint.py \
+--checkpoint /home/shared/data-ablations/checkpoints/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality \
+--wandb_project bert24-data-ablations
+```
+
+## Create config from the matching wandb run & add wandb tracking
+```
+python generate_eval_config_from_checkpoint.py \
+--checkpoint /home/shared/data-ablations/checkpoints/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality \
+--wandb_project bert24-data-ablations \
+--track_run
+```
+
+## Launch the ablation job
 ```bash
 python ablation_eval.py yamls/ablations/1024_mosaic-bert-base-uncased_dolma_1e-3_20bn_cc_high_quality_evaluation.yaml
+```
+
+
+## Launch abalations for sub-directories of a given path
+- Each subdir needs to contain a checkpoint named "latest-rank0.pt"
+- Config file should be stored together with the checkpoint (<sub_dir_name>.yaml)
+- If not, the script will try to find a matching wandb run in `bert24/bert24` project.
+- If the above fails, then the job will be skipped.
+
+```bash
+./example_eval_checkpoints.sh /home/shared/data-ablations/checkpoints
 ```

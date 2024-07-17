@@ -14,7 +14,8 @@ parser.add_argument(
 )
 parser.add_argument("--wandb_run", type=str, help="Name of a wandb run")
 parser.add_argument("--wandb_project", type=str, default="bert24")
-parser.add_argument("--output_dir", type=str, default=".eval_configs/")
+parser.add_argument("--output_dir", type=str, default="./yamls/ablations")
+parser.add_argument("--track_run", action='store_true')
 
 args = parser.parse_args()
 os.makedirs(args.output_dir, exist_ok=True)
@@ -35,9 +36,9 @@ def safe_get(dict_obj, key, default=None):
     return dict_obj.get(key, default)
 
 
-def get_wandb_config(run_name):
+def get_wandb_config(run_name, project_name):
     api = wandb.Api()
-    runs = api.runs("bert24/bert24")
+    runs = api.runs(f"bert24/{project_name}")
     target_run = next((run for run in runs if run.name == run_name), None)
 
     if target_run:
@@ -152,9 +153,9 @@ else:
             print("___ No train config specified and no wandb run specified ___")
             print("We will attempt to load the config from a wandb run named the same as the checkpoint provided.")
             print("If this fails, please specify a train config or a wandb run!")
-            run_name = ckpt_path
+            run_name = ckpt_id # ckpt_path
 
-        input_config = get_wandb_config(run_name)
+        input_config = get_wandb_config(run_name, args.wandb_project)
 
 if input_config is None:
     raise ValueError(
@@ -194,6 +195,14 @@ new_config["starting_checkpoint_load_path"] = ckpt
 new_config["local_pretrain_checkpoint_folder"] = ckpt_path # + "/"
 new_config["save_finetune_checkpoint_prefix"] = "./finetuned-checkpoints"
 new_config["save_finetune_checkpoint_folder"] = "${save_finetune_checkpoint_prefix}/${base_run_name}"
+
+loggers = OrderedDict()
+wandb_config = OrderedDict()
+wandb_config["project"] = f"{args.wandb_project}-evals"
+wandb_config["entity"] = "bert24"
+loggers["wandb"] = wandb_config
+if args.track_run:
+    new_config["loggers"] = loggers
 
 callbacks = OrderedDict()
 callbacks["lr_monitor"] = {}
