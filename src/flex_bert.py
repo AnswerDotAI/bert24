@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
+from typing import Any, Dict, Mapping, Optional, Union
+
+import torch
+from torch import Tensor
 
 # Add src folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -22,12 +25,149 @@ import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
-from torchmetrics import MeanSquaredError
+from composer.devices import DeviceCPU
+
+from torchmetrics import MeanSquaredError, Metric
 from torchmetrics.classification.accuracy import MulticlassAccuracy, MultilabelAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
 
+try:
+    from flash_attn.losses.cross_entropy import CrossEntropyLoss
+except ImportError:
+    CrossEntropyLoss = None
+
 all = ["create_flex_bert_mlm", "create_flex_bert_classification"]
+
+
+# we want the efficent versions to have the same name as the TorchMetrics' name
+def rename_class(new_name):
+    def class_renamer(cls):
+        cls.__name__ = new_name
+        return cls
+
+    return class_renamer
+
+
+@rename_class("LanguageCrossEntropy")
+class FALanguageCrossEntropy(LanguageCrossEntropy):
+    """Torchmetric that computes cross entropy on language modeling outputs using flash_attn's Cross Entropy.
+
+    Adds metric state variables:
+        sum_loss (float): The sum of the per-example loss in the batch.
+        total_items (float): The number of batches to average across.
+
+    Args:
+        dist_sync_on_step (bool, optional): Synchronize metric state across processes at
+            each forward() before returning the value at the step. Default: ``False``.
+        ignore_index (int, optional): The class index to ignore. Default: ``-100``.
+    """
+
+    # Make torchmetrics call update only once
+    full_state_update = False
+
+    def __init__(self, dist_sync_on_step: bool = False, ignore_index: int = -100):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+
+        if CrossEntropyLoss is None:
+            raise ImportError("flash_attn is not installed. Please install flash_attn to use FALanguageCrossEntropy.")
+
+        self.ignore_index = ignore_index
+        self.loss_fn = CrossEntropyLoss(ignore_index=ignore_index, reduction="sum")
+        self.add_state("sum_loss", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total_items", default=torch.tensor(0), dist_reduce_fx="sum")
+
+
+@rename_class("LanguageCrossEntropy")
+class EfficientCrossEntropy(Metric):
+    """Torchmetric that grabs the precomputed ce_loss value from the model outputs"""
+
+    # Make torchmetrics call update only once
+    full_state_update = False
+
+    def __init__(self, dist_sync_on_step: bool = False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("sum_loss", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total_items", default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, loss: Tensor) -> None:
+        """Updates the internal state with results from a new batch.
+
+        Args:
+            loss (~torch.Tensor): A Tensor of loss values to compare against.
+        """
+        self.sum_loss += loss
+        self.total_items += 1
+
+    def compute(self) -> Tensor:
+        """Aggregate the state over all processes to compute the metric.
+
+        Returns:
+            loss: The loss averaged across all batches as a :class:`~torch.Tensor`.
+        """
+        # Return average loss over entire dataset
+        return self.sum_loss / self.total_items  # type: ignore (third-party)
+
+
+@rename_class("ZLoss")
+class EfficientZLoss(Metric):
+    """Torchmetric that grabs the precomputed z_loss value from the model outputs"""
+
+    # Make torchmetrics call update only once
+    full_state_update = False
+
+    def __init__(self, dist_sync_on_step: bool = False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("sum_loss", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total_items", default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, loss: Tensor) -> None:
+        """Updates the internal state with results from a new batch.
+
+        Args:
+            loss (~torch.Tensor): A Tensor of loss values to compare against.
+        """
+        self.sum_loss += loss
+        self.total_items += 1
+
+    def compute(self) -> Tensor:
+        """Aggregate the state over all processes to compute the metric.
+
+        Returns:
+            loss: The loss averaged across all batches as a :class:`~torch.Tensor`.
+        """
+        # Return average loss over entire dataset
+        return self.sum_loss / self.total_items  # type: ignore (third-party)
+
+
+class EfficientHuggingFaceModel(HuggingFaceModel):
+    def eval_forward(self, batch, outputs: Optional[Any] = None):
+        outputs = self.forward(batch) if outputs is None else outputs
+        self.labels = batch.pop("labels")
+        return outputs
+
+    def update_metric(self, batch: Any, outputs: Any, metric: Metric) -> Dict:
+        if metric.device.type == "cpu":
+            self.labels = DeviceCPU().batch_to_device(self.labels)
+
+        if getattr(metric, "needs_batch", False):
+            raise ValueError(f"Unsupported metric {metric=}")
+
+        if getattr(outputs, "ce_loss", False) and isinstance(metric, EfficientCrossEntropy):
+            metric_result = metric.update(outputs["ce_loss"])
+        elif getattr(outputs, "z_loss", False) and isinstance(metric, EfficientZLoss):
+            metric_result = metric.update(outputs["z_loss"])
+        elif isinstance(metric, EfficientCrossEntropy):
+            metric_result = metric.update(outputs["loss"])
+        else:
+            metric_result = metric.update(outputs["logits"], self.labels)
+
+        if metric_result is not None:
+            # Add the metric name once for each datapoint in the batch
+            metric_result["metric_name"] = [metric.__class__.__name__ for _ in range(0, batch["input_ids"].shape[0])]
+        else:
+            metric_result = {}
+        return metric_result
 
 
 def create_flex_bert_mlm(
@@ -36,6 +176,7 @@ def create_flex_bert_mlm(
     tokenizer_name: Optional[str] = None,
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
+    recompute_metric_loss: Optional[bool] = False,
 ):
     """FlexBERT masked language model based on |:hugging_face:| Transformers.
 
@@ -104,19 +245,13 @@ def create_flex_bert_mlm(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     if "prenorm" in config.bert_layer:
         assert config.final_norm, "Final norm must be used with prenorm attention"
     else:
-        assert (
-            "postnorm" in config.bert_layer
-        ), "config.bert_layer str must contain either prenorm or postnorm"
-        assert (
-            not config.final_norm
-        ), "Final norm should not be used with postnorm attention"
+        assert "postnorm" in config.bert_layer, "config.bert_layer str must contain either prenorm or postnorm"
+        assert not config.final_norm, "Final norm should not be used with postnorm attention"
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
@@ -138,13 +273,19 @@ def create_flex_bert_mlm(
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
-    metrics = [
-        # vocab size no longer arg in composer
-        LanguageCrossEntropy(ignore_index=-100),
-        MaskedAccuracy(ignore_index=-100),
-    ]
+    metrics = [MaskedAccuracy(ignore_index=-100)]
 
-    hf_model = HuggingFaceModel(
+    if recompute_metric_loss or model_config["loss_function"] not in ["fa_cross_entropy", "cross_entropy"]:
+        if CrossEntropyLoss is not None:
+            metrics = [FALanguageCrossEntropy(ignore_index=-100)] + metrics
+        else:
+            metrics = [LanguageCrossEntropy(ignore_index=-100)] + metrics
+    else:
+        metrics = [EfficientCrossEntropy()] + metrics
+    if model_config.get("loss_kwargs", {}).get("return_z_loss", False):
+        metrics += [EfficientZLoss()]
+
+    hf_model = EfficientHuggingFaceModel(
         model=model,
         tokenizer=tokenizer,
         use_logits=True,
@@ -277,18 +418,14 @@ def create_flex_bert_classification(
     if isinstance(model_config, DictConfig):
         model_config = OmegaConf.to_container(model_config, resolve=True)
 
-    config = configuration_bert_module.FlexBertConfig.from_pretrained(
-        pretrained_model_name, **model_config
-    )
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
 
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = model_cls.from_composer(
-            pretrained_checkpoint=pretrained_checkpoint, config=config
-        )
+        model = model_cls.from_composer(pretrained_checkpoint=pretrained_checkpoint, config=config)
     else:
         model = model_cls(config)
 
@@ -312,8 +449,8 @@ def create_flex_bert_classification(
         ]
         if num_labels == 2:
             metrics.append(BinaryF1Score())
-    
-    if model_config.get('problem_type', '') == 'multi_label_classification':
+
+    if model_config.get("problem_type", "") == "multi_label_classification":
         metrics = [
             MultilabelAccuracy(num_labels=num_labels, average="micro"),
         ]

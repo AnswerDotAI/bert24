@@ -1,6 +1,8 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+import warnings
+
 from transformers import BertConfig as TransformersBertConfig
 
 
@@ -138,6 +140,7 @@ class FlexBertConfig(TransformersBertConfig):
             num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
             deterministic_fa2 (bool): Use Flash Attention 2 deterministic mode. This is slower then the default non-deterministic mode.
+
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -187,6 +190,16 @@ class FlexBertConfig(TransformersBertConfig):
         self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
         self.deterministic_fa2 = deterministic_fa2
+        if loss_kwargs.get("return_z_loss", False):
+            if loss_function != "fa_cross_entropy":
+                raise ValueError("loss_function must be 'fa_cross_entropy' when return_z_loss is True")
+            if loss_kwargs.get("lse_square_scale", 0) <= 0:
+                raise ValueError(
+                    "lse_square_scale must be passed to `loss_kwargs` and must be greater than 0 for z_loss"
+                )
+        if loss_kwargs.get("inplace_backward", False):
+            self.loss_kwargs["inplace_backward"] = False
+            warnings.warn("`inplace_backward=True` will cause incorrect metrics. Automatically setting to False.")
 
 
 PADDING = ["unpadded", "padded"]

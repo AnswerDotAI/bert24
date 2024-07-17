@@ -77,6 +77,11 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     if config.model.model_config.init_fn != InitFnType.full_megatron:
         config.model.model_config.init_small_embedding = random.choice([True, False])
 
+    # pick a random loss function for testing
+    config.model.model_config.loss_function = random.choice(["cross_entropy", "fa_cross_entropy"])
+    if config.model.model_config.loss_function == "fa_cross_entropy":
+        config.model.model_config.loss_kwargs["lse_square_scale"] = random.choice([1e-4, 0])
+
     with SynthTextDirectory() as tmp_datadir:
         config.model.model_config.use_fa2 = False
         if padding == "unpadded":
