@@ -206,9 +206,9 @@ class FlexBertConfig(TransformersBertConfig):
             self.loss_kwargs["inplace_backward"] = False
             warnings.warn("`inplace_backward=True` will cause incorrect metrics. Automatically setting to False.")
 
-        if global_attn_every_n_layers > 0 and (self.num_initial_layers - 1) % global_attn_every_n_layers != 0:
+        if global_attn_every_n_layers > 0 and (self.num_hidden_layers - 1) % global_attn_every_n_layers != 0:
             raise ValueError(
-                f"{global_attn_every_n_layers=} must be a divisor of one less than {self.num_initial_layers=}"
+                f"{global_attn_every_n_layers=} must be a divisor of one less than {self.num_hidden_layers=}"
             )
 
 
