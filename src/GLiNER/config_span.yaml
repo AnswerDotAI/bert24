@@ -1,0 +1,102 @@
+parallel: true
+base_run_name: 512_flex-bert-base-uncased_dolma_rope_postnorm_layernorm_geglu-1e3
+default_seed: 19
+precision: amp_bf16
+tokenizer_name: bert-base-uncased
+model:
+  name: flex_bert
+  use_pretrained: true
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: ${tokenizer_name}
+  model_config:
+    num_attention_heads: 12 # bert-base default
+    num_hidden_layers: 12 # bert-base default
+    attention_layer: rope
+    attention_probs_dropout_prob: 0.0
+    attn_out_bias: false
+    attn_out_dropout_prob: 0.0
+    attn_qkv_bias: false
+    bert_layer: postnorm
+    embed_dropout_prob: 0.0
+    embed_norm: true
+    final_norm: false
+    embedding_layer: sans_pos
+    loss_function: cross_entropy
+    loss_kwargs:
+      reduction: mean
+    mlp_dropout_prob: 0.0
+    mlp_in_bias: false
+    mlp_layer: glu
+    mlp_out_bias: false
+    normalization: layernorm
+    norm_kwargs:
+      eps: 1e-6
+    hidden_act: gelu
+    head_pred_act: gelu
+    activation_function: gelu # better safe than sorry
+    padding: unpadded
+    sparse_prediction: false
+    rotary_emb_dim: null # will be set to headdim by default
+    rotary_emb_base: 10000.0
+    rotary_emb_scale_base: null
+    rotary_emb_interleaved: false
+starting_checkpoint_load_path: latest-rank0.pt
+local_pretrain_checkpoint_folder: /home/azureuser/bert24/ckpt/
+save_finetune_checkpoint_prefix: ./gliner-bert-finetune-checkpoints
+save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
+callbacks:
+  lr_monitor: {}
+  speed_monitor: {}
+scheduler:
+  name: linear_decay_with_warmup
+  t_warmup: 0.06dur
+  alpha_f: 0.0
+tasks:
+  gliner_train:
+    model_name: ${base_run_name}
+    name: "span level gliner ${base_run_name}"
+    max_width: 12
+    hidden_size: 768
+    dropout: 0.4
+    fine_tune: true
+    subtoken_pooling: first
+    span_mode: markerV0
+
+    # Original GLiNER training Parameters
+    num_steps: 30000
+    train_batch_size: 8
+    eval_every: 5000
+    warmup_ratio: 0.1
+    scheduler_type: "cosine"
+
+    # Original GLiNER loss function
+    loss_alpha: -1 # focal loss alpha, if -1, no focal loss
+    loss_gamma: 0 # focal loss gamma, if 0, no focal loss
+    loss_reduction: "sum"
+
+    # Original GLiNER loss params
+    lr_encoder: 1e-5
+    lr_others: 5e-5
+    weight_decay_encoder: 0.01
+    weight_decay_other: 0.01
+
+    # Directory Paths
+    root_dir: span_gliner_logs
+    train_data: "data.json" # see https://github.com/urchade/GLiNER/tree/main/data
+    val_data_dir: "none"
+    # "NER_datasets": val data from the paper can be obtained from "https://drive.google.com/file/d/1T-5IbocGka35I7X3CE6yKe5N_Xg2lVKT/view"
+
+    # Pretrained Model Path. Must be "none" for training, and be used for evals.
+    prev_path: "none"
+
+    save_total_limit: 10 # Max checkpoints to keep before discarding
+
+    # Original Training Settings
+    size_sup: -1
+    max_types: 25
+    shuffle_types: true
+    random_drop: true
+    max_neg_type_ratio: 1
+    max_len: 384
+    freeze_token_rep: false
+

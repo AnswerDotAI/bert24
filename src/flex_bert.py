@@ -30,6 +30,141 @@ from torchmetrics.regression.spearman import SpearmanCorrCoef
 all = ["create_flex_bert_mlm", "create_flex_bert_classification"]
 
 
+def create_flex_bert_model(
+    pretrained_model_name: str = "bert-base-uncased",
+    model_config: Optional[dict] = None,
+    tokenizer_name: Optional[str] = None,
+    gradient_checkpointing: Optional[bool] = False,
+    pretrained_checkpoint: Optional[str] = None,
+):
+    """FlexBERT masked language model based on |:hugging_face:| Transformers.
+
+    For more information, see
+    `Transformers. <https://huggingface.co/transformers/>`_.
+
+    This function creates a FlexBERT, which includes several throughput
+    optimizations not available in |:hugging_face:| BERT as well as
+    architecture changes based on ALiBi and Gated Linear Units.
+
+    Args:
+        pretrained_model_name (str): Name of the Hugging Face model to
+            instantiate. This will determine the default model configuration.
+            Default: ``bert-base-uncased``.
+        model_config (dict): A dictionary of user-specified configurations to
+            update/add to the default model configuration.
+        tokenizer_name (str, optional): Tokenizer name used to preprocess the
+            dataset and validate the models inputs.
+        gradient_checkpointing (bool, optional): Use gradient checkpointing.
+            Default: ``False``.
+        pretrained_checkpoint (str, optional): The pretrained checkpoint to
+            initialize the model weights. If provided, the state dictionary
+            stored at `pretrained_checkpoint` will be loaded into the model
+            after initialization. Default: ``None``.
+
+    .. code-block::
+
+        {
+        "_name_or_path": "bert-base-uncased",
+        "alibi_starting_size": 512,
+        "architectures": ["BertForMaskedLM"],
+        "attention_probs_dropout_prob": 0.0,
+        "classifier_dropout": null,
+        "gradient_checkpointing": false,
+        "hidden_act": "silu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 768,
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "layer_norm_eps": 1e-12,
+        "max_position_embeddings": 512,
+        "model_type": "bert",
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "pad_token_id": 0,
+        "position_embedding_type": "absolute",
+        "transformers_version": "4.16.0",
+        "type_vocab_size": 2,
+        "use_cache": true,
+        "vocab_size": 30522
+        }
+
+    To create a FlexBERT model for Masked Language Model pretraining:
+
+     .. testcode::
+
+         from src.mosaic import create_flex_bert_mlm
+         model = create_flex_bert_mlm()
+    """
+    if not model_config:
+        model_config = {}
+
+    if not pretrained_model_name:
+        pretrained_model_name = "bert-base-uncased"
+
+    if isinstance(model_config, DictConfig):
+        model_config = OmegaConf.to_container(model_config, resolve=True)
+
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(
+        pretrained_model_name, **model_config
+    )
+
+    print(model_config)
+
+    if "prenorm" in config.bert_layer:
+        assert config.final_norm, "Final norm must be used with prenorm attention"
+    else:
+        assert (
+            "postnorm" in config.bert_layer
+        ), "config.bert_layer str must contain either prenorm or postnorm"
+        assert (
+            not config.final_norm
+        ), "Final norm should not be used with postnorm attention"
+
+    # Padding for divisibility by 8
+    if config.vocab_size % 8 != 0:
+        config.vocab_size += 8 - (config.vocab_size % 8)
+
+    if pretrained_checkpoint is not None:
+        model = bert_layers_module.FlexBertModel.from_composer(
+            pretrained_checkpoint=pretrained_checkpoint, config=config
+        )
+    else:
+        model = bert_layers_module.FlexBertModel(config)
+
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable()  # type: ignore
+
+    # setup the tokenizer
+    if tokenizer_name:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
+    else:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
+
+    return model
+
+    # TODO: Currently we return the raw model for GLiNER friendliness
+    # metrics = [
+    #     # vocab size no longer arg in composer
+    #     LanguageCrossEntropy(ignore_index=-100),
+    #     MaskedAccuracy(ignore_index=-100),
+    # ]
+
+    # hf_model = HuggingFaceModel(
+    #     model=model,
+    #     tokenizer=tokenizer,
+    #     use_logits=True,
+    #     metrics=metrics,
+    #     allow_embedding_resizing=model.config.allow_embedding_resizing,
+    # )
+
+    # # Padding for divisibility by 8
+    # # We have to do it again here because wrapping by HuggingFaceModel changes it
+    # if config.vocab_size % 8 != 0:
+    #     config.vocab_size += 8 - (config.vocab_size % 8)
+    # hf_model.model.resize_token_embeddings(config.vocab_size)
+
+    # return hf_model
+
 def create_flex_bert_mlm(
     pretrained_model_name: str = "bert-base-uncased",
     model_config: Optional[dict] = None,

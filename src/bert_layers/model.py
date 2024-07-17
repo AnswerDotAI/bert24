@@ -847,6 +847,38 @@ class FlexBertModel(BertPreTrainedModel):
                 params -= _count_parameters(self.embeddings.position_embeddings, trainable)
         return params
 
+    @classmethod
+    def from_composer(
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("FlexBERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        state_dict = state_dict['state']['model']
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+
+
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="bert.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+        if len(unexpected_keys) > 0:
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+
+        return model
+
 
 class FlexBertForMaskedLM(BertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
