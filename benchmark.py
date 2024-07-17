@@ -46,6 +46,8 @@ def get_model(
     parallel_attn: bool = True,
     vocab_size: int = 32768,
     model_type: ModelType = ModelType.mlm,
+    sliding_window: int = -1,
+    global_attn_every_n_layers: int = -1,
 ):
     config = FlexBertConfig(
         num_attention_heads=hidden_size // 64,
@@ -99,6 +101,8 @@ def get_model(
         initial_mlp_layer=None,
         num_initial_layers=1,
         skip_first_prenorm=False,
+        sliding_window=sliding_window,
+        global_attn_every_n_layers=global_attn_every_n_layers,
     )
     if model_type == ModelType.mlm:
         config.tie_word_embeddings = True
@@ -248,6 +252,10 @@ def main(
     parallel_attn: Annotated[
         List[bool], Option(is_flag=False, help="List of parallel attention flags", show_default=False)
     ],
+    sliding_window: Annotated[List[int], Option(help="Sliding window size. -1 to disable.")] = [-1],
+    global_attn_every_n_layers: Annotated[
+        List[int], Option(help="Use global attention every `n` layers and sliding window for the rest. -1 to disable.")
+    ] = [-1],
     model_type: Annotated[List[ModelType], Option(help="Model type: MLM or Multiple Choice")] = [ModelType.mlm],
     vocab_size: Annotated[List[int], Option(help="Vocabulary size")] = [32768],
     num_samples: Annotated[int, Option(help="Number of samples")] = 1000,
@@ -280,6 +288,8 @@ def main(
         len(parallel_attn),
         len(vocab_size),
         len(model_type),
+        len(sliding_window),
+        len(global_attn_every_n_layers),
     )
 
     # Tile lists to match the maximum length
@@ -289,6 +299,8 @@ def main(
     parallel_attn = tile_list_to_length(parallel_attn, max_length)
     vocab_size = tile_list_to_length(vocab_size, max_length)
     model_type = tile_list_to_length(model_type, max_length)
+    sliding_window = tile_list_to_length(sliding_window, max_length)
+    global_attn_every_n_layers = tile_list_to_length(global_attn_every_n_layers, max_length)
 
     # Create configs from the input lists
     configs = [
@@ -299,9 +311,18 @@ def main(
             "parallel_attn": pa,
             "vocab_size": vs,
             "model_type": mt,
+            "sliding_window": sw,
+            "global_attn_every_n_layers": swel,
         }
-        for hs, nhl, ims, pa, vs, mt in zip(
-            hidden_sizes, num_hidden_layers, intermediate_sizes, parallel_attn, vocab_size, model_type
+        for hs, nhl, ims, pa, vs, mt, sw, swel in zip(
+            hidden_sizes,
+            num_hidden_layers,
+            intermediate_sizes,
+            parallel_attn,
+            vocab_size,
+            model_type,
+            sliding_window,
+            global_attn_every_n_layers,
         )
     ]
 
