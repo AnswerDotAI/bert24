@@ -254,7 +254,7 @@ class EurlexJob(ClassificationJob):
 
         self.evaluators = [eurlex_evaluator]
 
-class CoNLLEval(torchmetrics.Metric):
+class CoNLL2003Eval(torchmetrics.Metric):
     def __init__(self):
         super().__init__()
         self.metric = evaluate.load("seqeval")
@@ -292,7 +292,7 @@ class CoNLL2003Job(ClassificationJob):
     """CoNLL-2003 named entity recognition."""
     num_labels = 9
     token_classification = True
-    custom_eval_metrics = [CoNLLEval]
+    custom_eval_metrics = [CoNLL2003Eval]
 
     def __init__(
         self,
@@ -392,7 +392,7 @@ class CoNLL2003Job(ClassificationJob):
         conll_evaluator = Evaluator(
             label="conll_evaluator",
             dataloader=build_dataloader(ner_eval_dataset, **dataloader_kwargs),
-            metric_names=["CoNLLEval"],
+            metric_names=["CoNLL2003Eval"],
         )
 
         self.evaluators = [conll_evaluator]
