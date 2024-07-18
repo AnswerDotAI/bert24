@@ -61,6 +61,7 @@ TASK_NAME_TO_CLASS = {
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
     "eurlex": misc_jobs_module.EurlexJob,
+    "conll2003": misc_jobs_module.CoNLL2003Job,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
@@ -121,7 +122,7 @@ def build_scheduler(cfg):
 
 
 def build_model(
-    cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs
+    cfg: DictConfig, num_labels: int, multiple_choice: bool = False, token_classification: bool = False, **kwargs
 ):
     if cfg.name == "hf_bert":
         return hf_bert_module.create_hf_bert_classification(
@@ -132,6 +133,7 @@ def build_model(
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
             multiple_choice=multiple_choice,
+            token_classification=token_classification,
             **kwargs,
         )
     elif cfg.name == "mosaic_bert":
@@ -143,6 +145,7 @@ def build_model(
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
             multiple_choice=multiple_choice,
+            token_classification=token_classification,
             **kwargs,
         )
     elif cfg.name == "flex_bert":
@@ -154,6 +157,7 @@ def build_model(
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
             multiple_choice=multiple_choice,
+            token_classification=token_classification,
             **kwargs,
         )
     else:
@@ -295,6 +299,7 @@ def run_job_worker(
             config.model,
             num_labels=task_cls.num_labels,
             multiple_choice=task_cls.multiple_choice,
+            token_classification=task_cls.token_classification,
             custom_eval_metrics=task_cls.custom_eval_metrics,
         ),
         tokenizer_name=config.tokenizer_name,
@@ -463,7 +468,7 @@ def train(config: om.DictConfig) -> None:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    round_1_task_names = {"mnli", "eurlex"}
+    round_1_task_names = {"mnli", "eurlex", "conll2003"}
     # round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
 
     round_1_job_configs = create_job_configs(
