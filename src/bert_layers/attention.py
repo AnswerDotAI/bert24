@@ -301,11 +301,11 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -459,11 +459,11 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -610,11 +610,11 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -751,11 +751,11 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -928,11 +928,11 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -1073,11 +1073,11 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -1244,11 +1244,11 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -1370,11 +1370,11 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
             if layer_id % config.global_attn_every_n_layers != 0:
-                self.sliding_window = (config.sliding_window, config.sliding_window)
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
             else:
                 self.sliding_window = (-1, -1)
         else:
-            self.sliding_window = (config.sliding_window, config.sliding_window)
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False

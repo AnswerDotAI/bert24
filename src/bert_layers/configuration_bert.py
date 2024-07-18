@@ -142,7 +142,7 @@ class FlexBertConfig(TransformersBertConfig):
             num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
             deterministic_fa2 (bool): Use Flash Attention 2 deterministic mode. This is slower then the default non-deterministic mode.
-            sliding_window (int): Use sliding window attention with window size `n`. -1 to disable.
+            sliding_window (int): Use sliding window attention with window size `n`. -1 to disable. Window size split between the left and right context. Only supports FA2.
             global_attn_every_n_layers (int): Use global attention every `n` layers and sliding window for the rest. -1 to disable.
             **kwargs: Additional keyword arguments.
         """
@@ -210,6 +210,12 @@ class FlexBertConfig(TransformersBertConfig):
             raise ValueError(
                 f"{global_attn_every_n_layers=} must be a divisor of one less than {self.num_hidden_layers=}"
             )
+
+        if self.sliding_window != -1 and not self.use_fa2:
+            raise ValueError("Sliding window attention is only supported with FlashAttention2")
+
+        if self.sliding_window % 2 != 0 and self.sliding_window % 64 != 0:
+            raise ValueError("Sliding window must be an even number and divisible by 64")
 
 
 PADDING = ["unpadded", "padded"]
