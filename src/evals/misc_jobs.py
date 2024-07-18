@@ -389,10 +389,10 @@ class CoNLL2003Job(ClassificationJob):
         ner_eval_dataset = ner_eval_dataset.remove_columns(unwanted_columns)        
         self.train_dataloader = build_dataloader(ner_train_dataset,  **dataloader_kwargs)
 
-        conll_evaluator = Evaluator(
-            label="conll_evaluator",
+        conll2003_evaluator = Evaluator(
+            label="conll2003_evaluator",
             dataloader=build_dataloader(ner_eval_dataset, **dataloader_kwargs),
             metric_names=["CoNLL2003Eval"],
         )
 
-        self.evaluators = [conll_evaluator]
+        self.evaluators = [conll2003_evaluator]
