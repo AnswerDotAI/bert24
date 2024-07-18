@@ -98,3 +98,9 @@ tasks:
       save_num_checkpoints_to_keep: 0
     model_config:
       problem_type: multi_label_classification
+  conll2003:
+    seeds: [23]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+    model_config:
+      problem_type: token_classification
