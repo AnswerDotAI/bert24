@@ -156,3 +156,10 @@ def create_eurlex_dataset(**kwargs):
         dataset_subset="eurlex",
         task_column_names={"coastalcph/lex_glue": ("text",)},
     )
+
+def create_conll2003_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="eriktks/conll2003",
+        task_column_names={"conll2003": ("tokens",)},
+    )

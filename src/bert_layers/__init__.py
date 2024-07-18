@@ -25,6 +25,7 @@ from .model import (
     BertForMaskedLM,
     BertForSequenceClassification,
     BertForMultipleChoice,
+    BertForTokenClassification,
     BertOnlyMLMHead,
     BertOnlyNSPHead,
     BertPooler,
@@ -33,6 +34,7 @@ from .model import (
     FlexBertForMaskedLM,
     FlexBertForSequenceClassification,
     FlexBertForMultipleChoice,
+    FlexBertForTokenClassification,
 )
 
 
@@ -42,6 +44,7 @@ __all__ = [
     "BertForMaskedLM",
     "BertForSequenceClassification",
     "BertForMultipleChoice",
+    "BertForTokenClassification",
     "BertResidualGLU",
     "BertAlibiLayer",
     "BertLMPredictionHead",
@@ -65,4 +68,5 @@ __all__ = [
     "FlexBertForMaskedLM",
     "FlexBertForSequenceClassification",
     "FlexBertForMultipleChoice",
+    "FlexBertForTokenClassification",
 ]

@@ -71,3 +71,9 @@ tasks:
     seeds: [19, 8364, 717, 10536]
     trainer_kwargs:
       save_num_checkpoints_to_keep: 0
+  conll2003:
+    seeds: [19, 8364, 717, 10536]
+    model_config:
+      problem_type: token_classification
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0

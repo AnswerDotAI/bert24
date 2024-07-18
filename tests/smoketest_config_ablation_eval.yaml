@@ -59,3 +59,11 @@ tasks:
       eval_subset_num_batches: 2
     model_config:
       problem_type: multi_label_classification
+  conll2003:
+    seeds: [23]
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+      max_duration: 2ba
+      eval_subset_num_batches: 2
+    model_config:
+      problem_type: token_classification

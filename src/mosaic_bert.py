@@ -151,6 +151,7 @@ def create_mosaic_bert_classification(
     pretrained_checkpoint: Optional[str] = None,
     custom_eval_metrics: Optional[list] = [],
     multiple_choice: Optional[bool] = False,
+    token_classification: Optional[bool] = False,
 ):
     """Mosaic BERT classification model based on |:hugging_face:| Transformers.
 
@@ -263,6 +264,9 @@ def create_mosaic_bert_classification(
     if multiple_choice:
         model_cls = bert_layers_module.BertForMultipleChoice
 
+    if token_classification:
+        model_cls = bert_layers_module.BertForTokenClassification
+
     config, unused_kwargs = transformers.AutoConfig.from_pretrained(
         pretrained_model_name, return_unused_kwargs=True, **model_config
     )
@@ -303,6 +307,10 @@ def create_mosaic_bert_classification(
         metrics = [
             MultilabelAccuracy(num_labels=num_labels, average="micro"),
         ]
+
+    if model_config.get("problem_type", "") == "token_classification":
+        metrics = []
+
     allow_embedding_resizing = (
         model.config.allow_embedding_resizing if hasattr(model.config, "allow_embedding_resizing") else False
     )
