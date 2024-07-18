@@ -116,11 +116,11 @@ def test_trainer(
         if sliding_window:
             # fmt: off
             if config.model.model_config.global_attn_every_n_layers == 2:
-                assert model1.bert.encoder.layers[1].attn.sliding_window == (64, 64), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
+                assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
             else:
-                assert model1.bert.encoder.layers[0].attn.sliding_window == (64, 64), f"Sliding window not set for first layer: {model1.bert.encoder.layers[0].attn}"
-                assert model1.bert.encoder.layers[1].attn.sliding_window == (64, 64), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
-                assert model1.bert.encoder.layers[2].attn.sliding_window == (64, 64), f"Sliding window not set for third layer: {model1.bert.encoder.layers[2].attn}"
+                assert model1.bert.encoder.layers[0].attn.sliding_window == (32, 32), f"Sliding window not set for first layer: {model1.bert.encoder.layers[0].attn}"
+                assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
+                assert model1.bert.encoder.layers[2].attn.sliding_window == (32, 32), f"Sliding window not set for third layer: {model1.bert.encoder.layers[2].attn}"
         # SDPA doesn't have sliding window impleemnted, so skip the test
         else:
             config.model.model_config.use_fa2 = False

@@ -211,11 +211,13 @@ class FlexBertConfig(TransformersBertConfig):
                 f"{global_attn_every_n_layers=} must be a divisor of one less than {self.num_hidden_layers=}"
             )
 
-        if self.sliding_window != -1 and not self.use_fa2:
-            raise ValueError("Sliding window attention is only supported with FlashAttention2")
-
-        if self.sliding_window % 2 != 0 and self.sliding_window % 64 != 0:
-            raise ValueError("Sliding window must be an even number and divisible by 64")
+        if self.sliding_window != -1:
+            if not self.use_fa2:
+                raise ValueError("Sliding window attention is only supported with FlashAttention2")
+            if self.sliding_window % 2 != 0 and self.sliding_window % 64 != 0:
+                raise ValueError(
+                    f"Sliding window must be an even number and divisible by 64: {self.sliding_window=} {self.sliding_window % 64} {self.sliding_window % 2}"
+                )
 
 
 PADDING = ["unpadded", "padded"]
