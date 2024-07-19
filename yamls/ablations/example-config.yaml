@@ -1,0 +1,53 @@
+parallel: true
+base_run_name: mosaic-bert
+default_seed: 19
+precision: amp_bf16
+tokenizer_name: bclavie/bert24_32k_tok_llama2
+model:
+  name: mosaic_bert
+  use_pretrained: true
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: ${tokenizer_name}
+  model_config:
+    num_attention_heads: 12
+    num_hidden_layers: 12
+    head_pred_act: gelu
+    hidden_act: gelu
+    normalization: layernorm
+    allow_embedding_resizing: true
+    attention_probs_dropout_prob: 0.0
+    use_fa2: true
+    head_class_norm: null
+    head_class_act: tanh
+starting_checkpoint_load_path: latest-rank0.pt
+local_pretrain_checkpoint_folder: /home/shared/data-ablations/checkpoints/mosaic-bert-1024
+save_finetune_checkpoint_prefix: ./finetuned-checkpoints
+save_finetune_checkpoint_folder: ${save_finetune_checkpoint_prefix}/${base_run_name}
+loggers:
+  wandb:
+    project: bert24-data-ablations-evals
+    entity: bert24
+callbacks:
+  lr_monitor: {}
+  speed_monitor: {}
+scheduler:
+  name: linear_decay_with_warmup
+  t_warmup: 0.06dur
+  alpha_f: 0.0
+tasks:
+  mlmmlu_amateur_semipro:
+    seeds:
+    - 233
+    - 331
+    - 461
+    - 567
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
+  mlmmlu_rookie_reserve:
+    seeds:
+    - 233
+    - 331
+    - 461
+    - 567
+    trainer_kwargs:
+      save_num_checkpoints_to_keep: 0
