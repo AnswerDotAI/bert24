@@ -61,6 +61,9 @@ TASK_NAME_TO_CLASS = {
     "wic": superglue_jobs_module.WiCJob,
     "swag": misc_jobs_module.SWAGJob,
     "eurlex": misc_jobs_module.EurlexJob,
+    "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
+    "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
+    "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
@@ -286,6 +289,7 @@ def run_job_worker(
 ) -> Any:
     """Instantiates the job object and runs it."""
     # need to set seed before model initialization for determinism
+    reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
     instantiated_job = task_cls(
@@ -463,8 +467,8 @@ def train(config: om.DictConfig) -> None:
         local_pretrain_checkpoint_path = None
 
     # Builds round 1 configs and runs them
-    round_1_task_names = {"mnli", "eurlex"}
-    # round_1_task_names = {"mnli", "eurlex", "boolq", "wic"}
+    # round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur", "mlmmlu_semipro", "mlmmlu_reserve", "mlmmlu_rookie"}
+    round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur_semipro", "mlmmlu_rookie_reserve"}
 
     round_1_job_configs = create_job_configs(
         config, round_1_task_names, local_pretrain_checkpoint_path

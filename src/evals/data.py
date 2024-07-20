@@ -156,3 +156,29 @@ def create_eurlex_dataset(**kwargs):
         dataset_subset="eurlex",
         task_column_names={"coastalcph/lex_glue": ("text",)},
     )
+
+def create_ultrafeedback_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="rbiswasfc/ultrafeedback-binary-classification",
+        dataset_subset="",
+        task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
+    )
+
+def create_mlmmlu_dataset(**kwargs):
+    dataset_subset = kwargs.pop("dataset_subset")
+
+    if dataset_subset in ['Amateur', 'Semipro']:
+        task_column_names= ("question", "options", "answer", "category", "cot_content", "src", "question_id", "llama_pred", "llama_correct")
+    elif dataset_subset in ['Reserve', 'Rookie']:
+        task_column_names= ("question", "choices", "category", "question_id", "llama_correct", "id_in_subset")
+    else:
+        raise NotImplementedError
+    
+    return create_eval_dataset(
+            dataset_name="answerdotai/MLMMLU",
+            dataset_subset=dataset_subset,
+            task_column_names={"answerdotai/MLMMLU": task_column_names},
+            **kwargs,
+        )
+
