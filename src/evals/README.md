@@ -1,38 +1,63 @@
 # Ablation Evals
 
 ## Generate config
-### Create cofig by specifying checkpoint & config path
+
+Run `python generate_eval_config_from_checkpoint.py --help` for all options.
+
+### Create config by specifying checkpoint & config path
 ```
 python generate_eval_config_from_checkpoint.py \
 --checkpoint /path/to/checkpoint/folder \
 --train_config /path/to/config.yaml
 ```
-## Create config from the matching wandb run
-```
-python generate_eval_config_from_checkpoint.py \
---checkpoint /path/to/checkpoint/folder \
---wandb_project bert24-data-ablations
-```
 
-## Create config from the matching wandb run & add wandb tracking
+### Create config from the matching wandb run & add wandb tracking
 ```
 python generate_eval_config_from_checkpoint.py \
 --checkpoint /path/to/checkpoint/folder \
---wandb_project bert24-data-ablations \
+--wandb_entity entity_name \
+--wandb_project project_name \
 --track_run
 ```
 
-## Launch the ablation job
+### Create a config and skip the MNLI eval
+
+You can skip any number of evals by adding `--skip_<eval_name>` for each eval you want to skip.
+
+```
+python generate_eval_config_from_checkpoint.py \
+--checkpoint /path/to/checkpoint/folder \
+--wandb_entity entity_name \
+--wandb_project project_name \
+--track_run \
+--skip_mnli
+```
+
+## Launch a single ablation job
 ```bash
 python ablation_eval.py yamls/ablations/checkpoint_name.yaml
 ```
 
-## Launch abalations for sub-directories of a given path
-- Each subdir needs to contain a checkpoint named "latest-rank0.pt"
-- Config file should be stored together with the checkpoint (<sub_dir_name>.yaml)
-- If not, the script will try to find a matching wandb run in `bert24/bert24` project.
+## Automatically generate eval configs for multiple checkpoints and run evals on multiple GPUs
+
+`run_evals_from_checkpoints.py` can be used to automatically generate configs from the latest checkpoints in a given directory, and run all evals on all avalible GPUs.
+
+Run `python run_evals_from_checkpoints.py --help` for all options. All options from `generate_eval_config_from_checkpoint.py` are also available.
+
+The logic for this script is:
+- Each subdir in `--checkpoints` is scanned for model checkpoints.
+    - If a checkpoint/symlink named "latest-rank0.pt" does not exist, a symlink to the latest checkpoint will be created.
+    - If checkpoint/symlink exists, the script will use that checkpoint.
+    - If you pass `--overwrite_existing_symlinks`, the script will create a new symlink to the latest checkpoint and use it.
+- Config files should be stored together with the checkpoint (<sub_dir_name>_evaluation.yaml)
+- If not, the script will try to find a matching wandb run in `wandb_entity`/`wandb_project` project and autogen a config.
 - If the above fails, then the job will be skipped.
 
-```bash
-./example_eval_checkpoints.sh /home/shared/data-ablations/checkpoints
 ```
+python run_evals_from_checkpoints.py \
+--checkpoints /home/shared/data-ablations/checkpoints \
+--wandb_entity entity_name \
+--wandb_project project_name \
+--track_run
+```
+
