@@ -4,7 +4,7 @@ from collections import OrderedDict
 import yaml
 import wandb
 import typer
-from typer import Argument, Option
+from typer import Option
 from typing import Annotated, List, Optional
 
 
