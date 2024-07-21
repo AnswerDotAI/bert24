@@ -134,7 +134,6 @@ def main(
 ):
 # fmt: on
     # Read the input YAML file
-
     os.makedirs(output_dir, exist_ok=True)
     input_config = None
 
@@ -223,7 +222,7 @@ def main(
     loggers = OrderedDict()
     wandb_config = OrderedDict()
     wandb_config["project"] = f"{wandb_project}-evals"
-    wandb_config["entity"] = "bert24"
+    wandb_config["entity"] = wandb_entity
     loggers["wandb"] = wandb_config
     if track_run:
         new_config["loggers"] = loggers
