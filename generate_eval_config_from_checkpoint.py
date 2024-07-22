@@ -225,7 +225,6 @@ def main(
     wandb_config = OrderedDict()
     wandb_config["project"] = f"{wandb_project}-evals"
     wandb_config["entity"] = wandb_entity
-    wandb_config["group"] = None
     loggers["wandb"] = wandb_config
     if track_run:
         new_config["loggers"] = loggers
