@@ -1,13 +1,14 @@
 import os
+import random
 import re
 import signal
 import subprocess
 import time
 from collections import deque
 from pathlib import Path
-import psutil
 from typing import Annotated, List, Optional
 
+import psutil
 import typer
 import yaml
 from typer import Exit, Option
@@ -149,6 +150,7 @@ def manage_jobs(config_directory: Path, quiet=False):
             check_finished_jobs()
             gpu_id = get_free_gpu()
             if gpu_id is not None:
+                time.sleep(random.randint(0, 5))
                 print(f"\nLaunching job for {config} on GPU {gpu_id}\n")
                 launch_job(gpu_id, config, quiet)
                 break
