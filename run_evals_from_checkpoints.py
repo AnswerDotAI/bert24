@@ -229,6 +229,7 @@ def generate_eval_configs(
     skip_mnli: bool,
     skip_boolq: bool,
     skip_wic: bool,
+    skip_ultrafeedback: bool,
     seeds: List[int],
     parallel: bool,
 ):
@@ -279,6 +280,8 @@ def generate_eval_configs(
                 cmd.append("--skip-boolq")
             if skip_wic:
                 cmd.append("--skip-wic")
+            if skip_ultrafeedback:
+                cmd.append("--skip-ultrafeedback")
 
             for seed in seeds:
                 cmd.extend(["--seeds", str(seed)])
@@ -287,6 +290,8 @@ def generate_eval_configs(
 
             # Run the config generation process without suppressing output
             run_subprocess(cmd)
+
+            time.sleep(2)
 
 
 # fmt: off
@@ -309,6 +314,7 @@ def main(
     skip_mnli: Annotated[bool, Option("--skip-mnli", help="Skip the MNLI eval", rich_help_panel="Skip Tasks")] = False,
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
+    skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [23, 42, 6033],
     quiet: Annotated[bool, Option("-q", "--quiet", help="Suppress output from evaluation jobs", rich_help_panel="Config Options")] = False,
     overwrite_existing_symlinks: Annotated[bool, Option("--override-existing-symlinks", help="Overwrite existing symlinks to point to latest checkpoint", rich_help_panel="Config Options")] = False,
@@ -341,6 +347,7 @@ def main(
             skip_mnli=skip_mnli,
             skip_boolq=skip_boolq,
             skip_wic=skip_wic,
+            skip_ultrafeedback=skip_ultrafeedback,
             seeds=seeds,
             parallel=parallel,
         )

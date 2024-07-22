@@ -129,6 +129,7 @@ def main(
     skip_mnli: Annotated[bool, Option("--skip-mnli", help="Skip the MNLI eval", rich_help_panel="Skip Tasks")] = False,
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
+    skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [23, 42, 6033],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
 ):
@@ -196,6 +197,7 @@ def main(
     for key in input_config.get("model", {}).get("model_config", {}).keys():
         model_config_inner[key] = safe_get(input_config, "model", {}).get("model_config", {}).get(key)
     model_config_inner["use_fa2"] = True
+    model_config_inner["deterministic_fa2"] = True
 
     if head_class_norm:
         model_config_inner["head_class_norm"] = head_class_norm
@@ -278,6 +280,12 @@ def main(
         wic["seeds"] = seeds
         wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["wic"] = wic
+
+    if not skip_ultrafeedback:
+        ultrafeedback = OrderedDict()
+        ultrafeedback["seeds"] = seeds
+        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        tasks["ultrafeedback"] = ultrafeedback
 
     new_config["tasks"] = tasks
 
