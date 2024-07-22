@@ -5,6 +5,8 @@
 import os
 import sys
 from typing import List, Optional
+from multiprocessing import cpu_count
+import torch
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -76,17 +78,13 @@ class MNLIJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        mnli_eval_dataset = create_glue_dataset(
-            split="validation_matched", **dataset_kwargs
-        )
-        mnli_eval_mismatched_dataset = create_glue_dataset(
-            split="validation_mismatched", **dataset_kwargs
-        )
+        mnli_eval_dataset = create_glue_dataset(split="validation_matched", **dataset_kwargs)
+        mnli_eval_mismatched_dataset = create_glue_dataset(split="validation_mismatched", **dataset_kwargs)
         mnli_evaluator = Evaluator(
             label="glue_mnli",
             dataloader=build_dataloader(mnli_eval_dataset, **dataloader_kwargs),
@@ -94,9 +92,7 @@ class MNLIJob(ClassificationJob):
         )
         mnli_evaluator_mismatched = Evaluator(
             label="glue_mnli_mismatched",
-            dataloader=build_dataloader(
-                mnli_eval_mismatched_dataset, **dataloader_kwargs
-            ),
+            dataloader=build_dataloader(mnli_eval_mismatched_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
         self.evaluators = [mnli_evaluator, mnli_evaluator_mismatched]
@@ -160,7 +156,7 @@ class RTEJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -232,7 +228,7 @@ class QQPJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -304,7 +300,7 @@ class COLAJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -376,7 +372,7 @@ class MRPCJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -448,7 +444,7 @@ class QNLIJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -520,7 +516,7 @@ class SST2Job(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -592,7 +588,7 @@ class STSBJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
