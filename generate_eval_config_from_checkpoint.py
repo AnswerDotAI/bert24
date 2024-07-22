@@ -130,7 +130,7 @@ def main(
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
     skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
-    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [23, 42, 6033],
+    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
 ):
 # fmt: on
@@ -225,6 +225,7 @@ def main(
     wandb_config = OrderedDict()
     wandb_config["project"] = f"{wandb_project}-evals"
     wandb_config["entity"] = wandb_entity
+    wandb_config["group"] = None
     loggers["wandb"] = wandb_config
     if track_run:
         new_config["loggers"] = loggers
@@ -246,13 +247,13 @@ def main(
 
     if not skip_semipro:
         mlmmlu_amateur_semipro = OrderedDict()
-        mlmmlu_amateur_semipro["seeds"] = seeds[:2]
+        mlmmlu_amateur_semipro["seeds"] = seeds[:4]
         mlmmlu_amateur_semipro["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_amateur_semipro"] = mlmmlu_amateur_semipro
 
     if not skip_reserve:
         mlmmlu_rookie_reserve = OrderedDict()
-        mlmmlu_rookie_reserve["seeds"] = seeds[:2]
+        mlmmlu_rookie_reserve["seeds"] = seeds[:4]
         mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
@@ -271,19 +272,19 @@ def main(
 
     if not skip_boolq:
         boolq = OrderedDict()
-        boolq["seeds"] = seeds
+        boolq["seeds"] = seeds[:3]
         boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["boolq"] = boolq
 
     if not skip_wic:
         wic = OrderedDict()
-        wic["seeds"] = seeds
+        wic["seeds"] = seeds[:3]
         wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["wic"] = wic
 
     if not skip_ultrafeedback:
         ultrafeedback = OrderedDict()
-        ultrafeedback["seeds"] = seeds
+        ultrafeedback["seeds"] = seeds[:2]
         ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["ultrafeedback"] = ultrafeedback
 
