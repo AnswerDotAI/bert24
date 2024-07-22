@@ -1,12 +1,13 @@
 import os
-from pathlib import Path
 from collections import OrderedDict
-import yaml
-import wandb
-import typer
-from typer import Option
+from pathlib import Path
 from typing import Annotated, List, Optional
 
+import typer
+import yaml
+from typer import Option
+
+import wandb
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
@@ -284,7 +285,7 @@ def main(
     if not skip_ultrafeedback:
         ultrafeedback = OrderedDict()
         ultrafeedback["seeds"] = seeds[:2]
-        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "1ep"}
         tasks["ultrafeedback"] = ultrafeedback
 
     new_config["tasks"] = tasks

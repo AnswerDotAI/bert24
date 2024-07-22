@@ -8,6 +8,7 @@ from collections import deque
 from pathlib import Path
 from typing import Annotated, List, Optional
 
+import datasets
 import psutil
 import typer
 import yaml
@@ -296,6 +297,14 @@ def generate_eval_configs(
             time.sleep(2)
 
 
+def download_dataset(dataset_name: str, subset: Optional[str] = None):
+    try:
+        datasets.load_dataset(dataset_name, subset)
+        print(f"Successfully downloaded {dataset_name} {subset}")
+    except Exception as e:
+        print(f"Error in processing {dataset_name}: {e}")
+
+
 # fmt: off
 @app.command()
 def main(
@@ -356,6 +365,30 @@ def main(
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
+    
+    # download required datasets for evaluation runs
+    required_datasets = []
+
+    if not skip_semipro:
+        required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
+        required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
+    if not skip_reserve:
+        required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
+        required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
+    if not skip_eurlex:
+        required_datasets.append(["coastalcph/lex_glue", "eurlex"])
+    if not skip_mnli:
+        required_datasets.append(["glue", "mnli"])
+    if not skip_boolq:
+        required_datasets.append(["aps/super_glue", "boolq"])
+    if not skip_wic:
+        required_datasets.append(["aps/super_glue", "wic"])
+    if not skip_ultrafeedback:
+        required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
+
+    for args in required_datasets:
+        download_dataset(*args)
+
 
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)

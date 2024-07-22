@@ -5,8 +5,9 @@
 import os
 import sys
 from itertools import chain
-from typing import List, Optional
 from multiprocessing import cpu_count
+from typing import List, Optional
+
 import torch
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
@@ -17,17 +18,18 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
-from torchmetrics.classification import MultilabelF1Score, MulticlassAUROC
+from torchmetrics.classification import MulticlassAUROC, MultilabelF1Score
+
 from src.evals.data import (
-    create_swag_dataset,
     create_eurlex_dataset,
-    create_ultrafeedback_dataset,
     create_mlmmlu_dataset,
+    create_swag_dataset,
+    create_ultrafeedback_dataset,
 )
 from src.evals.finetuning_jobs import (
+    ClassificationJob,
     build_dataloader,
     multiple_choice_collate_fn,
-    ClassificationJob,
 )
 
 
@@ -275,7 +277,7 @@ class UltrafeedbackJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "300ba",
         scheduler: Optional[ComposerScheduler] = None,
-        max_sequence_length: Optional[int] = 2048,
+        max_sequence_length: Optional[int] = 1536,  # 2048,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 64,
         load_path: Optional[str] = None,
@@ -464,7 +466,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         )
 
         amateur_evaluator = Evaluator(
-            label=f"mlmmlu_amateur",
+            label="mlmmlu_amateur",
             dataloader=build_dataloader(
                 amateur_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
@@ -474,7 +476,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         )
 
         semipro_evaluator = Evaluator(
-            label=f"mlmmlu_semipro",
+            label="mlmmlu_semipro",
             dataloader=build_dataloader(
                 semipro_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
