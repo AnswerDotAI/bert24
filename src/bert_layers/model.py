@@ -833,7 +833,7 @@ class FlexBertModel(BertPreTrainedModel):
             self.final_norm = None
 
     def post_init(self):
-        self._init_weights()
+        self._init_weights(reset_params=False)
         self._backward_compatibility_gradient_checkpointing()
 
     def get_input_embeddings(self):
@@ -860,12 +860,17 @@ class FlexBertModel(BertPreTrainedModel):
             encoder_outputs = self.final_norm(encoder_outputs)
         return encoder_outputs
 
-    def _init_weights(self, reset_params: bool = False):
-        self.embeddings._init_weights(reset_params)
-        self.encoder._init_weights(reset_params)
+    def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
+        if module is None:
+            assert isinstance(reset_params, bool)
+            self.embeddings._init_weights(reset_params=reset_params)
+            self.encoder._init_weights(reset_params=reset_params)
 
-        if reset_params and self.config.final_norm:
-            self.final_norm.reset_parameters()
+            if reset_params and self.config.final_norm:
+                self.final_norm.reset_parameters()
+        else:
+            assert isinstance(module, nn.Module) and reset_params is None
+            super()._init_weights(module)
 
     def reset_parameters(self):
         self._init_weights(reset_params=True)
@@ -906,15 +911,20 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
 
         # Initialize weights and apply final processing
-        self._init_weights()
+        self._init_weights(reset_params=False)
 
-    def _init_weights(self, reset_params: bool = False):
-        self.bert._init_weights(reset_params)
-        self.head._init_weights(reset_params)
+    def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
+        if module is None:
+            assert isinstance(reset_params, bool)
+            self.bert._init_weights(reset_params=reset_params)
+            self.head._init_weights(reset_params=reset_params)
 
-        # Output weights.
-        if not self.config.tie_word_embeddings:
-            init_weights(self.config, self.decoder, self.config.hidden_size, type_of_module=ModuleType.final_out)
+            # Output weights.
+            if not self.config.tie_word_embeddings:
+                init_weights(self.config, self.decoder, self.config.hidden_size, type_of_module=ModuleType.final_out)
+        else:
+            assert isinstance(module, nn.Module) and reset_params is None
+            super()._init_weights(module)
 
     @classmethod
     def from_composer(
@@ -1054,12 +1064,17 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         # Initialize weights and apply final processing
-        self._init_weights()
+        self._init_weights(reset_params=False)
 
-    def _init_weights(self, reset_params: bool = False):
-        self.bert._init_weights(reset_params)
-        self.head._init_weights(reset_params)
-        init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
+    def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
+        if module is None:
+            assert isinstance(reset_params, bool)
+            self.bert._init_weights(reset_params=reset_params)
+            self.head._init_weights(reset_params=reset_params)
+            init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
+        else:
+            assert isinstance(module, nn.Module) and reset_params is None
+            super()._init_weights(module)
 
     @classmethod
     def from_composer(
@@ -1184,12 +1199,17 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
-        self._init_weights()
+        self._init_weights(reset_params=False)
 
-    def _init_weights(self, reset_params: bool = False):
-        self.bert._init_weights(reset_params)
-        self.head._init_weights(reset_params)
-        init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
+    def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
+        if module is None:
+            assert isinstance(reset_params, bool)
+            self.bert._init_weights(reset_params=reset_params)
+            self.head._init_weights(reset_params=reset_params)
+            init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
+        else:
+            assert isinstance(module, nn.Module) and reset_params is None
+            super()._init_weights(module)
 
     @classmethod
     def from_composer(
