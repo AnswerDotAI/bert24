@@ -251,6 +251,20 @@ class FlexBertAttentionBase(nn.Module):
     def forward(self, hidden_states: torch.Tensor, attn_mask: torch.Tensor, **kwargs) -> torch.Tensor:
         raise NotImplementedError("This is a base class and should not be used directly.")
 
+    def extra_repr(self) -> str:
+        repr = ""
+        if hasattr(self, "num_attention_heads"):
+            repr += f"num_attention_heads={self.num_attention_heads}"
+        if hasattr(self, "attn_head_size"):
+            repr += f", attn_head_size={self.attn_head_size}"
+        if hasattr(self, "sliding_window"):
+            repr += f", sliding_window={self.sliding_window if self.sliding_window != (-1, -1) else 'False'}"
+        if hasattr(self, "use_fa2"):
+            repr += f", use_fa2={self.use_fa2}"
+        if hasattr(self, "deterministic_fa2"):
+            repr += f", deterministic_fa2={self.deterministic_fa2}"
+        return repr
+
 
 class FlexBertUnpadAttention(FlexBertAttentionBase):
     """Performs multi-headed self attention on a batch of unpadded sequences.
@@ -283,6 +297,16 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
@@ -302,6 +326,8 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+            if self.sliding_window[0] > 0:
+                raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -365,6 +391,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -374,6 +401,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -427,6 +455,16 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
@@ -446,6 +484,8 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+            if self.sliding_window[0] > 0:
+                raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -501,6 +541,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -510,6 +551,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -563,6 +605,17 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
         if self.use_fa2 and self.use_sdpa_attn_mask:
@@ -570,6 +623,8 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+        if not self.use_fa2 and self.sliding_window[0] > 0:
+            raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -617,10 +672,20 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
@@ -682,6 +747,17 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
                 "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
@@ -700,6 +776,8 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+            if self.sliding_window[0] > 0:
+                raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -768,6 +846,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -777,6 +856,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -843,11 +923,26 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
         )
+
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            self.use_fa2 = False
         if self.use_fa2 and self.use_sdpa_attn_mask:
             logger.warn_once(
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+        if not self.use_fa2 and self.sliding_window[0] > 0:
+            raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -901,10 +996,20 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
@@ -963,6 +1068,18 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
             logger.warn_once(
                 "Unable to import flash_attn; defaulting FlexBERT attention implementation to PyTorch's"
@@ -981,6 +1098,8 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     " use more memory during the backward pass. Use the FA2 backend for linear memory scaling"
                     " with sequence length."
                 )
+            if self.sliding_window[0] > 0:
+                raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -1042,6 +1161,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1051,6 +1171,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     max_seqlen=max_seqlen,
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -1119,11 +1240,25 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
             interleaved=config.rotary_emb_interleaved,
         )
 
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if not IMPL_USE_FLASH2 and self.use_fa2:
+            self.use_fa2 = False
         if self.use_fa2 and self.use_sdpa_attn_mask:
             logger.warn_once(
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+        if not self.use_fa2 and self.sliding_window[0] > 0:
+            raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -1170,10 +1305,20 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
@@ -1220,14 +1365,26 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+
+        if config.global_attn_every_n_layers > 0:
+            if config.sliding_window == -1:
+                raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
+            if layer_id % config.global_attn_every_n_layers != 0:
+                self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+            else:
+                self.sliding_window = (-1, -1)
+        else:
+            self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
-
         if self.use_fa2 and self.use_sdpa_attn_mask:
             logger.warn_once(
                 "Flash Attention 2 does not support attention masks. Use unpadded attention "
                 "the equivalent functionality of masking out padding tokens."
             )
+        if not self.use_fa2 and self.sliding_window[0] > 0:
+            raise ValueError("Sliding window is not implemented for the PyTorch SDPA path. Use the FA2 backend.")
 
     def _init_weights(self, reset_params: bool = False):
         init_weights(
@@ -1268,10 +1425,20 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
 
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                attn = flash_attn_qkvpacked_func(qkv, dropout_p=self.p_dropout, deterministic=self.deterministic_fa2)
+                attn = flash_attn_qkvpacked_func(
+                    qkv,
+                    dropout_p=self.p_dropout,
+                    deterministic=self.deterministic_fa2,
+                    window_size=self.sliding_window,
+                )
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
