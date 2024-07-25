@@ -1,10 +1,13 @@
+import io
 import os
 import random
 import re
 import signal
 import subprocess
+import threading
 import time
 from collections import deque
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Annotated, List, Optional
 
@@ -305,6 +308,33 @@ def download_dataset(dataset_name: str, subset: Optional[str] = None):
         print(f"Error in processing {dataset_name}: {e}")
 
 
+def download_datasets(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback):
+    required_datasets = []
+
+    if not skip_semipro:
+        required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
+        required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
+    if not skip_reserve:
+        required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
+        required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
+    if not skip_eurlex:
+        required_datasets.append(["coastalcph/lex_glue", "eurlex"])
+    if not skip_mnli:
+        required_datasets.append(["glue", "mnli"])
+    if not skip_boolq:
+        required_datasets.append(["aps/super_glue", "boolq"])
+    if not skip_wic:
+        required_datasets.append(["aps/super_glue", "wic"])
+    if not skip_ultrafeedback:
+        required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
+
+    # Redirect stdout and stderr to a string buffer
+    string_io = io.StringIO()
+    with redirect_stdout(string_io), redirect_stderr(string_io):
+        for args in required_datasets:
+            download_dataset(*args)
+
+
 # fmt: off
 @app.command()
 def main(
@@ -333,6 +363,13 @@ def main(
     config: Annotated[Optional[Path], Option(callback=conf_callback, is_eager=True, help="Relative path to YAML config file for setting options. Passing CLI options will supersede config options.", case_sensitive=False, rich_help_panel="Config Options")] = None,
 ):
 # fmt: on
+    print("Asynchronously downloading required datasets...")
+    download_thread = threading.Thread(
+        target=download_datasets,
+        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback)
+    )
+    download_thread.start()
+
     print("Creating symlinks for latest checkpoints...")
     for folder in checkpoints.glob("*"):
         create_symlink_for_newest_checkpoint(folder, overwrite_existing_symlinks)
@@ -365,30 +402,11 @@ def main(
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
-    
-    # download required datasets for evaluation runs
-    required_datasets = []
 
-    if not skip_semipro:
-        required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
-        required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
-    if not skip_reserve:
-        required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
-        required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
-    if not skip_eurlex:
-        required_datasets.append(["coastalcph/lex_glue", "eurlex"])
-    if not skip_mnli:
-        required_datasets.append(["glue", "mnli"])
-    if not skip_boolq:
-        required_datasets.append(["aps/super_glue", "boolq"])
-    if not skip_wic:
-        required_datasets.append(["aps/super_glue", "wic"])
-    if not skip_ultrafeedback:
-        required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
-
-    for args in required_datasets:
-        download_dataset(*args)
-
+    # Wait for the dataset download to complete
+    print("Waiting for dataset downloads to complete...")
+    download_thread.join()
+    print("Dataset downloading complete.")
 
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)
