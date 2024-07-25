@@ -78,7 +78,7 @@ class MNLIJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -156,7 +156,7 @@ class RTEJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -228,7 +228,7 @@ class QQPJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -300,7 +300,7 @@ class COLAJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -372,7 +372,7 @@ class MRPCJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -444,7 +444,7 @@ class QNLIJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -516,7 +516,7 @@ class SST2Job(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)
@@ -588,7 +588,7 @@ class STSBJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_glue_dataset(split="train", **dataset_kwargs)

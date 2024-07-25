@@ -116,7 +116,7 @@ class SWAGJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
@@ -217,7 +217,7 @@ class EurlexJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
@@ -343,7 +343,7 @@ class UltrafeedbackJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_ultrafeedback_dataset(split="train", **dataset_kwargs)
@@ -449,7 +449,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
@@ -577,7 +577,7 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": max(8, cpu_count() // torch.cuda.device_count()),
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
