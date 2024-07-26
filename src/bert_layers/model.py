@@ -778,8 +778,22 @@ class MaskedLMOutputZLoss(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
     attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
 
+class FlexBertPreTrainedModel(BertPreTrainedModel):
+    """
+    An abstract class to handle custom weights initialization of modules
+    """
+    def _init_module_weights(self, module: nn.Module):
+        """
+        Custom weight init of modules using src.bert_layers.initialization.init_weights
+        Currently only supports init of embedding modules
+        """
+        assert isinstance(module, nn.Module)
+        if isinstance(module, nn.Embedding):
+            init_weights(self.config, module, ModuleType.emb)
+        else:
+            raise NotImplementedError("Custom weight init for the given module is not supported")
 
-class FlexBertModel(BertPreTrainedModel):
+class FlexBertModel(FlexBertPreTrainedModel):
     """Overall BERT model.
 
     Args:
@@ -861,16 +875,16 @@ class FlexBertModel(BertPreTrainedModel):
         return encoder_outputs
 
     def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
-        if module is None:
+        assert (module is None) != (reset_params is None), "arg module xor reset_params must be specified"
+        if module:
+            self._init_module_weights(module)
+        else:
             assert isinstance(reset_params, bool)
             self.embeddings._init_weights(reset_params=reset_params)
             self.encoder._init_weights(reset_params=reset_params)
 
             if reset_params and self.config.final_norm:
                 self.final_norm.reset_parameters()
-        else:
-            assert isinstance(module, nn.Module) and reset_params is None
-            super()._init_weights(module)
 
     def reset_parameters(self):
         self._init_weights(reset_params=True)
@@ -890,7 +904,7 @@ class FlexBertModel(BertPreTrainedModel):
         return params
 
 
-class FlexBertForMaskedLM(BertPreTrainedModel):
+class FlexBertForMaskedLM(FlexBertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
         super().__init__(config)
         self.mlm_probability = getattr(config, "mlm_probability", 0.0)
@@ -914,7 +928,10 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         self._init_weights(reset_params=False)
 
     def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
-        if module is None:
+        assert (module is None) != (reset_params is None), "arg module xor reset_params must be specified"
+        if module:
+            self._init_module_weights(module)
+        else:
             assert isinstance(reset_params, bool)
             self.bert._init_weights(reset_params=reset_params)
             self.head._init_weights(reset_params=reset_params)
@@ -922,9 +939,6 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
             # Output weights.
             if not self.config.tie_word_embeddings:
                 init_weights(self.config, self.decoder, self.config.hidden_size, type_of_module=ModuleType.final_out)
-        else:
-            assert isinstance(module, nn.Module) and reset_params is None
-            super()._init_weights(module)
 
     @classmethod
     def from_composer(
@@ -1047,7 +1061,7 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         return params
 
 
-class FlexBertForSequenceClassification(BertPreTrainedModel):
+class FlexBertForSequenceClassification(FlexBertPreTrainedModel):
     """Bert Model transformer with a sequence classification/regression head.
 
     This head is just a linear layer on top of the pooled output. Used for,
@@ -1067,14 +1081,14 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         self._init_weights(reset_params=False)
 
     def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
-        if module is None:
+        assert (module is None) != (reset_params is None), "arg module xor reset_params must be specified"
+        if module:
+            self._init_module_weights(module)
+        else:
             assert isinstance(reset_params, bool)
             self.bert._init_weights(reset_params=reset_params)
             self.head._init_weights(reset_params=reset_params)
             init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
-        else:
-            assert isinstance(module, nn.Module) and reset_params is None
-            super()._init_weights(module)
 
     @classmethod
     def from_composer(
@@ -1178,7 +1192,7 @@ class FlexBertForSequenceClassification(BertPreTrainedModel):
         return params
 
 
-class FlexBertForMultipleChoice(BertPreTrainedModel):
+class FlexBertForMultipleChoice(FlexBertPreTrainedModel):
     """
     Bert Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a
     softmax) e.g. for RocStories/SWAG tasks.
@@ -1202,14 +1216,14 @@ class FlexBertForMultipleChoice(BertPreTrainedModel):
         self._init_weights(reset_params=False)
 
     def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
-        if module is None:
+        assert (module is None) != (reset_params is None), "arg module xor reset_params must be specified"
+        if module:
+            self._init_module_weights(module)
+        else:
             assert isinstance(reset_params, bool)
             self.bert._init_weights(reset_params=reset_params)
             self.head._init_weights(reset_params=reset_params)
             init_weights(self.config, self.classifier, self.config.hidden_size, type_of_module=ModuleType.final_out)
-        else:
-            assert isinstance(module, nn.Module) and reset_params is None
-            super()._init_weights(module)
 
     @classmethod
     def from_composer(
