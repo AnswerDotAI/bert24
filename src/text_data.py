@@ -356,8 +356,8 @@ def build_text_dataloader(
 
 class NoStreamingDataset(Dataset):
     """
-    A dataset class that can read data with mds-format (mosaic streaming-format) from local.
-    In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
+    A dataset class that can read data with raw mds-format (mosaic streaming-format without compression)
+    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
     this class is slimmer, more efficient, and does not contain redundant code required for streaming.
     """
     def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
@@ -368,6 +368,8 @@ class NoStreamingDataset(Dataset):
         self.shards = []
         for info in obj['shards']:
             shard = reader_from_json(local, split, info)
+            raw_filename = os.path.join(shard.dirname, shard.split, shard.raw_data.basename)
+            assert os.path.isfile(raw_filename), f"Raw file {raw_filename} does not exist"
             shard.validate(True)
             self.shards.append(shard)
         samples_per_shard = np.array([shard.samples for shard in self.shards], np.int64)
