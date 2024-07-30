@@ -238,7 +238,7 @@ def main(
 
     scheduler = OrderedDict()
     scheduler["name"] = "linear_decay_with_warmup"
-    scheduler["t_warmup"] = "0.06dur"
+    scheduler["t_warmup"] = "0.1dur"
     scheduler["alpha_f"] = 0.0
     if scheduler:
         new_config["scheduler"] = scheduler
