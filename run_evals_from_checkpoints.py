@@ -10,6 +10,7 @@ from collections import deque
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Annotated, List, Optional
+import queue
 
 import datasets
 import psutil
@@ -364,13 +365,15 @@ def generate_eval_configs(
 
 def download_dataset(dataset_name: str, subset: Optional[str] = None):
     try:
-        datasets.load_dataset(dataset_name, subset)
-        print(f"Successfully downloaded {dataset_name} {subset}")
+        datasets.load_dataset(dataset_name, subset, trust_remote_code=True)
+        return f"Successfully downloaded {dataset_name} {subset}"
     except Exception as e:
-        print(f"Error in processing {dataset_name}: {e}")
+        return f"Error in processing {dataset_name}: {e}"
 
 
-def download_datasets(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback):
+def download_datasets(
+    skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue
+):
     required_datasets = []
 
     if not skip_semipro:
@@ -392,9 +395,11 @@ def download_datasets(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_b
 
     # Redirect stdout and stderr to a string buffer
     string_io = io.StringIO()
+    msgs = []
     with redirect_stdout(string_io), redirect_stderr(string_io):
         for args in required_datasets:
-            download_dataset(*args)
+            msgs.append(download_dataset(*args))
+    msg_queue.put("    " + "\n    ".join(msgs) + "\n")
 
 
 console = Console()
@@ -429,9 +434,10 @@ def main(
 ):
 # fmt: on
     print("\nAsynchronously downloading required datasets...\n")
+    msg_queue = queue.Queue()
     download_thread = threading.Thread(
         target=download_datasets,
-        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback)
+        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue)
     )
     download_thread.start()
 
@@ -472,6 +478,8 @@ def main(
     print("Waiting for dataset downloads to complete...")
     download_thread.join()
     print("Dataset downloading complete.")
+    while not msg_queue.empty():
+        print(msg_queue.get())
 
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)
