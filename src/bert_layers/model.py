@@ -789,7 +789,7 @@ class FlexBertPreTrainedModel(BertPreTrainedModel):
         """
         assert isinstance(module, nn.Module)
         if isinstance(module, nn.Embedding):
-            init_weights(self.config, module, ModuleType.emb)
+            init_weights(self.config, module, type_of_module=ModuleType.emb)
         else:
             raise NotImplementedError("Custom weight init for the given module is not supported")
 
