@@ -277,7 +277,7 @@ class UltrafeedbackJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "300ba",
         scheduler: Optional[ComposerScheduler] = None,
-        max_sequence_length: Optional[int] = 1536,  # 2048,
+        max_sequence_length: Optional[int] = 2048,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 64,
         load_path: Optional[str] = None,
