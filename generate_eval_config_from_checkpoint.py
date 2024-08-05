@@ -1,12 +1,12 @@
 import os
-from pathlib import Path
 from collections import OrderedDict
-import yaml
-import wandb
-import typer
-from typer import Option
+from pathlib import Path
 from typing import Annotated, List, Optional
 
+import typer
+import wandb
+import yaml
+from typer import Option
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
@@ -129,7 +129,9 @@ def main(
     skip_mnli: Annotated[bool, Option("--skip-mnli", help="Skip the MNLI eval", rich_help_panel="Skip Tasks")] = False,
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
-    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [23, 42, 6033],
+    skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
+    fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
+    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
 ):
 # fmt: on
@@ -196,6 +198,7 @@ def main(
     for key in input_config.get("model", {}).get("model_config", {}).keys():
         model_config_inner[key] = safe_get(input_config, "model", {}).get("model_config", {}).get(key)
     model_config_inner["use_fa2"] = True
+    model_config_inner["deterministic_fa2"] = True
 
     if head_class_norm:
         model_config_inner["head_class_norm"] = head_class_norm
@@ -235,7 +238,7 @@ def main(
 
     scheduler = OrderedDict()
     scheduler["name"] = "linear_decay_with_warmup"
-    scheduler["t_warmup"] = "0.06dur"
+    scheduler["t_warmup"] = "0.1dur"
     scheduler["alpha_f"] = 0.0
     if scheduler:
         new_config["scheduler"] = scheduler
@@ -244,13 +247,13 @@ def main(
 
     if not skip_semipro:
         mlmmlu_amateur_semipro = OrderedDict()
-        mlmmlu_amateur_semipro["seeds"] = seeds[:2]
+        mlmmlu_amateur_semipro["seeds"] = seeds[:4]
         mlmmlu_amateur_semipro["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_amateur_semipro"] = mlmmlu_amateur_semipro
 
     if not skip_reserve:
         mlmmlu_rookie_reserve = OrderedDict()
-        mlmmlu_rookie_reserve["seeds"] = seeds[:2]
+        mlmmlu_rookie_reserve["seeds"] = seeds[:4]
         mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
@@ -269,15 +272,23 @@ def main(
 
     if not skip_boolq:
         boolq = OrderedDict()
-        boolq["seeds"] = seeds
+        boolq["seeds"] = seeds[:3]
         boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["boolq"] = boolq
 
     if not skip_wic:
         wic = OrderedDict()
-        wic["seeds"] = seeds
+        wic["seeds"] = seeds[:3]
         wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["wic"] = wic
+
+    if not skip_ultrafeedback:
+        ultrafeedback = OrderedDict()
+        ultrafeedback["seeds"] = seeds[:2]
+        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0,
+                                           "max_duration": "1ep",
+                                           "max_sequence_length": 1536 if fast_ultrafeedback else 2048}
+        tasks["ultrafeedback"] = ultrafeedback
 
     new_config["tasks"] = tasks
 

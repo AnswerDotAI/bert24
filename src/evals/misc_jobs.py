@@ -5,7 +5,10 @@
 import os
 import sys
 from itertools import chain
+from multiprocessing import cpu_count
 from typing import List, Optional
+
+import torch
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -15,12 +18,18 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
-from torchmetrics.classification import MultilabelF1Score, MulticlassAUROC
-from src.evals.data import create_swag_dataset, create_eurlex_dataset, create_ultrafeedback_dataset, create_mlmmlu_dataset
+from torchmetrics.classification import MulticlassAUROC, MultilabelF1Score
+
+from src.evals.data import (
+    create_eurlex_dataset,
+    create_mlmmlu_dataset,
+    create_swag_dataset,
+    create_ultrafeedback_dataset,
+)
 from src.evals.finetuning_jobs import (
+    ClassificationJob,
     build_dataloader,
     multiple_choice_collate_fn,
-    ClassificationJob,
 )
 
 
@@ -81,8 +90,7 @@ class SWAGJob(ClassificationJob):
                 first_sentences = [[context] * 4 for context in inp["sent1"]]
                 question_headers = inp["sent2"]
                 second_sentences = [
-                    [f"{header} {inp[end][i]}" for end in ending_names]
-                    for i, header in enumerate(question_headers)
+                    [f"{header} {inp[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
                 ]
 
                 first_sentences = sum(first_sentences, [])
@@ -95,10 +103,7 @@ class SWAGJob(ClassificationJob):
                     max_length=max_seq_length,
                     truncation=True,
                 )
-                return {
-                    k: [v[i : i + 4] for i in range(0, len(v), 4)]
-                    for k, v in tokenized_examples.items()
-                }
+                return {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
 
             return tokenize_fn
 
@@ -111,7 +116,7 @@ class SWAGJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
@@ -131,9 +136,11 @@ class SWAGJob(ClassificationJob):
         )
         self.evaluators = [swag_evaluator]
 
+
 class EurlexMultilabelF1Score(MultilabelF1Score):
     def __init__(self):
-        super().__init__(num_labels=100, average='micro', threshold=0.5)
+        super().__init__(num_labels=100, average="micro", threshold=0.5)
+
 
 class EurlexJob(ClassificationJob):
     """Eurlex multi-label classification."""
@@ -186,7 +193,6 @@ class EurlexJob(ClassificationJob):
             weight_decay=1.0e-06,
         )
 
-
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
                 first_sentences = inp["text"]
@@ -211,37 +217,37 @@ class EurlexJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
         eurlex_train_dataset = create_eurlex_dataset(split="train", **dataset_kwargs)
         eurlex_eval_dataset = create_eurlex_dataset(split="test", **dataset_kwargs)
 
-        eurlex_train_dataset = eurlex_train_dataset.rename_column('labels', 'eurovoc_concepts')
-        eurlex_eval_dataset = eurlex_eval_dataset.rename_column('labels', 'eurovoc_concepts')
-
+        eurlex_train_dataset = eurlex_train_dataset.rename_column("labels", "eurovoc_concepts")
+        eurlex_eval_dataset = eurlex_eval_dataset.rename_column("labels", "eurovoc_concepts")
 
         # process labels: eurovoc_concepts ---
-        train_classes = sorted(list(set(chain(*eurlex_train_dataset['eurovoc_concepts']))))
-        class2id = {class_:id for id, class_ in enumerate(train_classes)}
+        train_classes = sorted(list(set(chain(*eurlex_train_dataset["eurovoc_concepts"]))))
+        class2id = {class_: id for id, class_ in enumerate(train_classes)}
         n_labels = len(train_classes)
 
         def generate_labels(example):
-            concepts = set(example['eurovoc_concepts']).intersection(set(train_classes)) # not to introduce new concepts in validation
+            concepts = set(example["eurovoc_concepts"]).intersection(
+                set(train_classes)
+            )  # not to introduce new concepts in validation
             labels = [0.0 for i in range(n_labels)]
 
             for label in concepts:
                 label_id = class2id[label]
                 labels[label_id] = 1.0
-            example['labels'] = labels
+            example["labels"] = labels
             return example
-        
-        eurlex_train_dataset = eurlex_train_dataset.map(generate_labels, remove_columns=['eurovoc_concepts'])
-        eurlex_eval_dataset = eurlex_eval_dataset.map(generate_labels, remove_columns=['eurovoc_concepts'])
+
+        eurlex_train_dataset = eurlex_train_dataset.map(generate_labels, remove_columns=["eurovoc_concepts"])
+        eurlex_eval_dataset = eurlex_eval_dataset.map(generate_labels, remove_columns=["eurovoc_concepts"])
 
         self.train_dataloader = build_dataloader(eurlex_train_dataset, **dataloader_kwargs)
-
 
         eurlex_evaluator = Evaluator(
             label="long_context_eurlex",
@@ -251,9 +257,11 @@ class EurlexJob(ClassificationJob):
 
         self.evaluators = [eurlex_evaluator]
 
+
 class UltrafeedbackAUROC(MulticlassAUROC):
     def __init__(self):
         super().__init__(num_classes=2)
+
 
 class UltrafeedbackJob(ClassificationJob):
     """ultrafeedback binary classification."""
@@ -309,7 +317,8 @@ class UltrafeedbackJob(ClassificationJob):
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
                 first_sentences = [
-                    f"{prompt} {tokenizer.sep_token} {response_a}" for prompt, response_a in zip(inp['prompt'], inp['response_a'])
+                    f"{prompt} {tokenizer.sep_token} {response_a}"
+                    for prompt, response_a in zip(inp["prompt"], inp["response_a"])
                 ]
 
                 second_sentences = inp["response_b"]
@@ -334,15 +343,13 @@ class UltrafeedbackJob(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
         train_dataset = create_ultrafeedback_dataset(split="train", **dataset_kwargs)
-        
+
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        ultrafeedback_eval_dataset = create_ultrafeedback_dataset(
-            split="test", **dataset_kwargs
-        )
+        ultrafeedback_eval_dataset = create_ultrafeedback_dataset(split="test", **dataset_kwargs)
         ultrafeedback_evaluator = Evaluator(
             label="long_context_ultrafeedback",
             dataloader=build_dataloader(ultrafeedback_eval_dataset, **dataloader_kwargs),
@@ -352,8 +359,8 @@ class UltrafeedbackJob(ClassificationJob):
 
 
 class MLMMLUAmateurSemipro(ClassificationJob):
-    """MLMMLU for Amateur & Semipro
-    """
+    """MLMMLU for Amateur & Semipro"""
+
     multiple_choice = True
     num_labels = 10
 
@@ -376,7 +383,6 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
-
         super().__init__(
             model=model,
             tokenizer_name=tokenizer_name,
@@ -407,12 +413,14 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
-                default_option = 'NA'
+                default_option = "NA"
                 choice_col = "options"
                 num_options = 10
-                
+
                 first_sentences = [[question] * num_options for question in inp["question"]]
-                second_sentences = [option_list + [default_option]*(num_options - len(option_list)) for option_list in inp[choice_col]]
+                second_sentences = [
+                    option_list + [default_option] * (num_options - len(option_list)) for option_list in inp[choice_col]
+                ]
 
                 first_sentences = list(chain(*first_sentences))
                 second_sentences = list(chain(*second_sentences))
@@ -425,7 +433,10 @@ class MLMMLUAmateurSemipro(ClassificationJob):
                     truncation=True,
                 )
 
-                return {k: [v[i : i + num_options] for i in range(0, len(v), num_options)] for k, v in tokenized_examples.items()}
+                return {
+                    k: [v[i : i + num_options] for i in range(0, len(v), num_options)]
+                    for k, v in tokenized_examples.items()
+                }
 
             return tokenize_fn
 
@@ -438,24 +449,24 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
-        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset='Amateur', **dataset_kwargs)
-        amateur_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Amateur', **dataset_kwargs)
-        semipro_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Semipro', **dataset_kwargs)
+        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset="Amateur", **dataset_kwargs)
+        amateur_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset="Amateur", **dataset_kwargs)
+        semipro_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset="Semipro", **dataset_kwargs)
 
-        train_dataset = train_dataset.rename_column('answer_index', 'labels')
-        amateur_eval_dataset = amateur_eval_dataset.rename_column('answer_index', 'labels')
-        semipro_eval_dataset = semipro_eval_dataset.rename_column('answer_index', 'labels')
+        train_dataset = train_dataset.rename_column("answer_index", "labels")
+        amateur_eval_dataset = amateur_eval_dataset.rename_column("answer_index", "labels")
+        semipro_eval_dataset = semipro_eval_dataset.rename_column("answer_index", "labels")
 
         self.train_dataloader = build_dataloader(
             train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
         )
 
         amateur_evaluator = Evaluator(
-            label=f"mlmmlu_amateur",
+            label="mlmmlu_amateur",
             dataloader=build_dataloader(
                 amateur_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
@@ -465,7 +476,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         )
 
         semipro_evaluator = Evaluator(
-            label=f"mlmmlu_semipro",
+            label="mlmmlu_semipro",
             dataloader=build_dataloader(
                 semipro_eval_dataset,
                 collate_fn=multiple_choice_collate_fn,
@@ -478,8 +489,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
 
 
 class MLMMLUReserveRookie(ClassificationJob):
-    """MLMMLU for Reserve & Rookie
-    """
+    """MLMMLU for Reserve & Rookie"""
 
     multiple_choice = True
     num_labels = 4
@@ -502,7 +512,6 @@ class MLMMLUReserveRookie(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
-
         super().__init__(
             model=model,
             tokenizer_name=tokenizer_name,
@@ -532,12 +541,14 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
-                default_option = 'NA'
+                default_option = "NA"
                 choice_col = "choices"
                 num_options = 4
-                
+
                 first_sentences = [[question] * num_options for question in inp["question"]]
-                second_sentences = [option_list + [default_option]*(num_options - len(option_list)) for option_list in inp[choice_col]]
+                second_sentences = [
+                    option_list + [default_option] * (num_options - len(option_list)) for option_list in inp[choice_col]
+                ]
 
                 first_sentences = list(chain(*first_sentences))
                 second_sentences = list(chain(*second_sentences))
@@ -550,7 +561,10 @@ class MLMMLUReserveRookie(ClassificationJob):
                     truncation=True,
                 )
 
-                return {k: [v[i : i + num_options] for i in range(0, len(v), num_options)] for k, v in tokenized_examples.items()}
+                return {
+                    k: [v[i : i + num_options] for i in range(0, len(v), num_options)]
+                    for k, v in tokenized_examples.items()
+                }
 
             return tokenize_fn
 
@@ -563,17 +577,17 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
-            "num_workers": 0,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
 
-        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset='Rookie', **dataset_kwargs)
-        rookie_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Rookie', **dataset_kwargs)
-        reserve_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset='Reserve', **dataset_kwargs)
+        train_dataset = create_mlmmlu_dataset(split="train", dataset_subset="Rookie", **dataset_kwargs)
+        rookie_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset="Rookie", **dataset_kwargs)
+        reserve_eval_dataset = create_mlmmlu_dataset(split="test", dataset_subset="Reserve", **dataset_kwargs)
 
-        train_dataset = train_dataset.rename_column('answer', 'labels')
-        rookie_eval_dataset = rookie_eval_dataset.rename_column('answer', 'labels')
-        reserve_eval_dataset = reserve_eval_dataset.rename_column('answer', 'labels')
+        train_dataset = train_dataset.rename_column("answer", "labels")
+        rookie_eval_dataset = rookie_eval_dataset.rename_column("answer", "labels")
+        reserve_eval_dataset = reserve_eval_dataset.rename_column("answer", "labels")
 
         self.train_dataloader = build_dataloader(
             train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs

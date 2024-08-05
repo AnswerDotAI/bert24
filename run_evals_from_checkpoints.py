@@ -1,15 +1,25 @@
+import io
 import os
+import queue
+import random
 import re
 import signal
 import subprocess
+import threading
 import time
 from collections import deque
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-import psutil
 from typing import Annotated, List, Optional
 
+import datasets
+import psutil
 import typer
 import yaml
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from typer import Exit, Option
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
@@ -129,7 +139,7 @@ def run_single_job(config_path: Path, quiet: bool = False):
     process.wait()
 
 
-def check_finished_jobs():
+def check_finished_jobs(quiet: bool = False):
     """Check for finished jobs and free up their GPUs."""
     finished_gpus = []
     for gpu_id, process in gpus_in_use.items():
@@ -137,28 +147,87 @@ def check_finished_jobs():
             finished_gpus.append(gpu_id)
 
     for gpu_id in finished_gpus:
-        print(f"Job on GPU {gpu_id} has finished. Marking GPU as potentially free.")
+        if quiet:
+            console.log(f"Job on GPU {gpu_id} has finished. Marking GPU as potentially free.")
+        else:
+            print(f"Job on GPU {gpu_id} has finished. Marking GPU as potentially free.")
         del gpus_in_use[gpu_id]
         potentially_free_gpus.append(gpu_id)
 
 
 def manage_jobs(config_directory: Path, quiet=False):
     """Manage the launching of jobs for each configuration file in the directory."""
-    for config in config_directory.glob("*_evaluation.yaml"):
-        while True:
-            check_finished_jobs()
-            gpu_id = get_free_gpu()
-            if gpu_id is not None:
-                print(f"\nLaunching job for {config} on GPU {gpu_id}\n")
-                launch_job(gpu_id, config, quiet)
-                break
-            else:
+    configs = list(config_directory.glob("*_evaluation.yaml"))
+
+    if quiet:
+        overall_progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+        )
+
+        gpu_progress = Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), TimeElapsedColumn()
+        )
+
+        progress_group = Group(
+            Panel(overall_progress, title="Overall Progress", border_style="blue", padding=(1, 1)),
+            Panel(gpu_progress, title="GPU Jobs", border_style="green", padding=(1, 1)),
+        )
+
+        with Live(progress_group, console=console, refresh_per_second=4):
+            overall_task = overall_progress.add_task("[cyan]Overall Progress", total=len(configs))
+            gpu_tasks = {}
+
+            for config in configs:
+                while True:
+                    check_finished_jobs(quiet)
+                    gpu_id = get_free_gpu()
+                    if gpu_id is not None:
+                        time.sleep(random.randint(0, 5))
+                        if gpu_id not in gpu_tasks:
+                            gpu_tasks[gpu_id] = gpu_progress.add_task(f"[green]GPU {gpu_id}", total=1)
+                        else:
+                            overall_progress.update(overall_task, advance=1)
+                            gpu_progress.update(gpu_tasks[gpu_id], completed=1, visible=False)
+                            gpu_tasks[gpu_id] = gpu_progress.add_task(f"[green]GPU {gpu_id}", total=1)
+                        gpu_progress.update(gpu_tasks[gpu_id], description=f"[green]GPU {gpu_id}: {config.name}")
+                        launch_job(gpu_id, config, quiet)
+                        break
+                    else:
+                        time.sleep(10)
+
+            # Wait for all remaining jobs to finish
+            while gpus_in_use:
+                check_finished_jobs(quiet)
+                for gpu_id in gpus_in_use.keys():
+                    if gpu_id in gpu_tasks:
+                        gpu_progress.update(gpu_tasks[gpu_id], completed=0)
                 time.sleep(10)
 
-    # Wait for all remaining jobs to finish
-    while gpus_in_use:
-        check_finished_jobs()
-        time.sleep(10)
+            for gpu_id, task in gpu_tasks.items():
+                gpu_progress.update(task, completed=1)
+                overall_progress.update(overall_task, advance=1)
+
+    else:
+        for config in configs:
+            while True:
+                check_finished_jobs()
+                gpu_id = get_free_gpu()
+                if gpu_id is not None:
+                    time.sleep(random.randint(0, 5))
+                    print(f"\nLaunching job for {config} on GPU {gpu_id}\n")
+                    launch_job(gpu_id, config, quiet)
+                    break
+                else:
+                    time.sleep(10)
+
+        # Wait for all remaining jobs to finish
+        while gpus_in_use:
+            check_finished_jobs()
+            time.sleep(10)
 
 
 def create_symlink_for_newest_checkpoint(folder: Path, override_existing: bool = False):
@@ -229,6 +298,8 @@ def generate_eval_configs(
     skip_mnli: bool,
     skip_boolq: bool,
     skip_wic: bool,
+    skip_ultrafeedback: bool,
+    fast_ultrafeedback: bool,
     seeds: List[int],
     parallel: bool,
 ):
@@ -279,6 +350,11 @@ def generate_eval_configs(
                 cmd.append("--skip-boolq")
             if skip_wic:
                 cmd.append("--skip-wic")
+            if skip_ultrafeedback:
+                cmd.append("--skip-ultrafeedback")
+
+            if fast_ultrafeedback:
+                cmd.append("--fast-ultrafeedback")
 
             for seed in seeds:
                 cmd.extend(["--seeds", str(seed)])
@@ -287,6 +363,50 @@ def generate_eval_configs(
 
             # Run the config generation process without suppressing output
             run_subprocess(cmd)
+
+            time.sleep(2)
+
+
+def download_dataset(dataset_name: str, subset: Optional[str] = None):
+    try:
+        datasets.load_dataset(dataset_name, subset, trust_remote_code=True)
+        return f"Successfully downloaded {dataset_name} {subset}"
+    except Exception as e:
+        return f"Error in processing {dataset_name}: {e}"
+
+
+def download_datasets(
+    skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue
+):
+    required_datasets = []
+
+    if not skip_semipro:
+        required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
+        required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
+    if not skip_reserve:
+        required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
+        required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
+    if not skip_eurlex:
+        required_datasets.append(["coastalcph/lex_glue", "eurlex"])
+    if not skip_mnli:
+        required_datasets.append(["glue", "mnli"])
+    if not skip_boolq:
+        required_datasets.append(["aps/super_glue", "boolq"])
+    if not skip_wic:
+        required_datasets.append(["aps/super_glue", "wic"])
+    if not skip_ultrafeedback:
+        required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
+
+    # Redirect stdout and stderr to a string buffer
+    string_io = io.StringIO()
+    msgs = []
+    with redirect_stdout(string_io), redirect_stderr(string_io):
+        for args in required_datasets:
+            msgs.append(download_dataset(*args))
+    msg_queue.put("    " + "\n    ".join(msgs) + "\n")
+
+
+console = Console()
 
 
 # fmt: off
@@ -309,21 +429,31 @@ def main(
     skip_mnli: Annotated[bool, Option("--skip-mnli", help="Skip the MNLI eval", rich_help_panel="Skip Tasks")] = False,
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
-    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [23, 42, 6033],
+    skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
+    fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
+    seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     quiet: Annotated[bool, Option("-q", "--quiet", help="Suppress output from evaluation jobs", rich_help_panel="Config Options")] = False,
     overwrite_existing_symlinks: Annotated[bool, Option("--override-existing-symlinks", help="Overwrite existing symlinks to point to latest checkpoint", rich_help_panel="Config Options")] = False,
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = False,
     config: Annotated[Optional[Path], Option(callback=conf_callback, is_eager=True, help="Relative path to YAML config file for setting options. Passing CLI options will supersede config options.", case_sensitive=False, rich_help_panel="Config Options")] = None,
 ):
 # fmt: on
-    print("Creating symlinks for latest checkpoints...")
+    print("\nAsynchronously downloading required datasets...\n")
+    msg_queue = queue.Queue()
+    download_thread = threading.Thread(
+        target=download_datasets,
+        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue)
+    )
+    download_thread.start()
+
+    print("\nCreating symlinks for latest checkpoints...")
     for folder in checkpoints.glob("*"):
         create_symlink_for_newest_checkpoint(folder, overwrite_existing_symlinks)
-    print()
+
     if train_config:
         config_files = [train_config]
     elif not skip_generation:
-        print("Generating evaluation configs...\n")
+        print("\nGenerating evaluation configs...\n")
         generate_eval_configs(
             checkpoints=checkpoints,
             train_config=train_config,
@@ -341,6 +471,8 @@ def main(
             skip_mnli=skip_mnli,
             skip_boolq=skip_boolq,
             skip_wic=skip_wic,
+            skip_ultrafeedback=skip_ultrafeedback,
+            fast_ultrafeedback=fast_ultrafeedback,
             seeds=seeds,
             parallel=parallel,
         )
@@ -348,15 +480,29 @@ def main(
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
 
+    # Wait for the dataset download to complete
+    print("Waiting for dataset downloads to complete...")
+    download_thread.join()
+    print("Dataset downloading complete.")
+    while not msg_queue.empty():
+        print(msg_queue.get())
+
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)
     elif len(config_files) > 1:
         manage_jobs(checkpoints, quiet)
     else:
-        print("No configuration files found in the specified directory.")
+        message = "No configuration files found in the specified directory."
+        if quiet:
+            console.print(f"[bold red]{message}")
+        else:
+            print(message)
         raise Exit(code=1)
 
-    print("All jobs completed.")
+    if quiet:
+        console.print("[bold green]All jobs completed.")
+    else:
+        print("All jobs completed.")
 
 
 # Register the signal handler

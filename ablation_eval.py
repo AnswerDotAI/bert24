@@ -112,9 +112,7 @@ def build_scheduler(cfg):
     if cfg.name == "constant_with_warmup":
         return ConstantWithWarmupScheduler(t_warmup=cfg.t_warmup)
     elif cfg.name == "cosine_with_warmup":
-        return CosineAnnealingWithWarmupScheduler(
-            t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f
-        )
+        return CosineAnnealingWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "linear_decay_with_warmup":
         return LinearWithWarmupScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     elif cfg.name == "warmup_stable_decay":
@@ -123,9 +121,7 @@ def build_scheduler(cfg):
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
 
-def build_model(
-    cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs
-):
+def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs):
     if cfg.name == "hf_bert":
         return hf_bert_module.create_hf_bert_classification(
             num_labels=num_labels,
@@ -184,9 +180,7 @@ def get_checkpoint_name_from_path(path: str) -> str:
     return path.lstrip("/").replace("/", "|")
 
 
-def download_starting_checkpoint(
-    starting_checkpoint_load_path: str, local_pretrain_checkpoints_folder: str
-) -> str:
+def download_starting_checkpoint(starting_checkpoint_load_path: str, local_pretrain_checkpoints_folder: str) -> str:
     """Downloads the pretrained checkpoints to start from.
 
     Currently only supports S3 and URLs
@@ -196,11 +190,7 @@ def download_starting_checkpoint(
     if parsed_path.scheme == "s3":
         load_object_store = S3ObjectStore(bucket=parsed_path.netloc)
 
-    download_path = (
-        parsed_path.path
-        if parsed_path.scheme == "s3"
-        else starting_checkpoint_load_path
-    )
+    download_path = parsed_path.path if parsed_path.scheme == "s3" else starting_checkpoint_load_path
     os.makedirs(local_pretrain_checkpoints_folder, exist_ok=True)
     local_path = os.path.join(
         local_pretrain_checkpoints_folder,
@@ -240,21 +230,21 @@ def create_job_configs(
         if task_name not in tasks_to_run:
             continue
         for task_seed in task_config.get("seeds", [main_config.default_seed]):
-            run_name = (
-                f"{main_config.base_run_name}_task={task_name}_seed={str(task_seed)}"
-            )
+            run_name = f"{main_config.base_run_name}_task={task_name}_seed={str(task_seed)}"
             logger_configs = copy.deepcopy(main_config.get("loggers", {}))
             for logger_name, logger_config in logger_configs.items():
                 if logger_name == "wandb":
                     # allow user set groups, otherwise set group to run name
                     if "group" not in logger_config:
-                        logger_config["group"] = main_config.base_run_name
+                        logger_config["group"] = f"{main_config.base_run_name}_{task_name}"
                     logger_config["name"] = run_name
 
-            model_kwargs = copy.deepcopy(main_config.model) # Create a copy of model config to avoid modifying the main_config
+            # Create a copy of model config to avoid modifying the main_config
+            model_kwargs = copy.deepcopy(main_config.model)
             if "model_config" not in model_kwargs:
                 model_kwargs.model_config = {}
-            model_kwargs.model_config.update(task_config.get("model_config", {})) # update with task specific model config
+            # update with task specific model config
+            model_kwargs.model_config.update(task_config.get("model_config", {}))
 
             task_seed_config = om.OmegaConf.create(
                 {
@@ -305,17 +295,12 @@ def run_job_worker(
         scheduler=build_scheduler(config.scheduler),
         load_path=config.load_path,
         save_folder=config.save_folder,
-        loggers=[
-            build_logger(name, logger_config)
-            for name, logger_config in config.get("loggers", {}).items()
-        ],
+        loggers=[build_logger(name, logger_config) for name, logger_config in config.get("loggers", {}).items()],
         callbacks=[
-            build_callback(name, callback_config)
-            for name, callback_config in config.get("callbacks", {}).items()
+            build_callback(name, callback_config) for name, callback_config in config.get("callbacks", {}).items()
         ],
         algorithms=[
-            build_algorithm(name, algorithm_config)
-            for name, algorithm_config in config.get("algorithms", {}).items()
+            build_algorithm(name, algorithm_config) for name, algorithm_config in config.get("algorithms", {}).items()
         ],
         precision=config.precision,
         **config.trainer_kwargs,
@@ -470,9 +455,7 @@ def train(config: om.DictConfig) -> None:
     # round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur", "mlmmlu_semipro", "mlmmlu_reserve", "mlmmlu_rookie"}
     round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur_semipro", "mlmmlu_rookie_reserve"}
 
-    round_1_job_configs = create_job_configs(
-        config, round_1_task_names, local_pretrain_checkpoint_path
-    )
+    round_1_job_configs = create_job_configs(config, round_1_task_names, local_pretrain_checkpoint_path)
 
     round_1_results = {}
     if len(round_1_job_configs) > 0:
@@ -540,9 +523,7 @@ def train(config: om.DictConfig) -> None:
         for _, eval_results in result["result"]["metrics"].items():
             for _, metric in eval_results.items():
                 glue_results[job_values["task"]].append(metric * 100)
-    results_mean: Dict[str, float] = {
-        key: float(np.mean(values)) for key, values in glue_results.items()
-    }
+    results_mean: Dict[str, float] = {key: float(np.mean(values)) for key, values in glue_results.items()}
 
     overall_glue = []
     overall_superglue = []
@@ -556,32 +537,22 @@ def train(config: om.DictConfig) -> None:
             overall_other.append(average_metric)
 
     if len(overall_other) > 0:
-        other_results_mean = {
-            k: v
-            for k, v in results_mean.items()
-            if k not in GLUE_TASKS.union(SUPERGLUE_TASKS)
-        }
-        _print_averaged_glue_results(
-            [(key, value) for key, value in other_results_mean.items()]
-        )
+        other_results_mean = {k: v for k, v in results_mean.items() if k not in GLUE_TASKS.union(SUPERGLUE_TASKS)}
+        _print_averaged_glue_results([(key, value) for key, value in other_results_mean.items()])
 
     if len(overall_glue) > 0:
         glue_results_mean = {
             **{k: v for k, v in results_mean.items() if k in GLUE_TASKS},
             "glue": float(np.mean(overall_glue)),
         }
-        _print_averaged_glue_results(
-            [(key, value) for key, value in glue_results_mean.items()]
-        )
+        _print_averaged_glue_results([(key, value) for key, value in glue_results_mean.items()])
 
     if len(overall_superglue) > 0:
         superglue_results_mean = {
             **{k: v for k, v in results_mean.items() if k in SUPERGLUE_TASKS},
             "superglue": float(np.mean(overall_superglue)),
         }
-        _print_averaged_glue_results(
-            [(key, value) for key, value in superglue_results_mean.items()]
-        )
+        _print_averaged_glue_results([(key, value) for key, value in superglue_results_mean.items()])
 
 
 if __name__ == "__main__":
