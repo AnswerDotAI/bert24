@@ -4,6 +4,7 @@
 """Build a StreamingTextDataset dataset and dataloader for training."""
 
 import os
+import json
 from itertools import islice
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
@@ -13,8 +14,12 @@ import transformers
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from streaming import Stream, StreamingDataset
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
+from streaming.base.format import reader_from_json
+from streaming.base.spanner import Spanner
+from composer.utils import dist
 
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -236,19 +241,11 @@ class ConcatenatedSequenceCollatorWrapper:
         return torch.cat([left_zeros, cumulative_sep[:, :-1]], dim=1)
 
 
-def build_text_dataloader(
+def build_streaming_dataset(
     cfg: DictConfig,
     tokenizer: Tokenizer,
     device_batch_size: int,
 ):
-    assert cfg.name == "text", f"Tried to build text dataloader with cfg.name={cfg.name}"
-    if cfg.dataset.get("group_method", None) is not None:
-        raise NotImplementedError(
-            "group_method is deprecated and has been removed.\nTo "
-            + "concatenate, use the --concat_tokens "
-            + "argument when creating your MDS dataset with convert_dataset.py"
-        )
-
     # build streams
     streams_dict = cfg.dataset.get("streams", None)
     streams = None
@@ -292,6 +289,46 @@ def build_text_dataloader(
         shuffle_seed=cfg.dataset.get("shuffle_seed", 9176),
         cache_limit=cfg.dataset.get("cache_limit", None),
     )
+    return dataset
+
+def build_no_streaming_dataset(
+    cfg: DictConfig,
+    tokenizer: Tokenizer,
+):
+    return NoStreamingDataset(    
+        tokenizer=tokenizer,
+        local=cfg.dataset.get("local", None),
+        split=cfg.dataset.get("split", None),
+        max_seq_len=cfg.dataset.max_seq_len,
+    )
+
+def build_text_dataloader(
+    cfg: DictConfig,
+    tokenizer: Tokenizer,
+    device_batch_size: int,
+):
+    assert cfg.name == "text", f"Tried to build text dataloader with cfg.name={cfg.name}"
+    if cfg.dataset.get("group_method", None) is not None:
+        raise NotImplementedError(
+            "group_method is deprecated and has been removed.\nTo "
+            + "concatenate, use the --concat_tokens "
+            + "argument when creating your MDS dataset with convert_dataset.py"
+        )
+
+    if cfg.dataset.get("streaming", True):
+        dataset = build_streaming_dataset(cfg, tokenizer, device_batch_size)
+        sampler = None
+    else:
+        assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
+        dataset = build_no_streaming_dataset(cfg, tokenizer)
+        sampler = DistributedSampler(
+            dataset, 
+            num_replicas=dist.get_world_size(), 
+            rank=dist.get_global_rank(), 
+            shuffle=cfg.dataset.get("shuffle", False),
+            seed=cfg.dataset.get("shuffle_seed", 9176),
+            drop_last=cfg.drop_last
+            )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     collate_fn = transformers.DataCollatorForLanguageModeling(
@@ -316,8 +353,60 @@ def build_text_dataloader(
         prefetch_factor=cfg.get("prefetch_factor", 2),
         persistent_workers=cfg.get("persistent_workers", True),
         timeout=cfg.get("timeout", 0),
+        sampler=sampler
     )
 
+
+class NoStreamingDataset(Dataset):
+    """
+    A dataset class that can read data with raw mds-format (mosaic streaming-format without compression)
+    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
+    this class is slimmer, more efficient, and does not contain redundant code required for streaming.
+    """
+    def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
+        super().__init__()
+        split_path = os.path.join(local,split)
+        index_file_path = os.path.join(split_path, "index.json")
+        obj = json.load(open(index_file_path))
+        self.shards = []
+        for info in obj['shards']:
+            shard = reader_from_json(local, split, info)
+            raw_filename = os.path.join(shard.dirname, shard.split, shard.raw_data.basename)
+            assert os.path.isfile(raw_filename), f"Raw file {raw_filename} does not exist"
+            shard.validate(True)
+            self.shards.append(shard)
+        samples_per_shard = np.array([shard.samples for shard in self.shards], np.int64)
+        self.len = samples_per_shard.sum()
+        self.spanner = Spanner(samples_per_shard)
+        self.max_seq_len = max_seq_len
+        self.tokenizer = tokenizer
+
+    def _tokenize(self, text_sample):
+        assert self.tokenizer is not None, "Tokenizer required if data is not pretokenized"
+        if self.tokenizer._pad_token is None:
+            # Some tokenizers (e.g. GPT2 tokenizer) have no padding token which causes bugs
+            raise RuntimeError("If tokenizing on-the-fly, tokenizer must have a pad_token_id")
+
+        return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
+
+    def __getitem__(self, index: int):
+        shard_id, shard_sample_id = self.spanner[index]
+        shard = self.shards[shard_id]
+        sample = shard[shard_sample_id]
+        if "input_ids" in sample:
+            for k in list(sample.keys()):
+                if isinstance(sample[k], np.ndarray):
+                    sample[k] = sample[k][:self.max_seq_len]
+                else:
+                    del sample[k]
+            return sample
+        elif "text" in sample:
+            return self._tokenize(sample)
+        else:
+            RuntimeError("Data sample must contain a field with `input_ids` or `text`")
+
+    def __len__(self):
+        return self.len
 
 # Helpful to test if your dataloader is working locally
 # Run `python data.py  --local_path [local] [--remote_path remote, optional]` and verify that batches are printed out
