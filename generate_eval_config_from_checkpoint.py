@@ -4,10 +4,9 @@ from pathlib import Path
 from typing import Annotated, List, Optional
 
 import typer
+import wandb
 import yaml
 from typer import Option
-
-import wandb
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
@@ -131,6 +130,7 @@ def main(
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
     skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
+    fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
 ):
@@ -285,7 +285,9 @@ def main(
     if not skip_ultrafeedback:
         ultrafeedback = OrderedDict()
         ultrafeedback["seeds"] = seeds[:2]
-        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "1ep"}
+        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0,
+                                           "max_duration": "1ep",
+                                           "max_sequence_length": 1536 if fast_ultrafeedback else 2048}
         tasks["ultrafeedback"] = ultrafeedback
 
     new_config["tasks"] = tasks

@@ -1,5 +1,6 @@
 import io
 import os
+import queue
 import random
 import re
 import signal
@@ -10,7 +11,6 @@ from collections import deque
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Annotated, List, Optional
-import queue
 
 import datasets
 import psutil
@@ -299,6 +299,7 @@ def generate_eval_configs(
     skip_boolq: bool,
     skip_wic: bool,
     skip_ultrafeedback: bool,
+    fast_ultrafeedback: bool,
     seeds: List[int],
     parallel: bool,
 ):
@@ -351,6 +352,9 @@ def generate_eval_configs(
                 cmd.append("--skip-wic")
             if skip_ultrafeedback:
                 cmd.append("--skip-ultrafeedback")
+
+            if fast_ultrafeedback:
+                cmd.append("--fast-ultrafeedback")
 
             for seed in seeds:
                 cmd.extend(["--seeds", str(seed)])
@@ -426,6 +430,7 @@ def main(
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
     skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
+    fast_ultrafeedback: Annotated[bool, Option("--fast-ultra", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     quiet: Annotated[bool, Option("-q", "--quiet", help="Suppress output from evaluation jobs", rich_help_panel="Config Options")] = False,
     overwrite_existing_symlinks: Annotated[bool, Option("--override-existing-symlinks", help="Overwrite existing symlinks to point to latest checkpoint", rich_help_panel="Config Options")] = False,
@@ -467,6 +472,7 @@ def main(
             skip_boolq=skip_boolq,
             skip_wic=skip_wic,
             skip_ultrafeedback=skip_ultrafeedback,
+            fast_ultrafeedback=fast_ultrafeedback,
             seeds=seeds,
             parallel=parallel,
         )
