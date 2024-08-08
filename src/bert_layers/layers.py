@@ -576,33 +576,41 @@ class FlexBertUnpadEncoder(FlexBertEncoderBase):
         self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-
-        attention_mask_bool = attention_mask.bool()
-        batch, seqlen = hidden_states.shape[:2]
-        # Unpad inputs and mask. It will remove tokens that are padded. Assume ntokens is total number
-        # of tokens (padded and non-padded) and ntokens_unpad is total number of non-padded tokens.
-        # Then unpadding performs the following compression of the inputs:
-        #     hidden_states[ntokens,hidden] -> hidden_states[ntokens_unpad,hidden]
-        hidden_states, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(hidden_states, attention_mask_bool)
-
-        for layer_module in self.layers:
-            hidden_states = layer_module(
-                hidden_states,
-                cu_seqlens,
-                max_seqlen,
-                indices,
-                attn_mask=attention_mask,
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        indices: Optional[torch.Tensor] = None,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        max_seqlen: Optional[int] = None,
+    ) -> torch.Tensor:
+        if indices is None or cu_seqlens is None or max_seqlen is None:
+            attention_mask_bool = attention_mask.bool()
+            batch, seqlen = hidden_states.shape[:2]
+            hidden_states, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(
+                hidden_states, attention_mask_bool
             )
 
-        # Pad inputs and mask. It will insert back zero-padded tokens. Assume ntokens is total number
-        # of tokens (padded and non-padded) and ntokens_unpad is total number of non-padded tokens.
-        # Then padding performs the following de-compression:
-        #     hidden_states[ntokens_unpad,hidden] -> hidden_states[ntokens,hidden]
-        return bert_padding.pad_input(hidden_states, indices, batch, seqlen)
+            for layer_module in self.layers:
+                hidden_states = layer_module(
+                    hidden_states,
+                    cu_seqlens,
+                    max_seqlen,
+                    indices,
+                    attn_mask=attention_mask,
+                )
+
+            return bert_padding.pad_input(hidden_states, indices, batch, seqlen)
+        else:
+            for layer_module in self.layers:
+                hidden_states = layer_module(
+                    hidden_states,
+                    cu_seqlens,
+                    max_seqlen,
+                    indices,
+                    attn_mask=attention_mask,
+                )
+            return hidden_states
 
 
 class FlexBertPaddedEncoder(FlexBertEncoderBase):
@@ -620,7 +628,7 @@ class FlexBertPaddedEncoder(FlexBertEncoderBase):
         self.layers = nn.ModuleList([get_bert_layer(config, layer_id=i) for i in range(config.num_hidden_layers)])
         self.num_attention_heads = config.num_attention_heads
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> torch.Tensor:
         for layer_module in self.layers:
             hidden_states = layer_module(hidden_states, attn_mask=attention_mask)
 

@@ -91,6 +91,8 @@ class FlexBertConfig(TransformersBertConfig):
         deterministic_fa2: bool = False,
         sliding_window: int = -1,
         global_attn_every_n_layers: int = -1,
+        unpad_embeddings: bool = False,
+        pad_logits: bool = False,
         **kwargs,
     ):
         """
@@ -144,6 +146,8 @@ class FlexBertConfig(TransformersBertConfig):
             deterministic_fa2 (bool): Use Flash Attention 2 deterministic mode. This is slower then the default non-deterministic mode.
             sliding_window (int): Use sliding window attention with window size `n`. -1 to disable. Window size split between the left and right context. Only supports FA2.
             global_attn_every_n_layers (int): Use global attention every `n` layers and sliding window for the rest. -1 to disable.
+            unpad_embeddings (bool): Unpad inputs before the embedding layer.
+            pad_logits (bool): Pad logits after the calculating the loss.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -195,6 +199,9 @@ class FlexBertConfig(TransformersBertConfig):
         self.deterministic_fa2 = deterministic_fa2
         self.sliding_window = sliding_window
         self.global_attn_every_n_layers = global_attn_every_n_layers
+        self.unpad_embeddings = unpad_embeddings
+        self.pad_logits = pad_logits
+
         if loss_kwargs.get("return_z_loss", False):
             if loss_function != "fa_cross_entropy":
                 raise ValueError("loss_function must be 'fa_cross_entropy' when return_z_loss is True")
@@ -218,6 +225,16 @@ class FlexBertConfig(TransformersBertConfig):
                 raise ValueError(
                     f"Sliding window must be an even number and divisible by 64: {self.sliding_window=} {self.sliding_window % 64} {self.sliding_window % 2}"
                 )
+
+        if self.unpad_embeddings and self.padding != "unpadded":
+            warnings.warn(
+                "`unpad_embeddings=True` requires `padding='unpadded'`. Automatically setting `padding='unpadded'`."
+            )
+            self.padding = "unpadded"
+        if self.pad_logits and not self.unpad_embeddings:
+            raise ValueError("`pad_logits=True` requires `unpad_embeddings=True`")
+        if self.unpad_embeddings and self.embedding_layer == "absolute_pos":
+            raise ValueError(f"{self.unpad_embeddings=} is incompatible with {self.embedding_layer=}")
 
 
 PADDING = ["unpadded", "padded"]
