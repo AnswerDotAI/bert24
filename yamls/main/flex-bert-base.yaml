@@ -47,12 +47,21 @@ model:
     normalization: rmsnorm
     padding: unpadded
     sparse_prediction: false
-    hidden_act: silu
-    init_method: default
+    hidden_act: gelu
+    init_method: full_megatron
     init_std: 0.02
     init_cutoff_factor: 2.0
     init_small_embedding: False
     deterministic_fa2: false
+    initial_attention_layer: null
+    initial_bert_layer: null
+    initial_mlp_layer: null
+    num_initial_layers: 0
+    skip_first_prenorm: true
+    sliding_window: 128
+    global_attn_every_n_layers: 3
+    unpad_embeddings: true
+    pad_logits: false
 
 # Dataloaders
 train_loader:

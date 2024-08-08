@@ -103,6 +103,8 @@ def get_model(
         skip_first_prenorm=False,
         sliding_window=sliding_window,
         global_attn_every_n_layers=global_attn_every_n_layers,
+        unpad_embeddings=True,
+        pad_logits=False,
     )
     if model_type == ModelType.mlm:
         config.tie_word_embeddings = True
@@ -243,26 +245,21 @@ def tile_list_to_length(lst, length):
     return lst
 
 
+# fmt: off
 @app.command()
 def main(
     ctx: typer.Context,  # Typer Context to grab config for --verbose and passing to WandB
     hidden_sizes: Annotated[List[int], Option(help="List of hidden sizes", show_default=False)],
     num_hidden_layers: Annotated[List[int], Option(help="List of number of hidden layers", show_default=False)],
     intermediate_sizes: Annotated[List[int], Option(help="List of intermediate sizes", show_default=False)],
-    parallel_attn: Annotated[
-        List[bool], Option(is_flag=False, help="List of parallel attention flags", show_default=False)
-    ],
+    parallel_attn: Annotated[List[bool], Option(is_flag=False, help="List of parallel attention flags", show_default=False)],
     sliding_window: Annotated[List[int], Option(help="Sliding window size. -1 to disable.")] = [-1],
-    global_attn_every_n_layers: Annotated[
-        List[int], Option(help="Use global attention every `n` layers and sliding window for the rest. -1 to disable.")
-    ] = [-1],
+    global_attn_every_n_layers: Annotated[List[int], Option(help="Use global attention every `n` layers and sliding window for the rest. -1 to disable.")] = [-1],
     model_type: Annotated[List[ModelType], Option(help="Model type: MLM or Multiple Choice")] = [ModelType.mlm],
     vocab_size: Annotated[List[int], Option(help="Vocabulary size")] = [32768],
     num_samples: Annotated[int, Option(help="Number of samples")] = 1000,
     seq_length: Annotated[int, Option(help="Sequence length")] = 512,
-    batch_size: Annotated[
-        Optional[int], Option(help="Batch size (if not provided, will be set based on model size)")
-    ] = None,
+    batch_size: Annotated[Optional[int], Option(help="Batch size (if not provided, will be set based on model size)")] = None,
     output_file: Annotated[str, Option(help="Output file name for results")] = "benchmark_results.md",
     sleep_time: Annotated[int, Option(help="Time to sleep between each model run")] = 25,
     print_model: Annotated[bool, Option(help="Print model")] = False,
@@ -277,6 +274,7 @@ def main(
         ),
     ] = None,
 ):
+# fmt: on
     pynvml.nvmlInit()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
