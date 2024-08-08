@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 import os
 import sys
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor
