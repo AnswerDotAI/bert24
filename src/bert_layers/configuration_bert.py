@@ -1,6 +1,8 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+import warnings
+
 from transformers import BertConfig as TransformersBertConfig
 
 
@@ -12,6 +14,7 @@ class BertConfig(TransformersBertConfig):
         attention_probs_dropout_prob: float = 0.0,
         head_pred_act: str = "gelu",
         deterministic_fa2: bool = False,
+        allow_embedding_resizing: bool = False,
         **kwargs,
     ):
         """Configuration class for MosaicBert.
@@ -26,12 +29,14 @@ class BertConfig(TransformersBertConfig):
             embed_dropout_prob (float): Dropout probability for the embedding layer.
             attn_out_dropout_prob (float): Dropout probability for the attention output layer.
             mlp_dropout_prob (float): Dropout probability for the MLP layer.
+            allow_embedding_resizing (bool): Embeddings will be automatically resized when they are smaller than the tokenizer vocab size.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
         self.alibi_starting_size = alibi_starting_size
         self.normalization = normalization
         self.head_pred_act = head_pred_act
         self.deterministic_fa2 = deterministic_fa2
+        self.allow_embedding_resizing = allow_embedding_resizing
 
 
 class FlexBertConfig(TransformersBertConfig):
@@ -84,6 +89,8 @@ class FlexBertConfig(TransformersBertConfig):
         num_initial_layers: int = 1,
         skip_first_prenorm: bool = False,
         deterministic_fa2: bool = False,
+        sliding_window: int = -1,
+        global_attn_every_n_layers: int = -1,
         **kwargs,
     ):
         """
@@ -135,6 +142,8 @@ class FlexBertConfig(TransformersBertConfig):
             num_initial_layers (int): Number of initial layers to set via `initial_attention_layer`, `initial_bert_layer`, and `initial_mlp_layer`.
             skip_first_prenorm (bool): Skip pre-normalization for the first bert layer. Requires `embed_norm=True`.
             deterministic_fa2 (bool): Use Flash Attention 2 deterministic mode. This is slower then the default non-deterministic mode.
+            sliding_window (int): Use sliding window attention with window size `n`. -1 to disable. Window size split between the left and right context. Only supports FA2.
+            global_attn_every_n_layers (int): Use global attention every `n` layers and sliding window for the rest. -1 to disable.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -184,6 +193,31 @@ class FlexBertConfig(TransformersBertConfig):
         self.num_initial_layers = num_initial_layers
         self.skip_first_prenorm = skip_first_prenorm
         self.deterministic_fa2 = deterministic_fa2
+        self.sliding_window = sliding_window
+        self.global_attn_every_n_layers = global_attn_every_n_layers
+        if loss_kwargs.get("return_z_loss", False):
+            if loss_function != "fa_cross_entropy":
+                raise ValueError("loss_function must be 'fa_cross_entropy' when return_z_loss is True")
+            if loss_kwargs.get("lse_square_scale", 0) <= 0:
+                raise ValueError(
+                    "lse_square_scale must be passed to `loss_kwargs` and must be greater than 0 for z_loss"
+                )
+        if loss_kwargs.get("inplace_backward", False):
+            self.loss_kwargs["inplace_backward"] = False
+            warnings.warn("`inplace_backward=True` will cause incorrect metrics. Automatically setting to False.")
+
+        if global_attn_every_n_layers > 0 and (self.num_hidden_layers - 1) % global_attn_every_n_layers != 0:
+            raise ValueError(
+                f"{global_attn_every_n_layers=} must be a divisor of one less than {self.num_hidden_layers=}"
+            )
+
+        if self.sliding_window != -1:
+            if not self.use_fa2:
+                raise ValueError("Sliding window attention is only supported with FlashAttention2")
+            if self.sliding_window % 2 != 0 and self.sliding_window % 64 != 0:
+                raise ValueError(
+                    f"Sliding window must be an even number and divisible by 64: {self.sliding_window=} {self.sliding_window % 64} {self.sliding_window % 2}"
+                )
 
 
 PADDING = ["unpadded", "padded"]

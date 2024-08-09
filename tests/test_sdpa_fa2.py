@@ -41,7 +41,16 @@ layer_combinations = [
 @pytest.mark.parametrize("padding", ["padded", "unpadded"])
 @pytest.mark.parametrize("layer,embedding,attention,mlp", layer_combinations)
 @pytest.mark.parametrize("different_first_layer", [False, True])
-def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: str, different_first_layer: bool):
+@pytest.mark.parametrize("sliding_window", [False, True])
+def test_trainer(
+    padding: str,
+    layer: str,
+    embedding: str,
+    attention: str,
+    mlp: str,
+    different_first_layer: bool,
+    sliding_window: bool,
+):
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -60,6 +69,11 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     if layer == "postnorm":
         config.model.model_config.final_norm = False
 
+    if sliding_window:
+        config.model.model_config.sliding_window = 64
+        config.model.model_config.num_hidden_layers = 3
+        config.model.model_config.global_attn_every_n_layers = random.choice([-1, 2])
+
     if different_first_layer:
         if layer != "parallel_prenorm":
             pytest.skip("Only parallel_prenorm needs a different first layer")
@@ -77,8 +91,13 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
     if config.model.model_config.init_fn != InitFnType.full_megatron:
         config.model.model_config.init_small_embedding = random.choice([True, False])
 
+    # pick a random loss function for testing
+    config.model.model_config.loss_function = random.choice(["cross_entropy", "fa_cross_entropy"])
+    if config.model.model_config.loss_function == "fa_cross_entropy":
+        config.model.model_config.loss_kwargs["lse_square_scale"] = random.choice([1e-4, 0])
+
     with SynthTextDirectory() as tmp_datadir:
-        config.model.model_config.use_fa2 = False
+        config.model.model_config.use_fa2 = True
         if padding == "unpadded":
             config.model.model_config.use_sdpa_attn_mask = True
         else:
@@ -88,30 +107,43 @@ def test_trainer(padding: str, layer: str, embedding: str, attention: str, mlp: 
         config.eval_loader.dataset.remote = tmp_datadir
         config.eval_loader.dataset.local = os.path.join(tmp_datadir, "ev-local1")
 
-        # Train with SDPA
+        # Train with FA2
         trainer1 = main(config, return_trainer=True)
         assert trainer1 is not None
         model1 = trainer1.state.model.model
 
-        config.model.model_config.use_fa2 = True
-        config.train_loader.dataset.local = os.path.join(tmp_datadir, "tr-local2")
-        config.eval_loader.dataset.local = os.path.join(tmp_datadir, "ev-local2")
+        # if sliding window is set, there might only be one attention layer with a sliding window
+        if sliding_window:
+            # fmt: off
+            if config.model.model_config.global_attn_every_n_layers == 2:
+                assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
+            else:
+                assert model1.bert.encoder.layers[0].attn.sliding_window == (32, 32), f"Sliding window not set for first layer: {model1.bert.encoder.layers[0].attn}"
+                assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
+                assert model1.bert.encoder.layers[2].attn.sliding_window == (32, 32), f"Sliding window not set for third layer: {model1.bert.encoder.layers[2].attn}"
+        # SDPA doesn't have sliding window impleemnted, so skip the test
+        else:
+            config.model.model_config.use_fa2 = False
+            config.train_loader.dataset.local = os.path.join(tmp_datadir, "tr-local2")
+            config.eval_loader.dataset.local = os.path.join(tmp_datadir, "ev-local2")
 
-        # Train with FA2
-        trainer2 = main(config, return_trainer=True)
-        assert trainer2 is not None
-        model2 = trainer2.state.model.model
+            # Train with SDPA
+            trainer2 = main(config, return_trainer=True)
+            assert trainer2 is not None
+            model2 = trainer2.state.model.model
 
-    for param1, param2 in zip(model1.parameters(), model2.parameters()):
-        torch.testing.assert_close(param1, param2, rtol=1e-2, atol=1e-3)
+    # SDPA doesn't have sliding window impleemnted, so skip the comparison
+    if not sliding_window:
+        for param1, param2 in zip(model1.parameters(), model2.parameters()):
+            torch.testing.assert_close(param1, param2, rtol=1e-2, atol=1e-3)
 
-    if different_first_layer:
-        nl = config.model.model_config.num_initial_layers
-        for m in range(2):
-            model = model1 if m == 0 else model2
-            for i in range(nl - 1):
-                assert isinstance(model.bert.encoder.layers[i], type(model.bert.encoder.layers[i + 1]))
-            if nl < len(model.bert.encoder.layers):
-                assert not isinstance(model.bert.encoder.layers[nl - 1], type(model.bert.encoder.layers[nl]))
-                for i in range(nl, len(model1.bert.encoder.layers) - 1):
+        if different_first_layer:
+            nl = config.model.model_config.num_initial_layers
+            for m in range(2):
+                model = model1 if m == 0 else model2
+                for i in range(nl - 1):
                     assert isinstance(model.bert.encoder.layers[i], type(model.bert.encoder.layers[i + 1]))
+                if nl < len(model.bert.encoder.layers):
+                    assert not isinstance(model.bert.encoder.layers[nl - 1], type(model.bert.encoder.layers[nl]))
+                    for i in range(nl, len(model1.bert.encoder.layers) - 1):
+                        assert isinstance(model.bert.encoder.layers[i], type(model.bert.encoder.layers[i + 1]))
