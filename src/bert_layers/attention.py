@@ -745,14 +745,17 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
-            rotary_base = config.local_attn_rotary_emb_base
-        else:
-            rotary_base = config.rotary_emb_base
+        rotary_base = config.rotary_emb_base
+        rotary_dim = config.rotary_emb_dim
+        if self.sliding_window != (-1, -1):
+            if config.local_attn_rotary_emb_base != -1:
+                rotary_base = config.local_attn_rotary_emb_base
+            if config.local_attn_rotary_emb_dim is not None:
+                rotary_dim = config.local_attn_rotary_emb_dim
 
         assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = UnpaddedRotaryEmbedding(
-            config.rotary_emb_dim,
+            dim=rotary_dim,
             base=rotary_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
@@ -931,14 +934,17 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
-            rotary_base = config.local_attn_rotary_emb_base
-        else:
-            rotary_base = config.rotary_emb_base
+        rotary_base = config.rotary_emb_base
+        rotary_dim = config.rotary_emb_dim
+        if self.sliding_window != (-1, -1):
+            if config.local_attn_rotary_emb_base != -1:
+                rotary_base = config.local_attn_rotary_emb_base
+            if config.local_attn_rotary_emb_dim is not None:
+                rotary_dim = config.local_attn_rotary_emb_dim
 
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
-            config.rotary_emb_dim,
+            dim=rotary_dim,
             base=rotary_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
@@ -1077,14 +1083,17 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
-            rotary_base = config.local_attn_rotary_emb_base
-        else:
-            rotary_base = config.rotary_emb_base
+        rotary_base = config.rotary_emb_base
+        rotary_dim = config.rotary_emb_dim
+        if self.sliding_window != (-1, -1):
+            if config.local_attn_rotary_emb_base != -1:
+                rotary_base = config.local_attn_rotary_emb_base
+            if config.local_attn_rotary_emb_dim is not None:
+                rotary_dim = config.local_attn_rotary_emb_dim
 
         assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = UnpaddedRotaryEmbedding(
-            config.rotary_emb_dim,
+            dim=rotary_dim,
             base=rotary_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,
@@ -1257,14 +1266,17 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         if config.rotary_emb_dim is None:
             config.rotary_emb_dim = self.attn_head_size
 
-        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
-            rotary_base = config.local_attn_rotary_emb_base
-        else:
-            rotary_base = config.rotary_emb_base
+        rotary_base = config.rotary_emb_base
+        rotary_dim = config.rotary_emb_dim
+        if self.sliding_window != (-1, -1):
+            if config.local_attn_rotary_emb_base != -1:
+                rotary_base = config.local_attn_rotary_emb_base
+            if config.local_attn_rotary_emb_dim is not None:
+                rotary_dim = config.local_attn_rotary_emb_dim
 
         assert RotaryEmbedding is not None, "rotary_emb is not installed"
         self.rotary_emb = RotaryEmbedding(
-            config.rotary_emb_dim,
+            dim=rotary_dim,
             base=rotary_base,
             scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
             interleaved=config.rotary_emb_interleaved,

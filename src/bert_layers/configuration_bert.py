@@ -92,6 +92,7 @@ class FlexBertConfig(TransformersBertConfig):
         sliding_window: int = -1,
         global_attn_every_n_layers: int = -1,
         local_attn_rotary_emb_base: float = -1,
+        local_attn_rotary_emb_dim: int | None = None,
         unpad_embeddings: bool = False,
         pad_logits: bool = False,
         **kwargs,
@@ -148,6 +149,7 @@ class FlexBertConfig(TransformersBertConfig):
             sliding_window (int): Use sliding window attention with window size `n`. -1 to disable. Window size split between the left and right context. Only supports FA2.
             global_attn_every_n_layers (int): Use global attention every `n` layers and sliding window for the rest. -1 to disable.
             local_attn_rotary_emb_base (float): Rotary embedding base for local attention. -1 to disable and use `rotary_emb_base` for all layers.
+            local_attn_rotary_emb_dim (int | None): Rotary embedding dimension for local attention. None to disable and use `rotary_emb_dim` for all layers.
             unpad_embeddings (bool): Unpad inputs before the embedding layer.
             pad_logits (bool): Pad logits after the calculating the loss.
             **kwargs: Additional keyword arguments.
@@ -202,6 +204,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.sliding_window = sliding_window
         self.global_attn_every_n_layers = global_attn_every_n_layers
         self.local_attn_rotary_emb_base = local_attn_rotary_emb_base
+        self.local_attn_rotary_emb_dim = local_attn_rotary_emb_dim
         self.unpad_embeddings = unpad_embeddings
         self.pad_logits = pad_logits
 
@@ -233,6 +236,8 @@ class FlexBertConfig(TransformersBertConfig):
                 raise ValueError("global_attn_every_n_layers must be -1 when sliding_window is disabled")
             if self.local_attn_rotary_emb_base != -1:
                 raise ValueError("local_attn_rotary_emb_base must be -1 when sliding_window is disabled")
+            if self.local_attn_rotary_emb_dim is not None:
+                raise ValueError("local_attn_rotary_emb_dim must be None when sliding_window is disabled")
 
         if self.unpad_embeddings and self.padding != "unpadded":
             warnings.warn(
