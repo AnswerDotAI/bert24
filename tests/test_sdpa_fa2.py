@@ -81,10 +81,15 @@ def test_trainer(
     if layer == "postnorm":
         config.model.model_config.final_norm = False
 
+    # final_logit_softcap supports flash attention & sdpa
+    config.model.model_config.final_logit_softcap = random.choice([None, 50])
+
     if sliding_window:
         config.model.model_config.sliding_window = 64
         config.model.model_config.num_hidden_layers = 3
         config.model.model_config.global_attn_every_n_layers = random.choice([-1, 2])
+        # attn_logit_softcap only supports flash attention
+        config.model.model_config.attn_logit_softcap = random.choice([0, 30])
 
     if different_first_layer:
         if layer != "parallel_prenorm":

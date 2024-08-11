@@ -960,6 +960,7 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
         self.unpad_embeddings = config.unpad_embeddings
         self.pad_logits = config.pad_logits
+        self.final_logit_softcap = config.final_logit_softcap
 
         # Initialize weights and apply final processing
         self._init_weights()
@@ -1070,6 +1071,11 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         )
 
         logits = self.decoder(self.head(output))
+        if self.final_logit_softcap is not None:
+            logits = logits / self.final_logit_softcap
+            logits = torch.tanh(logits)
+            logits = logits * self.final_logit_softcap
+
         loss = None
         if labels is not None:
             if self.return_z_loss:

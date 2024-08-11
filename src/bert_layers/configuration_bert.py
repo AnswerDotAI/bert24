@@ -95,6 +95,8 @@ class FlexBertConfig(TransformersBertConfig):
         local_attn_rotary_emb_dim: int | None = None,
         unpad_embeddings: bool = False,
         pad_logits: bool = False,
+        attn_logit_softcap: float = 0.0,
+        final_logit_softcap: float | None = None,
         **kwargs,
     ):
         """
@@ -152,6 +154,8 @@ class FlexBertConfig(TransformersBertConfig):
             local_attn_rotary_emb_dim (int | None): Rotary embedding dimension for local attention. None to disable and use `rotary_emb_dim` for all layers.
             unpad_embeddings (bool): Unpad inputs before the embedding layer.
             pad_logits (bool): Pad logits after the calculating the loss.
+            attn_logit_softcap (float): Softcap for attention logits. Set to 0 to disable.
+            final_logit_softcap (float | None): Softcap for prtraining final logits. Set to None to disable.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -207,6 +211,8 @@ class FlexBertConfig(TransformersBertConfig):
         self.local_attn_rotary_emb_dim = local_attn_rotary_emb_dim
         self.unpad_embeddings = unpad_embeddings
         self.pad_logits = pad_logits
+        self.attn_logit_softcap = attn_logit_softcap
+        self.final_logit_softcap = final_logit_softcap
 
         if loss_kwargs.get("return_z_loss", False):
             if loss_function != "fa_cross_entropy":
@@ -248,6 +254,11 @@ class FlexBertConfig(TransformersBertConfig):
             raise ValueError("`pad_logits=True` requires `unpad_embeddings=True`")
         if self.unpad_embeddings and self.embedding_layer == "absolute_pos":
             raise ValueError(f"{self.unpad_embeddings=} is incompatible with {self.embedding_layer=}")
+
+        if self.attn_logit_softcap < 0:
+            raise ValueError(f"{attn_logit_softcap=} must be greater than 0 to apply. Set to 0 to disable.")
+        if self.final_logit_softcap is not None and self.final_logit_softcap <= 0:
+            raise ValueError(f"{final_logit_softcap=} must be greater than 0 to apply. Set to None to disable.")
 
 
 PADDING = ["unpadded", "padded"]
