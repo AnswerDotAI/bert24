@@ -1,13 +1,13 @@
 # messy LLM generated code
-from contextlib import contextmanager, nullcontext
 import math
 import sys
+from contextlib import contextmanager, nullcontext
 from typing import Annotated, Optional
+
 import optuna
 import torch
 import typer
-
-from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 from src.bert_layers.model import FlexBertConfig, FlexBertModel
 
@@ -97,7 +97,7 @@ def get_shapes(layer: torch.nn.Module):
     return tuple(shapes)
 
 
-def calculate_score(model: torch.nn.Module, siglu_min: float = 2, siglu_max: int = 4):
+def calculate_score(model: torch.nn.Module, glu_min: float = 2, glu_max: int = 4):
     score = 0
     results = {}
     shapes = get_shapes(model.encoder.layers[0])
@@ -110,7 +110,7 @@ def calculate_score(model: torch.nn.Module, siglu_min: float = 2, siglu_max: int
         if not is_divisible_by_256_128(x * y):
             return float("-inf"), results
 
-        if name == "Wqkvff" and not (siglu_min < (x - (y * 3)) / y < siglu_max):
+        if name == "Wqkvff" and not (glu_min < (x - (y * 3)) / y < glu_max):
             return float("-inf"), results
 
     # Check if using parallel attention (Wqkvff)
@@ -150,7 +150,7 @@ def get_model(hidden_size: int, num_layers: int, intermediate_size: float, paral
         hidden_size=hidden_size,
         num_hidden_layers=num_layers,
         intermediate_size=intermediate_size,
-        vocab_size=32768,
+        vocab_size=50368,
         attention_layer="rope_parallel" if parallel_attn else "rope",
         attention_probs_dropout_prob=0.0,
         attn_out_bias=False,
@@ -164,7 +164,7 @@ def get_model(hidden_size: int, num_layers: int, intermediate_size: float, paral
         embedding_layer="sans_pos",
         encoder_layer="base",
         loss_function="cross_entropy",
-        loss_kwargs={"reduction": "mean"},
+        loss_kwargs={"reduction": "mean", "bias": False},
         mlp_dropout_prob=0.0,
         mlp_in_bias=False,
         mlp_layer="parallel_glu" if parallel_attn else "glu",
@@ -219,8 +219,8 @@ def optimize_model_shape(
     top_configs: int,
     num_cpus: int,
     percent_off: float = 0.05,
-    siglu_min: float = 2,
-    siglu_max: int = 4,
+    glu_min: float = 2,
+    glu_max: int = 4,
 ):
     def objective(trial):
         obj_num_layers = trial.suggest_int("num_layers", min_layers, max_layers)
@@ -229,7 +229,7 @@ def optimize_model_shape(
         model = get_model(hidden_size, obj_num_layers, obj_intermediate_size, parallel_attn)
 
         # Check parameter count first
-        params = model.num_parameters()
+        params = model.get_number_parameters()
 
         trial.set_user_attr("num_layers", obj_num_layers)
         trial.set_user_attr("intermediate_size", obj_intermediate_size)
@@ -239,17 +239,21 @@ def optimize_model_shape(
             trial.set_user_attr("results", {})
             return float("-inf")
 
-        score, results = calculate_score(model, siglu_min, siglu_max)
+        score, results = calculate_score(model, glu_min, glu_max)
         trial.set_user_attr("results", results)
 
         return score
 
     search_space = {
-        "num_layers": [num_layers for num_layers in range(min_layers, max_layers + 1) if num_layers % 2 == 0],
+        "num_layers": [
+            num_layers
+            for num_layers in range(min_layers, max_layers + 1)
+            if (((num_layers - 1) % 3 == 0) and num_layers % 2 == 0)
+        ],
         "intermediate_size": [
             intermediate_size
             for intermediate_size in range(hidden_size, hidden_size * 6 + 64, 64)
-            if siglu_min <= (intermediate_size * 2) / hidden_size <= siglu_max
+            if glu_min <= (intermediate_size * 2) / hidden_size <= glu_max
         ],
     }
 
@@ -346,8 +350,8 @@ def main(
     parallel_attn: Annotated[bool, typer.Option(help="Use parallel attention")] = True,
     min_layers: Annotated[int, typer.Option(help="Minimum number of layers")] = 10,
     max_layers: Annotated[int, typer.Option(help="Maximum number of layers")] = 18,
-    siglu_min: Annotated[float, typer.Option(help="Minimum SiGLU ratio")] = 2,
-    siglu_max: Annotated[float, typer.Option(help="Maximum SiGLU ratio")] = 4,
+    glu_min: Annotated[float, typer.Option(help="Minimum SiGLU ratio")] = 2,
+    glu_max: Annotated[float, typer.Option(help="Maximum SiGLU ratio")] = 4,
     percent_off: Annotated[float, typer.Option(help="Percent off from target parameters")] = 0.05,
     top_configs: Annotated[int, typer.Option(help="Number of top configurations to print")] = 10,
     output_file: Annotated[Optional[str], typer.Option(help="Output file path (optional)")] = None,
@@ -361,8 +365,8 @@ def main(
         top_configs * 3,
         num_cpus,
         percent_off,
-        siglu_min,
-        siglu_max,
+        glu_min,
+        glu_max,
     )
 
     output_context = output_to_file_and_console(output_file) if output_file else nullcontext()
@@ -413,7 +417,9 @@ def main(
                     x, y = layer_results[gpu]["x"], layer_results[gpu]["y"]
                     print(f"  Layer: {layer_name} (in: {y}, out: {x}):")
                     if layer_name == "Wqkvff":
-                        print(f"  SiGLU ratio: {(x - (hidden_size * 3)) / hidden_size:.4f}")
+                        print(f"  GLU ratio: {(x - (hidden_size * 3)) / hidden_size:.4f}")
+                    elif layer_name == "FFN Wi":
+                        print(f"  GLU ratio: {x / hidden_size:.4f}")
                     total_score = 0
                     for sm_count, result in layer_results.items():
                         if result["blocks1"] != result["blocks2"]:
