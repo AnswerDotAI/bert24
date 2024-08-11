@@ -130,6 +130,8 @@ def test_trainer(
         # if sliding window is set, there might only be one attention layer with a sliding window
         if sliding_window:
             # fmt: off
+            if config.model.model_config.initial_attention_layer in ["rope", "rope_parallel"]:
+                config.model.model_config.local_attn_rotary_emb_base = random.choice([1000, -1])
             if config.model.model_config.global_attn_every_n_layers == 2:
                 assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
             else:

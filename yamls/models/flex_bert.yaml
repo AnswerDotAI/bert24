@@ -49,6 +49,7 @@ model:
     deterministic_fa2: False
     sliding_window: -1
     global_attn_every_n_layers: -1
+    local_attn_rotary_emb_base: -1
     unpad_embeddings: False
     pad_logits: False
 

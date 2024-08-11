@@ -292,3 +292,6 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         )
 
         return qkv
+
+    def extra_repr(self) -> str:
+        return f"dim={self.dim}, base={self.base}, scale_base={self.scale_base}"

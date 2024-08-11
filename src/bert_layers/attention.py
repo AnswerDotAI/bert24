@@ -732,21 +732,6 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
 
-        if config.rotary_emb_dim is None:
-            config.rotary_emb_dim = self.attn_head_size
-
-        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = UnpaddedRotaryEmbedding(
-            config.rotary_emb_dim,
-            base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
-            interleaved=config.rotary_emb_interleaved,
-        )
-
-        self.use_fa2 = config.use_fa2
-        self.deterministic_fa2 = config.deterministic_fa2
-        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
-
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
@@ -756,6 +741,26 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 self.sliding_window = (-1, -1)
         else:
             self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if config.rotary_emb_dim is None:
+            config.rotary_emb_dim = self.attn_head_size
+
+        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
+            rotary_base = config.local_attn_rotary_emb_base
+        else:
+            rotary_base = config.rotary_emb_base
+
+        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = UnpaddedRotaryEmbedding(
+            config.rotary_emb_dim,
+            base=rotary_base,
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            interleaved=config.rotary_emb_interleaved,
+        )
+
+        self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -913,17 +918,6 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
-        if config.rotary_emb_dim is None:
-            config.rotary_emb_dim = self.attn_head_size
-
-        assert RotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = RotaryEmbedding(
-            config.rotary_emb_dim,
-            base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
-            interleaved=config.rotary_emb_interleaved,
-        )
-
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
@@ -933,6 +927,22 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 self.sliding_window = (-1, -1)
         else:
             self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if config.rotary_emb_dim is None:
+            config.rotary_emb_dim = self.attn_head_size
+
+        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
+            rotary_base = config.local_attn_rotary_emb_base
+        else:
+            rotary_base = config.rotary_emb_base
+
+        assert RotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = RotaryEmbedding(
+            config.rotary_emb_dim,
+            base=rotary_base,
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            interleaved=config.rotary_emb_interleaved,
+        )
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
@@ -1054,21 +1064,6 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
             nn.Dropout(config.attn_out_dropout_prob) if config.attn_out_dropout_prob > 0.0 else nn.Identity()
         )
 
-        if config.rotary_emb_dim is None:
-            config.rotary_emb_dim = self.attn_head_size
-
-        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = UnpaddedRotaryEmbedding(
-            config.rotary_emb_dim,
-            base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
-            interleaved=config.rotary_emb_interleaved,
-        )
-
-        self.use_fa2 = config.use_fa2
-        self.deterministic_fa2 = config.deterministic_fa2
-        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
-
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
@@ -1078,6 +1073,26 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                 self.sliding_window = (-1, -1)
         else:
             self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if config.rotary_emb_dim is None:
+            config.rotary_emb_dim = self.attn_head_size
+
+        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
+            rotary_base = config.local_attn_rotary_emb_base
+        else:
+            rotary_base = config.rotary_emb_base
+
+        assert UnpaddedRotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = UnpaddedRotaryEmbedding(
+            config.rotary_emb_dim,
+            base=rotary_base,
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            interleaved=config.rotary_emb_interleaved,
+        )
+
+        self.use_fa2 = config.use_fa2
+        self.deterministic_fa2 = config.deterministic_fa2
+        self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -1229,17 +1244,6 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
 
-        if config.rotary_emb_dim is None:
-            config.rotary_emb_dim = self.attn_head_size
-
-        assert RotaryEmbedding is not None, "rotary_emb is not installed"
-        self.rotary_emb = RotaryEmbedding(
-            config.rotary_emb_dim,
-            base=config.rotary_emb_base,
-            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
-            interleaved=config.rotary_emb_interleaved,
-        )
-
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
                 raise ValueError("global_attn_every_n_layers` requires `sliding_window` to be set")
@@ -1249,6 +1253,22 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                 self.sliding_window = (-1, -1)
         else:
             self.sliding_window = (config.sliding_window // 2, config.sliding_window // 2)
+
+        if config.rotary_emb_dim is None:
+            config.rotary_emb_dim = self.attn_head_size
+
+        if self.sliding_window != (-1, -1) and config.local_attn_rotary_emb_base != -1:
+            rotary_base = config.local_attn_rotary_emb_base
+        else:
+            rotary_base = config.rotary_emb_base
+
+        assert RotaryEmbedding is not None, "rotary_emb is not installed"
+        self.rotary_emb = RotaryEmbedding(
+            config.rotary_emb_dim,
+            base=rotary_base,
+            scale_base=config.rotary_emb_scale_base,  # If scale_base is not None, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+            interleaved=config.rotary_emb_interleaved,
+        )
 
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
