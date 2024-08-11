@@ -43,7 +43,7 @@ layer_combinations = [
 @pytest.mark.parametrize("different_first_layer", [False, True])
 @pytest.mark.parametrize("sliding_window", [False, True])
 @pytest.mark.parametrize("unpad_embeddings", [False, True])
-# @pytest.mark.parametrize("pad_logits", [False, True])
+@pytest.mark.parametrize("pad_logits", [False, True])
 def test_trainer(
     padding: str,
     layer: str,
@@ -53,7 +53,7 @@ def test_trainer(
     different_first_layer: bool,
     sliding_window: bool,
     unpad_embeddings: bool,
-    pad_logits: bool = False,
+    pad_logits: bool,
 ):
     if padding == "padded" and (unpad_embeddings or pad_logits):
         pytest.skip("Unpad embeddings requires the unpadded model path.")
@@ -136,6 +136,7 @@ def test_trainer(
                 assert model1.bert.encoder.layers[0].attn.sliding_window == (32, 32), f"Sliding window not set for first layer: {model1.bert.encoder.layers[0].attn}"
                 assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
                 assert model1.bert.encoder.layers[2].attn.sliding_window == (32, 32), f"Sliding window not set for third layer: {model1.bert.encoder.layers[2].attn}"
+            # fmt: on
         # SDPA doesn't have sliding window impleemnted, so skip the test
         else:
             config.model.model_config.use_fa2 = False

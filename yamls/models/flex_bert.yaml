@@ -37,3 +37,18 @@ model:
     pooling_type: mean
     use_fa2: True
     use_sdpa_attn_mask: False
+    init_method: default
+    init_std: 0.02
+    init_cutoff_factor: 2.0
+    init_small_embedding: False
+    initial_attention_layer: null
+    initial_bert_layer: null
+    initial_mlp_layer: null
+    num_initial_layers: 1
+    skip_first_prenorm: False
+    deterministic_fa2: False
+    sliding_window: -1
+    global_attn_every_n_layers: -1
+    unpad_embeddings: False
+    pad_logits: False
+

@@ -1013,8 +1013,18 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         return unpad_input(input_ids, attention_mask, position_ids, labels)
 
     @torch.no_grad()
-    def pad_inputs(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, labels: torch.Tensor):
-        return pad_input(input_ids, attention_mask, labels)
+    def pad_inputs(
+        self,
+        inputs: torch.Tensor,
+        indices: torch.Tensor,
+        batch_size: int,
+        seqlen: int,
+        labels: Optional[torch.Tensor] = None,
+        ignore_index: int = -100,
+    ):
+        return pad_input(
+            inputs=inputs, indices=indices, batch=batch_size, seqlen=seqlen, labels=labels, ignore_index=ignore_index
+        )
 
     def forward(
         self,
@@ -1069,7 +1079,7 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
                         loss=loss,
                         ce_loss=loss.detach().clone() - z_loss,
                         z_loss=z_loss,
-                        logits=self.pad_inputs(logits, indices, batch_size, seq_len),
+                        logits=self.pad_inputs(logits, indices, batch_size, seq_len)[0],
                         hidden_states=None,
                         attentions=None,
                     )
@@ -1094,7 +1104,7 @@ class FlexBertForMaskedLM(BertPreTrainedModel):
         if self.pad_logits:
             return MaskedLMOutput(
                 loss=loss,
-                logits=self.pad_inputs(logits, indices, batch_size, seq_len),
+                logits=self.pad_inputs(logits, indices, batch_size, seq_len)[0],
                 hidden_states=None,
                 attentions=None,
             )
