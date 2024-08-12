@@ -167,7 +167,10 @@ class StreamingTextDataset(StreamingDataset):
         seq_len = sample["len"] if "len" in sample else len(sample["input_ids"])
 
         input_ids = np.frombuffer(sample["input_ids"], dtype=np.int64).copy()
-        attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64).copy()
+        if "attention_mask" in sample:
+            attention_mask = np.frombuffer(sample["attention_mask"], dtype=np.int64).copy()
+        else:
+            attention_mask = np.ones_like(input_ids)
 
         # calculate padding
         pad_len = self.max_seq_len - seq_len
@@ -399,6 +402,8 @@ class NoStreamingDataset(Dataset):
                     sample[k] = sample[k][:self.max_seq_len]
                 else:
                     del sample[k]
+            if "attention_mask" not in sample:
+                sample["attention_mask"] = np.ones_like(sample["input_ids"])
             return sample
         elif "text" in sample:
             return self._tokenize(sample)

@@ -6,14 +6,13 @@ This script allows conversion of mds-data, such as
 """
 
 import argparse
-import os, json
-import pandas as pd
+import os
+import json
 import numpy as np
 from streaming.base.format.mds.writer import MDSWriter
 from streaming.base.format import reader_from_json
 from streaming.base.compression import decompress
 from tqdm import tqdm
-import numpy as np
 
 def maybe_decompress_shard(shard, keep_zip: bool = True):
     """
@@ -69,6 +68,7 @@ def main():
 
     # Load columns from first shard to know what columns to write, and adapt if columns_to_keep is specified
     columns_to_write = {col_name: col_enc for col_name, col_enc in zip(obj["shards"][0]["column_names"], obj["shards"][0]["column_encodings"])}
+    assert "input_ids" in columns_to_write, f"The data in the read path must have `input_ids` in its columns. Its columns: {columns_to_write.keys()}"
     if args.columns_to_keep:
         # Verify that each column in columns_to_keep is valid
         for column in args.columns_to_keep:
@@ -77,21 +77,22 @@ def main():
 
     # read all shards
     shards = []
-    for info in obj['shards']:
+    for info in tqdm(obj['shards'], desc="Reading shards"):
         shard = reader_from_json(args.data_path, args.read_split, info)
         maybe_decompress_shard(shard, args.keep_zip)
-        shards += [s for s in shard]
+        shards.append(shard)
 
     # potentially filter/alter shards and write the new ones
     if args.write_split:
         with MDSWriter(
             columns=columns_to_write, out=os.path.join(args.data_path, args.write_split), compression=args.compression
         ) as out:
-            for sample in tqdm(shards):
-                if dtype:
-                    assert np.all(sample["input_ids"]<=np.iinfo(dtype).max), f"value in sample[input_ids] must not exceed {dtype} max"
-                    sample["input_ids"] = sample["input_ids"].astype(dtype)
-                out.write({k: sample[k] for k in columns_to_write.keys()})
+            for shard in tqdm(shards, desc="Writing shards"):
+                for sample in shard:
+                    if dtype:
+                        assert np.all(sample["input_ids"]<=np.iinfo(dtype).max), f"value in sample[input_ids] must not exceed {dtype} max"
+                        sample["input_ids"] = sample["input_ids"].astype(dtype)
+                    out.write({k: sample[k] for k in columns_to_write.keys()})
     
 if __name__ == "__main__":
     main()
