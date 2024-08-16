@@ -42,6 +42,8 @@ layer_combinations = [
 @pytest.mark.parametrize("layer,embedding,attention,mlp", layer_combinations)
 @pytest.mark.parametrize("different_first_layer", [False, True])
 @pytest.mark.parametrize("sliding_window", [False, True])
+@pytest.mark.parametrize("unpad_embeddings", [False, True])
+@pytest.mark.parametrize("pad_logits", [False, True])
 def test_trainer(
     padding: str,
     layer: str,
@@ -50,7 +52,16 @@ def test_trainer(
     mlp: str,
     different_first_layer: bool,
     sliding_window: bool,
+    unpad_embeddings: bool,
+    pad_logits: bool,
 ):
+    if padding == "padded" and (unpad_embeddings or pad_logits):
+        pytest.skip("Unpad embeddings requires the unpadded model path.")
+    if not unpad_embeddings and pad_logits:
+        pytest.skip("Pad logits requires unpadded embeddings.")
+    if unpad_embeddings and embedding == "absolute_pos":
+        pytest.skip("Unpadded embeddings are not compatible with absolute pos embeddings.")
+
     with open("yamls/defaults.yaml") as f:
         default_cfg = OmegaConf.load(f)
     with open("yamls/models/flex_bert.yaml") as f:
@@ -59,6 +70,7 @@ def test_trainer(
         test_config = OmegaConf.load(f)
     config = OmegaConf.merge(default_cfg, model_cfg, test_config)
     assert isinstance(config, DictConfig)
+
     config.model.name = "flex_bert"
     config.seed = 42
     config.model.model_config.padding = padding
@@ -102,6 +114,9 @@ def test_trainer(
             config.model.model_config.use_sdpa_attn_mask = True
         else:
             config.model.model_config.use_sdpa_attn_mask = False
+        if padding == "unpadded" and unpad_embeddings:
+            config.model.model_config.unpad_embeddings = True
+            config.model.model_config.pad_logits = pad_logits
         config.train_loader.dataset.remote = tmp_datadir
         config.train_loader.dataset.local = os.path.join(tmp_datadir, "tr-local1")
         config.eval_loader.dataset.remote = tmp_datadir
@@ -121,6 +136,7 @@ def test_trainer(
                 assert model1.bert.encoder.layers[0].attn.sliding_window == (32, 32), f"Sliding window not set for first layer: {model1.bert.encoder.layers[0].attn}"
                 assert model1.bert.encoder.layers[1].attn.sliding_window == (32, 32), f"Sliding window not set for second layer: {model1.bert.encoder.layers[1].attn}"
                 assert model1.bert.encoder.layers[2].attn.sliding_window == (32, 32), f"Sliding window not set for third layer: {model1.bert.encoder.layers[2].attn}"
+            # fmt: on
         # SDPA doesn't have sliding window impleemnted, so skip the test
         else:
             config.model.model_config.use_fa2 = False

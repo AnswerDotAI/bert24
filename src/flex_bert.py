@@ -160,7 +160,7 @@ class EfficientHuggingFaceModel(HuggingFaceModel):
         elif isinstance(metric, EfficientCrossEntropy):
             metric_result = metric.update(outputs["loss"])
         else:
-            metric_result = metric.update(outputs["logits"], self.labels)
+            metric_result = metric.update(outputs["logits"], outputs.get("labels", self.labels))
 
         if metric_result is not None:
             # Add the metric name once for each datapoint in the batch

@@ -67,7 +67,8 @@ from transformers.modeling_outputs import (
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
-import bert_padding as bert_padding_module
+from bert_padding import index_put_first_axis
+from .padding import unpad_input, pad_input
 from .loss import get_loss_fn
 from .layers import (
     BertAlibiEncoder,
@@ -375,7 +376,7 @@ class BertForMaskedLM(BertPreTrainedModel):
             assert input_ids is not None, "Coding error; please open an issue"
             batch, seqlen = input_ids.shape[:2]
             prediction_scores = rearrange(
-                bert_padding_module.index_put_first_axis(prediction_scores, masked_token_idx, batch * seqlen),
+                index_put_first_axis(prediction_scores, masked_token_idx, batch * seqlen),
                 "(b s) d -> b s d",
                 b=batch,
             )
@@ -745,6 +746,41 @@ class FlexBertPoolingHead(nn.Module):
 
 
 @dataclass
+class MaskedLMOutput(ModelOutput):
+    """
+    Base class for masked language models outputs.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Masked language modeling (MLM) loss.
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    indices: Optional[torch.LongTensor] = None
+    cu_seqlens: Optional[torch.LongTensor] = None
+    max_seqlen: Optional[int] = None
+    batch_size: Optional[int] = None
+    seq_len: Optional[int] = None
+    labels: Optional[torch.LongTensor] = None
+
+
+@dataclass
 class MaskedLMOutputZLoss(ModelOutput):
     """
     Base class for masked language models outputs.
@@ -769,6 +805,8 @@ class MaskedLMOutputZLoss(ModelOutput):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
+        indices (`torch.LongTensor` of shape `(batch_size,)`):
+            Indices of the tokens to be masked.
     """
 
     loss: Optional[torch.FloatTensor] = None
@@ -777,6 +815,12 @@ class MaskedLMOutputZLoss(ModelOutput):
     logits: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
     attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    indices: Optional[torch.LongTensor] = None
+    cu_seqlens: Optional[torch.LongTensor] = None
+    max_seqlen: Optional[int] = None
+    batch_size: Optional[int] = None
+    seq_len: Optional[int] = None
+    labels: Optional[torch.LongTensor] = None
 
 class FlexBertPreTrainedModel(BertPreTrainedModel):
     """
@@ -845,6 +889,7 @@ class FlexBertModel(FlexBertPreTrainedModel):
             self.final_norm = get_norm_layer(config)
         else:
             self.final_norm = None
+        self.unpad_embeddings = config.unpad_embeddings
 
     def post_init(self):
         self._init_weights(reset_params=False)
@@ -861,6 +906,9 @@ class FlexBertModel(FlexBertPreTrainedModel):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        indices: Optional[torch.Tensor] = None,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        max_seqlen: Optional[int] = None,
         **kwargs,
     ) -> Tuple[Union[List[torch.Tensor], torch.Tensor], Optional[torch.Tensor]]:
         if attention_mask is None:
@@ -868,7 +916,13 @@ class FlexBertModel(FlexBertPreTrainedModel):
 
         embedding_output = self.embeddings(input_ids, position_ids)
 
-        encoder_outputs = self.encoder(embedding_output, attention_mask)
+        encoder_outputs = self.encoder(
+            hidden_states=embedding_output,
+            attention_mask=attention_mask,
+            indices=indices,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+        )
 
         if self.final_norm is not None:
             encoder_outputs = self.final_norm(encoder_outputs)
@@ -923,6 +977,8 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
         self.loss_fn = nn.CrossEntropyLoss() if not hasattr(config, "loss_function") else get_loss_fn(config)
         self.fa_ce = getattr(config, "loss_function", "cross_entropy") == "fa_cross_entropy"
         self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
+        self.unpad_embeddings = config.unpad_embeddings
+        self.pad_logits = config.pad_logits
 
         # Initialize weights and apply final processing
         self._init_weights(reset_params=False)
@@ -974,6 +1030,26 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.decoder = new_embeddings
 
+    @torch.no_grad()
+    def unpad_inputs(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, position_ids: torch.Tensor, labels: torch.Tensor
+    ):
+        return unpad_input(input_ids, attention_mask, position_ids, labels)
+
+    @torch.no_grad()
+    def pad_inputs(
+        self,
+        inputs: torch.Tensor,
+        indices: torch.Tensor,
+        batch_size: int,
+        seqlen: int,
+        labels: Optional[torch.Tensor] = None,
+        ignore_index: int = -100,
+    ):
+        return pad_input(
+            inputs=inputs, indices=indices, batch=batch_size, seqlen=seqlen, labels=labels, ignore_index=ignore_index
+        )
+
     def forward(
         self,
         input_ids: Optional[torch.Tensor],
@@ -981,6 +1057,11 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
         position_ids: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
+        indices: Optional[torch.Tensor] = None,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        max_seqlen: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        seq_len: Optional[int] = None,
         **kwargs,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         # labels should be a `torch.LongTensor` of shape
@@ -997,30 +1078,73 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        output = self.bert(input_ids, attention_mask=attention_mask, position_ids=position_ids)
+        if self.unpad_embeddings and (indices is None or cu_seqlens is None or max_seqlen is None):
+            batch_size, seq_len = input_ids.shape[:2]
+            input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
+                input_ids, attention_mask, position_ids, labels
+            )
+
+        output = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            indices=indices,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+        )
 
         logits = self.decoder(self.head(output))
         loss = None
         if labels is not None:
             if self.return_z_loss:
                 loss, z_loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
-                return MaskedLMOutputZLoss(
-                    loss=loss,
-                    ce_loss=loss - z_loss,
-                    z_loss=z_loss,
-                    logits=logits,
-                    hidden_states=None,
-                    attentions=None,
-                )
+                if self.pad_logits:
+                    return MaskedLMOutputZLoss(
+                        loss=loss,
+                        ce_loss=loss.detach().clone() - z_loss,
+                        z_loss=z_loss,
+                        logits=self.pad_inputs(logits, indices, batch_size, seq_len)[0],
+                        hidden_states=None,
+                        attentions=None,
+                    )
+                else:
+                    return MaskedLMOutputZLoss(
+                        loss=loss,
+                        ce_loss=loss.detach().clone() - z_loss,
+                        z_loss=z_loss,
+                        logits=logits,
+                        hidden_states=None,
+                        attentions=None,
+                        indices=indices,
+                        cu_seqlens=cu_seqlens,
+                        max_seqlen=max_seqlen,
+                        batch_size=batch_size,
+                        seq_len=seq_len,
+                        labels=labels,
+                    )
             else:
                 loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
 
-        return MaskedLMOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=None,
-            attentions=None,
-        )
+        if self.pad_logits:
+            return MaskedLMOutput(
+                loss=loss,
+                logits=self.pad_inputs(logits, indices, batch_size, seq_len)[0],
+                hidden_states=None,
+                attentions=None,
+            )
+        else:
+            return MaskedLMOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=None,
+                attentions=None,
+                indices=indices,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_seqlen,
+                batch_size=batch_size,
+                seq_len=seq_len,
+                labels=labels,
+            )
 
     def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
         input_shape = input_ids.shape
