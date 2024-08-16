@@ -296,6 +296,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
@@ -392,6 +393,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -402,6 +404,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -454,6 +457,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
@@ -542,6 +546,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -552,6 +557,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -605,6 +611,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
@@ -677,6 +684,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -685,6 +693,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
@@ -764,6 +773,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -855,6 +865,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -865,6 +876,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -920,6 +932,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
@@ -1017,6 +1030,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1025,6 +1039,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
@@ -1102,6 +1117,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         # Warn if defaulting to pytorch because of import issues
         if not IMPL_USE_FLASH2 and self.use_fa2:
@@ -1186,6 +1202,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1196,6 +1213,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
             attn = attn.view(bs, dim)
         else:
@@ -1250,6 +1268,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
         if not IMPL_USE_FLASH2 and self.use_fa2:
             self.use_fa2 = False
 
@@ -1342,6 +1361,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1350,6 +1370,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
         else:
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
@@ -1397,6 +1418,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
         self.use_fa2 = config.use_fa2
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
+        self.softcap = config.attn_logit_softcap
 
         if config.global_attn_every_n_layers > 0:
             if config.sliding_window == -1:
@@ -1462,6 +1484,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1470,6 +1493,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
+                    softcap=self.softcap,
                 )
         else:
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
