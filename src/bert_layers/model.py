@@ -694,7 +694,9 @@ class FlexBertPredictionHead(nn.Module):
         self.config = config
         self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_pred_bias)
         self.act = get_act_fn(config.head_pred_act) if config.head_pred_act else nn.Identity()
-        self.norm = get_norm_layer(config) if config.head_pred_norm else nn.Identity()
+        self.norm = (
+            get_norm_layer(config, compiled_norm=config.compile_model) if config.head_pred_norm else nn.Identity()
+        )
 
     def _init_weights(self, reset_params: bool = False):
         if reset_params:
@@ -822,10 +824,12 @@ class MaskedLMOutputZLoss(ModelOutput):
     seq_len: Optional[int] = None
     labels: Optional[torch.LongTensor] = None
 
+
 class FlexBertPreTrainedModel(BertPreTrainedModel):
     """
     An abstract class to handle custom weights initialization of modules
     """
+
     def _init_module_weights(self, module: nn.Module):
         """
         Custom weight init of modules using src.bert_layers.initialization.init_weights
@@ -836,6 +840,7 @@ class FlexBertPreTrainedModel(BertPreTrainedModel):
             init_weights(self.config, module, type_of_module=ModuleType.emb)
         else:
             raise NotImplementedError("Custom weight init for the given module is not supported")
+
 
 class FlexBertModel(FlexBertPreTrainedModel):
     """Overall BERT model.
@@ -979,6 +984,7 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
         self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
         self.unpad_embeddings = config.unpad_embeddings
         self.pad_logits = config.pad_logits
+        self.compile_model = config.compile_model
 
         # Initialize weights and apply final processing
         self._init_weights(reset_params=False)
@@ -1050,6 +1056,10 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
             inputs=inputs, indices=indices, batch=batch_size, seqlen=seqlen, labels=labels, ignore_index=ignore_index
         )
 
+    @torch.compile(dynamic=True)
+    def compiled_head(self, output: torch.Tensor) -> torch.Tensor:
+        return self.decoder(self.head(output))
+
     def forward(
         self,
         input_ids: Optional[torch.Tensor],
@@ -1092,8 +1102,11 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
+        if self.compile_model:
+            logits = self.compiled_head(output)
+        else:
+            logits = self.decoder(self.head(output))
 
-        logits = self.decoder(self.head(output))
         loss = None
         if labels is not None:
             if self.return_z_loss:

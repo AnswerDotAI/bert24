@@ -95,6 +95,7 @@ class FlexBertConfig(TransformersBertConfig):
         local_attn_rotary_emb_dim: int | None = None,
         unpad_embeddings: bool = False,
         pad_logits: bool = False,
+        compile_model: bool = True,
         **kwargs,
     ):
         """
@@ -152,6 +153,7 @@ class FlexBertConfig(TransformersBertConfig):
             local_attn_rotary_emb_dim (int | None): Rotary embedding dimension for local attention. None to disable and use `rotary_emb_dim` for all layers.
             unpad_embeddings (bool): Unpad inputs before the embedding layer.
             pad_logits (bool): Pad logits after the calculating the loss.
+            compile_model (bool): Compile the subset of the model which can be compiled.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -207,6 +209,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.local_attn_rotary_emb_dim = local_attn_rotary_emb_dim
         self.unpad_embeddings = unpad_embeddings
         self.pad_logits = pad_logits
+        self.compile_model = compile_model
 
         if loss_kwargs.get("return_z_loss", False):
             if loss_function != "fa_cross_entropy":
