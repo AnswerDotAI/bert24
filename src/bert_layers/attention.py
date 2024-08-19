@@ -27,7 +27,13 @@ from .normalization import get_norm_layer
 from .initialization import ModuleType, init_weights
 import src.utils  # noqa: F401
 
+IMPL_USE_FLASH3 = False
 IMPL_USE_FLASH2 = False
+try:
+    from flash_attn_interface import flash_attn_varlen_func
+    IMPL_USE_FLASH3 = True
+except ImportError:
+    pass
 # Import Flash Attention 2, which supports ALiBi https://github.com/Dao-AILab/flash-attention
 try:
     from flash_attn import flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func  # type: ignore
@@ -762,6 +768,8 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         )
 
         self.use_fa2 = config.use_fa2
+        # flash attention 3 only supports global attention
+        self.use_fa3 = config.use_fa2 and self.sliding_window == (-1, -1) and IMPL_USE_FLASH3
         self.deterministic_fa2 = config.deterministic_fa2
         self.use_sdpa_attn_mask = config.use_sdpa_attn_mask
 
@@ -840,7 +848,40 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
         qkv = self.rotary_emb(qkv, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=seqlen_offset)
 
-        if self.use_fa2:
+        if self.use_fa3:
+            convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
+            if convert_dtype:
+                # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
+                # bfloat16 must be supported as of FA2 2.5.7. (Turing GPUs not supported)
+                orig_dtype = qkv.dtype
+                qkv = qkv.to(torch.bfloat16)
+                q,k,v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
+
+                attn, _ = flash_attn_varlen_func(
+                    q=q,
+                    k=k,
+                    v=v,
+                    cu_seqlens_q=cu_seqlens,
+                    cu_seqlens_k=cu_seqlens,
+                    max_seqlen_q=max_seqlen,
+                    max_seqlen_k=max_seqlen,
+                    deterministic=self.deterministic_fa2,
+                )
+                attn = attn.to(orig_dtype)  # type: ignore
+            else:
+                q,k,v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
+                attn, _ = flash_attn_varlen_func(
+                    q=q,
+                    k=k,
+                    v=v,
+                    cu_seqlens_q=cu_seqlens,
+                    cu_seqlens_k=cu_seqlens,
+                    max_seqlen_q=max_seqlen,
+                    max_seqlen_k=max_seqlen,
+                    deterministic=self.deterministic_fa2,
+                )
+            attn = attn.view(bs, dim)
+        elif self.use_fa2:
             convert_dtype = qkv.dtype not in (torch.float16, torch.bfloat16)
             if convert_dtype:
                 # FA2 implementation only supports fp16 and bf16. If FA2 is supported,
