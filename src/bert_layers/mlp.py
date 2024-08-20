@@ -16,7 +16,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from .configuration_bert import FlexBertConfig, maybe_add_padding
+from .configuration_bert import FlexBertConfig
 from .activation import get_act_fn
 from .normalization import get_norm_layer
 from .initialization import ModuleType, init_weights

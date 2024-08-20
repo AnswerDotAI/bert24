@@ -279,6 +279,51 @@ class FlexBertLayerBase(nn.Module):
         raise NotImplementedError("This is a base class and should not be used directly.")
 
 
+class FlexBertCompileUnpadPreNormLayer(FlexBertLayerBase):
+    """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
+
+    def __init__(self, config: FlexBertConfig, layer_id: Optional[int] = None):
+        super().__init__(config=config, layer_id=layer_id)
+        if config.skip_first_prenorm and config.embed_norm and layer_id == 0:
+            self.attn_norm = nn.Identity()
+        else:
+            self.attn_norm = get_norm_layer(config)
+        self.attn = get_attention_layer(config, layer_id=layer_id)
+        self.mlp_norm = get_norm_layer(config, compiled_norm=config.compile_model)
+        self.mlp = get_mlp_layer(config, layer_id=layer_id)
+        self.compile_model = config.compile_model
+
+    def _init_weights(self, reset_params: bool = False):
+        super()._init_weights(reset_params)
+        if reset_params:
+            self.attn_norm.reset_parameters()
+            self.mlp_norm.reset_parameters()
+
+    @torch.compile(dynamic=True)
+    def compiled_mlp(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.mlp(self.mlp_norm(hidden_states))
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
+        indices: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward pass for a BERT layer, including both attention and MLP.
+
+        Args:
+            hidden_states: (total_nnz, dim)
+            cu_seqlens: (batch + 1,)
+            max_seqlen: int
+            indices: None or (total_nnz,)
+            attn_mask: None or (batch, max_seqlen)
+        """
+        attn_out = hidden_states + self.attn(self.attn_norm(hidden_states), cu_seqlens, max_seqlen, indices, attn_mask)
+        return attn_out + self.compiled_mlp(attn_out)
+
+
 class FlexBertUnpadPreNormLayer(FlexBertLayerBase):
     """Composes the FlexBERT attention and MLP blocks into a single layer using pre-normalization."""
 
@@ -515,6 +560,7 @@ class FlexBertPaddedPostNormLayer(FlexBertLayerBase):
 
 LAYER2CLS = {
     "unpadded_prenorm": FlexBertUnpadPreNormLayer,
+    "unpadded_compile_prenorm": FlexBertCompileUnpadPreNormLayer,
     "unpadded_parallel_prenorm": FlexBertUnpadParallelPreNormLayer,
     "unpadded_postnorm": FlexBertUnpadPostNormLayer,
     "padded_prenorm": FlexBertPaddedPreNormLayer,
@@ -530,7 +576,10 @@ def get_bert_layer(config: FlexBertConfig, layer_id: Optional[int] = None) -> Fl
             if layer_id < config.num_initial_layers and getattr(config, "initial_bert_layer", None) is not None
             else config.bert_layer
         )
-        return LAYER2CLS[maybe_add_padding(config, bert_layer)](config, layer_id=layer_id)
+        bert_layer = maybe_add_padding(config, bert_layer)
+        if config.compile_model and bert_layer == "unpadded_prenorm":
+            bert_layer = "unpadded_compile_prenorm"
+        return LAYER2CLS[bert_layer](config, layer_id=layer_id)
     except KeyError:
         if layer_id < config.num_initial_layers and getattr(config, "initial_bert_layer", None) is not None:
             raise ValueError(
