@@ -14,7 +14,7 @@ from streaming.base.format import reader_from_json
 from streaming.base.compression import decompress
 from tqdm import tqdm
 
-def maybe_decompress_shard(shard, keep_zip: bool = True):
+def maybe_decompress_shard(shard, delete_zip: bool = False):
     """
     If shard does not have decompressed data,
     this function decompresses the shard
@@ -29,8 +29,10 @@ def maybe_decompress_shard(shard, keep_zip: bool = True):
             out.write(data)
         os.rename(tmp_filename, raw_filename)
 
-        # Maybe remove compressed to save space.
-        if not keep_zip:
+    # Maybe remove compressed to save space.
+    if shard.zip_data is not None and delete_zip:
+        zip_filename = os.path.join(shard.dirname, shard.split, shard.zip_data.basename)
+        if os.path.exists(zip_filename):
             os.remove(zip_filename)
 
 def main():
@@ -44,13 +46,12 @@ def main():
     parser.add_argument('--dtype', type=str, default=None, help='Data type to convert the values of input_ids to')
     parser.add_argument('--columns_to_keep', type=str, nargs='+', default=None, help='List of columns to keep, if None, all columns will be kept')
     parser.add_argument('--decompress', action='store_true', help='If data in read_split should be be decompressed. Necessary if there is only compressed data in read_split')
-    parser.add_argument('--keep_zip', type=bool, default=True, help='Whether the compressed files should be kept after decompression or not')
+    parser.add_argument('--delete_zip', action='store_true', help='Whether the compressed files should be kept after decompression or not')
     parser.add_argument('--compression', type=str, default=None, help='Compression type to use for the data to write')
     
     # Parse the arguments
     args = parser.parse_args()
-    print(args.columns_to_keep)
-    
+
     # Verify that the data path exists
     if not os.path.exists(args.data_path):
         raise FileNotFoundError(f"Data path {args.data_path} does not exist.")
@@ -79,7 +80,7 @@ def main():
     shards = []
     for info in tqdm(obj['shards'], desc="Reading shards"):
         shard = reader_from_json(args.data_path, args.read_split, info)
-        maybe_decompress_shard(shard, args.keep_zip)
+        maybe_decompress_shard(shard, args.delete_zip)
         shards.append(shard)
 
     # potentially filter/alter shards and write the new ones
