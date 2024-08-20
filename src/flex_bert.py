@@ -8,9 +8,10 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import sys
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor
@@ -177,6 +178,7 @@ def create_flex_bert_mlm(
     gradient_checkpointing: Optional[bool] = False,
     pretrained_checkpoint: Optional[str] = None,
     recompute_metric_loss: Optional[bool] = False,
+    disable_train_metrics: Optional[bool] = False,
 ):
     """FlexBERT masked language model based on |:hugging_face:| Transformers.
 
@@ -201,6 +203,9 @@ def create_flex_bert_mlm(
             initialize the model weights. If provided, the state dictionary
             stored at `pretrained_checkpoint` will be loaded into the model
             after initialization. Default: ``None``.
+        disable_train_metrics (bool, optional): Only calculate metrics for 
+            validation set when True.
+            Default: ``False``.
 
     .. code-block::
 
@@ -285,11 +290,16 @@ def create_flex_bert_mlm(
     if model_config.get("loss_kwargs", {}).get("return_z_loss", False):
         metrics += [EfficientZLoss()]
 
+    eval_metrics = copy.deepcopy(metrics)
+    if disable_train_metrics:
+        metrics = None
+
     hf_model = EfficientHuggingFaceModel(
         model=model,
         tokenizer=tokenizer,
         use_logits=True,
         metrics=metrics,
+        eval_metrics=eval_metrics,
         allow_embedding_resizing=model.config.allow_embedding_resizing,
     )
 

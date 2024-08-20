@@ -253,6 +253,7 @@ def build_model(cfg: DictConfig):
             tokenizer_name=cfg.get("tokenizer_name", None),
             gradient_checkpointing=cfg.get("gradient_checkpointing", None),
             recompute_metric_loss=cfg.get("recompute_metric_loss", False),
+            disable_train_metrics=cfg.get("disable_train_metrics", False),
         )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
