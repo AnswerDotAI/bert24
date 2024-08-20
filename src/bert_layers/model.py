@@ -966,9 +966,6 @@ class FlexBertModel(FlexBertPreTrainedModel):
 class FlexBertForMaskedLM(FlexBertPreTrainedModel):
     def __init__(self, config: FlexBertConfig):
         super().__init__(config)
-        self.mlm_probability = getattr(config, "mlm_probability", 0.0)
-        self.sparse_prediction = getattr(config, "sparse_prediction", False) if self.mlm_probability > 0 else False
-
         self.bert = FlexBertModel(config)
         self.head = FlexBertPredictionHead(config)
 
@@ -985,6 +982,7 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
         self.unpad_embeddings = config.unpad_embeddings
         self.pad_logits = config.pad_logits
         self.compile_model = config.compile_model
+        self.masked_prediction = config.masked_prediction
 
         # Initialize weights and apply final processing
         self._init_weights(reset_params=False)
@@ -1102,6 +1100,17 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
+
+        if self.masked_prediction and labels is not None:
+            # flatten labels and output first
+            labels = labels.view(-1)
+            output = output.view(labels.shape[0], -1)
+
+            # then filter out the non-masked tokens
+            mask_tokens = labels != self.loss_fn.ignore_index
+            output = output[mask_tokens]
+            labels = labels[mask_tokens]
+
         if self.compile_model:
             logits = self.compiled_head(output)
         else:
@@ -1109,8 +1118,12 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
 
         loss = None
         if labels is not None:
+            if not self.masked_prediction:
+                labels = labels.view(-1)
+                logits = logits.view(labels.shape[0], -1)
+
             if self.return_z_loss:
-                loss, z_loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
+                loss, z_loss = self.loss_fn(logits, labels)
                 if self.pad_logits:
                     return MaskedLMOutputZLoss(
                         loss=loss,
@@ -1136,7 +1149,7 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
                         labels=labels,
                     )
             else:
-                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
+                loss = self.loss_fn(logits, labels)
 
         if self.pad_logits:
             return MaskedLMOutput(
