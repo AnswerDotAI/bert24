@@ -31,6 +31,7 @@ IMPL_USE_FLASH3 = False
 IMPL_USE_FLASH2 = False
 try:
     from flash_attn_interface import flash_attn_varlen_func
+
     IMPL_USE_FLASH3 = True
 except ImportError:
     pass
@@ -855,7 +856,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 # bfloat16 must be supported as of FA2 2.5.7. (Turing GPUs not supported)
                 orig_dtype = qkv.dtype
                 qkv = qkv.to(torch.bfloat16)
-                q,k,v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
+                q, k, v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
 
                 attn, _ = flash_attn_varlen_func(
                     q=q,
@@ -869,7 +870,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
-                q,k,v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
+                q, k, v = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size).unbind(dim=1)
                 attn, _ = flash_attn_varlen_func(
                     q=q,
                     k=k,
