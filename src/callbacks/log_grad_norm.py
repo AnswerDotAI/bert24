@@ -44,8 +44,8 @@ class LogGradNorm(Callback):
         optimizer_metrics = getattr(state.optimizers[0], "grad_norms", None)
         if optimizer_metrics is not None:
             logged_metrics = {}
-            for metric in optimizer_metrics:
-                logged_metrics = {}
-                if isinstance(optimizer_metrics[metric], torch.Tensor):
-                    logged_metrics[f"gradient_norms/{metric}"] = optimizer_metrics[metric].item()
+            for metric, value in optimizer_metrics.items():
+                if isinstance(value, torch.Tensor):
+                    value = value.item()
+                logged_metrics[f"gradient_norms/{metric}"] = value
             logger.log_metrics(logged_metrics)
