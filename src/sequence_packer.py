@@ -70,6 +70,7 @@ class SequencePacker(ABC):
             ignore_token_id: The token ID used to ignore tokens. Expected to be applied to every non-masked token, so the model only trains on predictions of masked tokens.
         """
         assert buffer_size >= out_batch_size, f"required that {buffer_size=} >= {out_batch_size=}"
+        self.src_dataloader_len = len(src_iterable)
         self.src_iterator = iter(src_iterable)
         self.src_batch_size = src_batch_size
         self.out_batch_size = out_batch_size
@@ -101,6 +102,11 @@ class SequencePacker(ABC):
 
     def __iter__(self):
         return self._generate_batches()
+
+    def __len__(self):
+        # Based on offline estimates, we produced 24% fewer batches with packing.
+        # TODO: Make this a config option rather than hard-coding it.
+        return int(np.ceil(self.src_dataloader_len * 0.76))
 
     def _fill_buffer(self, max_items_to_add=float("inf")) -> int:
         """
@@ -167,6 +173,7 @@ class SequencePacker(ABC):
                     "labels": torch.from_numpy(labels),
                     "cu_seqlens": cu_seq_lens,
                     "max_seqlen": max_seq_lens,
+                    "attention_mask": torch.from_numpy(np.where(masked_batch == self.pad_token_id, 0, 1)),
                 }
             # # assert isinstance(yieldval[0], torch.Tensor), f"Unexpected {type(yieldval[0])=}"
             # if not self.suppress_masking:
@@ -361,6 +368,7 @@ T = TypeVar("T")
 
 class BufferedIterator(Generic[T]):
     def __init__(self, iterable: Iterable[T], buffer_size: int):
+        self.src_len = len(iterable)
         self.iterator = iter(iterable)
         self.buffer = deque(maxlen=buffer_size)
         self.buffer_size = buffer_size
@@ -385,6 +393,9 @@ class BufferedIterator(Generic[T]):
 
     def __iter__(self):
         return self
+
+    def __len__(self):
+        return self.src_len
 
     def __next__(self) -> T:
         while True:
