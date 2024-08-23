@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set up logging
-LOG_FILE="~/bert_live_eval.log"
+LOG_FILE="$HOME/bert_live_eval.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 # Function to log messages
