@@ -454,6 +454,9 @@ def main(
         config_files = [train_config]
     elif not skip_generation:
         print("\nGenerating evaluation configs...\n")
+        config_files_completed = list(checkpoints.glob("*_evaluation.yaml"))
+        print(f"Completed Jobs: {config_files_completed}")
+
         generate_eval_configs(
             checkpoints=checkpoints,
             train_config=train_config,
@@ -477,6 +480,8 @@ def main(
             parallel=parallel,
         )
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
+        config_files = sorted(list(set(config_files) - set(config_files_completed)))
+        print(f"Jobs to be run:\n{config_files}")
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
 

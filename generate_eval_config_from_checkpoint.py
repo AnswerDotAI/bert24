@@ -153,8 +153,9 @@ def main(
     else:
         # Specify the run name
         print("Attempting to find config file within checkpoint folder...")
-        yaml_file = ckpt_path + ".yaml"
+        yaml_file = str(checkpoint.parent) + f"/{checkpoint.parent.name}.yaml" # ckpt_path 
         yaml_file_alt = ckpt_path + "/" + ckpt_id + ".yaml"
+        print(yaml_file)
 
         if os.path.exists(yaml_file):
             with open(yaml_file, "r") as file:
@@ -183,7 +184,11 @@ def main(
     print(f"Config found for run: {safe_get(input_config, 'run_name', ckpt_path)}")
 
     new_config["parallel"] = parallel
-    new_config["base_run_name"] = safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+    
+    batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
+    base_run_name = safe_get(input_config, "run_name", ckpt_path) + f"-{batch_id}"
+    new_config["base_run_name"] = base_run_name # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+    
     new_config["default_seed"] = 19
     new_config["precision"] = safe_get(input_config, "precision")
     new_config["tokenizer_name"] = safe_get(input_config, "tokenizer_name")
@@ -224,8 +229,8 @@ def main(
 
     loggers = OrderedDict()
     wandb_config = OrderedDict()
-    wandb_config["project"] = f"{wandb_project}-evals"
-    wandb_config["entity"] = wandb_entity
+    wandb_config["project"] = "bert24-base-in-run-evals" # f"{wandb_project}-evals"
+    wandb_config["entity"] = "bert24" # wandb_entity
     loggers["wandb"] = wandb_config
     if track_run:
         new_config["loggers"] = loggers
@@ -266,7 +271,7 @@ def main(
 
     if not skip_mnli:
         mnli = OrderedDict()
-        mnli["seeds"] = [seeds[0]]
+        mnli["seeds"] = seeds[:3] # [seeds[0]]
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
         tasks["mnli"] = mnli
 
