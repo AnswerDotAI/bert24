@@ -32,6 +32,7 @@ import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
 from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -218,13 +219,37 @@ def get_num_tokens_in_batch_unpadded(batch: dict):
     return batch["attention_mask"].sum().item()
 
 
-def build_dataloader(cfg, tokenizer, device_batch_size, count_padding_tokens=True):
+def build_dataloader(
+    cfg,
+    tokenizer,
+    device_batch_size,
+    count_padding_tokens=True,
+    device_microbatch_size: int | None = None,
+    max_seq_len: int | None = None,
+):
     if cfg.name == "text":
-        data_loader = text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
+        data_loader = text_data_module.build_text_dataloader(
+            cfg, tokenizer, device_batch_size, device_microbatch_size=device_microbatch_size, max_seq_len=max_seq_len
+        )
+        if cfg.sequence_packing:
+            data_loader = DataSpec(
+                data_loader, split_batch=split_packed_batch, get_num_samples_in_batch=get_num_samples_in_packed_batch
+            )
     else:
         raise ValueError(f"Not sure how to build dataloader with config: {cfg}")
     if not count_padding_tokens:
-        data_loader = DataSpec(data_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
+        if cfg.sequence_packing:
+            split_batch_fn = split_packed_batch
+            num_samples_in_batch_fn = get_num_samples_in_packed_batch
+        else:
+            split_batch_fn = None
+            num_samples_in_batch_fn = None
+        data_loader = DataSpec(
+            data_loader,
+            get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded,
+            split_batch=split_batch_fn,
+            get_num_samples_in_batch=num_samples_in_batch_fn,
+        )
     return data_loader
 
 
@@ -281,6 +306,8 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         model.tokenizer,
         cfg.global_train_batch_size // dist.get_world_size(),
         count_padding_tokens,
+        device_microbatch_size=cfg.device_train_microbatch_size,
+        max_seq_len=cfg.max_seq_len,
     )
     print("Building eval loader...")
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
