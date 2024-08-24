@@ -31,6 +31,7 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
+from src.callbacks.log_grad_norm import LogGradNorm
 from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
 
 
@@ -135,6 +136,11 @@ def build_callback(name, kwargs):
         )
     elif name == "scheduled_gc":
         return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 10000))
+    elif name == "log_grad_norm":
+        return LogGradNorm(
+            log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
+            batch_log_interval=kwargs.get("batch_log_interval", 10),
+        )
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
@@ -187,7 +193,10 @@ def build_optimizer(cfg, model):
         return AdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
     elif cfg.name == "stableadamw":
         try:
-            from optimi import StableAdamW
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
         except ImportError:
             raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
 
@@ -198,7 +207,10 @@ def build_optimizer(cfg, model):
         return StableAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
     elif cfg.name == "decoupled_stableadamw":
         try:
-            from optimi import StableAdamW
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
         except ImportError:
             raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
 
