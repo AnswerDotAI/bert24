@@ -584,11 +584,7 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
         return (self._get_dataset_item(int(idx)) for idx in indices)
 
     def _get_dataset_item(self, idx: int) -> Dict[str, Any]:
-        item = self.dataset[idx]
-        if isinstance(item, dict):
-            return dict(**item, index=idx)
-        else:
-            return {"input_ids": item, "index": idx}
+        return self.dataset[idx]
 
     @property
     def tokenizer(self):
