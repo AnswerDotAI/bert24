@@ -21,6 +21,7 @@ from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from streaming import Stream, StreamingDataset
 from torch.utils.data import DataLoader, Dataset, IterableDataset
+from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 from streaming.base.format import reader_from_json
 from streaming.base.spanner import Spanner
@@ -347,6 +348,7 @@ def build_text_dataloader(
 
     if cfg.dataset.get("streaming", True):
         dataset = build_streaming_dataset(cfg, tokenizer, device_batch_size)
+        sampler = None
     else:
         assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
         dataset = build_no_streaming_dataset(
@@ -355,6 +357,17 @@ def build_text_dataloader(
             device_batch_size=device_batch_size,
             training=training,
         )
+        if training:
+            sampler = None
+        else:
+            sampler = DistributedSampler(
+                dataset,
+                num_replicas=dist.get_world_size(),
+                rank=dist.get_global_rank(),
+                shuffle=cfg.dataset.get("shuffle", False),
+                seed=cfg.dataset.get("shuffle_seed", 9176),
+                drop_last=cfg.drop_last,
+            )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     collate_fn = transformers.DataCollatorForLanguageModeling(
@@ -379,7 +392,7 @@ def build_text_dataloader(
         prefetch_factor=cfg.get("prefetch_factor", 2),
         persistent_workers=cfg.get("persistent_workers", True),
         timeout=cfg.get("timeout", 0),
-        sampler=None,
+        sampler=sampler,
     )
 
 
@@ -504,7 +517,6 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
             global_indices_mmap.flush()
             del global_indices_mmap
             logger.info(f"Global data order indices saved to {self.global_indices_file}")
-        dist.barrier()
 
     def _build_global_indices(self) -> np.ndarray:
         assert len(self.dataset) < np.iinfo(np.uint32).max
@@ -577,6 +589,10 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
             return dict(**item, index=idx)
         else:
             return {"input_ids": item, "index": idx}
+
+    @property
+    def tokenizer(self):
+        return self.dataset.tokenizer
 
 
 # Helpful to test if your dataloader is working locally
