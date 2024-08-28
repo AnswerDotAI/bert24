@@ -1,12 +1,18 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+# Copyright 2024 OLMo authors
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a StreamingTextDataset dataset and dataloader for training."""
 
+import logging
+import math
 import os
 import json
 from itertools import islice
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -14,8 +20,7 @@ import transformers
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from streaming import Stream, StreamingDataset
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 from streaming.base.format import reader_from_json
 from streaming.base.spanner import Spanner
@@ -24,6 +29,8 @@ from composer.utils import dist
 from transformers.tokenization_utils_base import BatchEncoding
 
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+
+logger = logging.getLogger(__name__)
 
 
 def build_tokenizer(
@@ -294,21 +301,41 @@ def build_streaming_dataset(
     )
     return dataset
 
+
 def build_no_streaming_dataset(
     cfg: DictConfig,
     tokenizer: Tokenizer,
+    device_batch_size: Optional[int],
+    training: Optional[bool],
 ):
-    return NoStreamingDataset(    
-        tokenizer=tokenizer,
-        local=cfg.dataset.get("local", None),
-        split=cfg.dataset.get("split", None),
-        max_seq_len=cfg.dataset.max_seq_len,
-    )
+    if training:
+        return DistributedSamplingDataset(
+            NoStreamingDataset(
+                tokenizer=tokenizer,
+                local=cfg.dataset.get("local", None),
+                split=cfg.dataset.get("split", None),
+                max_seq_len=cfg.dataset.max_seq_len,
+            ),
+            global_batch_size=int(device_batch_size * dist.get_world_size()),
+            seed=cfg.dataset.get("shuffle_seed", 9176),
+            shuffle=cfg.dataset.get("shuffle", False),
+            drop_last=cfg.drop_last,
+            work_dir=cfg.get("work_dir", None),
+        )
+    else:
+        return NoStreamingDataset(
+            tokenizer=tokenizer,
+            local=cfg.dataset.get("local", None),
+            split=cfg.dataset.get("split", None),
+            max_seq_len=cfg.dataset.max_seq_len,
+        )
+
 
 def build_text_dataloader(
     cfg: DictConfig,
     tokenizer: Tokenizer,
     device_batch_size: int,
+    training: bool,
 ):
     assert cfg.name == "text", f"Tried to build text dataloader with cfg.name={cfg.name}"
     if cfg.dataset.get("group_method", None) is not None:
@@ -320,18 +347,14 @@ def build_text_dataloader(
 
     if cfg.dataset.get("streaming", True):
         dataset = build_streaming_dataset(cfg, tokenizer, device_batch_size)
-        sampler = None
     else:
         assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
-        dataset = build_no_streaming_dataset(cfg, tokenizer)
-        sampler = DistributedSampler(
-            dataset, 
-            num_replicas=dist.get_world_size(), 
-            rank=dist.get_global_rank(), 
-            shuffle=cfg.dataset.get("shuffle", False),
-            seed=cfg.dataset.get("shuffle_seed", 9176),
-            drop_last=cfg.drop_last
-            )
+        dataset = build_no_streaming_dataset(
+            cfg,
+            tokenizer=tokenizer,
+            device_batch_size=device_batch_size,
+            training=training,
+        )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     collate_fn = transformers.DataCollatorForLanguageModeling(
@@ -356,23 +379,24 @@ def build_text_dataloader(
         prefetch_factor=cfg.get("prefetch_factor", 2),
         persistent_workers=cfg.get("persistent_workers", True),
         timeout=cfg.get("timeout", 0),
-        sampler=sampler
+        sampler=None,
     )
 
 
 class NoStreamingDataset(Dataset):
     """
     A dataset class that can read data with raw mds-format (mosaic streaming-format without compression)
-    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
+    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local,
     this class is slimmer, more efficient, and does not contain redundant code required for streaming.
     """
+
     def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
         super().__init__()
-        split_path = os.path.join(local,split)
+        split_path = os.path.join(local, split)
         index_file_path = os.path.join(split_path, "index.json")
         obj = json.load(open(index_file_path))
         self.shards = []
-        for info in obj['shards']:
+        for info in obj["shards"]:
             shard = reader_from_json(local, split, info)
             raw_filename = os.path.join(shard.dirname, shard.split, shard.raw_data.basename)
             assert os.path.isfile(raw_filename), f"Raw file {raw_filename} does not exist"
@@ -399,7 +423,7 @@ class NoStreamingDataset(Dataset):
         if "input_ids" in sample:
             for k in list(sample.keys()):
                 if isinstance(sample[k], np.ndarray):
-                    sample[k] = sample[k][:self.max_seq_len]
+                    sample[k] = sample[k][: self.max_seq_len]
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
@@ -412,6 +436,148 @@ class NoStreamingDataset(Dataset):
 
     def __len__(self):
         return self.len
+
+
+class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
+    """
+    Modified from OLMo's adaptation of PyTorch's DistributedSampler, this wraps a Dataset or arbitrary sequence
+    as an IterableDataset that can be deterministically restarted at any point by setting `start_index`,
+    which should be a multiple of your global batch size.
+    Similarly `max_examples`, if set, should be a multiple of global batch size.
+    TODO: Re-introduce start_index if we want resumption.
+    """
+
+    def __init__(
+        self,
+        dataset: Union[Sequence[List[int]], Sequence[torch.Tensor], Sequence[Dict[str, Any]]],
+        global_batch_size: int,
+        *,
+        seed: int = 0,
+        epoch: int = 0,
+        start_index: int = 0,
+        shuffle: bool = True,
+        drop_last: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        local_rank: Optional[int] = None,
+        work_dir: Optional[Union[Path, str]] = None,
+    ):
+        self.dataset = dataset
+        self.seed = seed
+        self.epoch = epoch
+        self.start_index = start_index
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.rank = rank if rank is not None else dist.get_global_rank()
+        self.local_rank = local_rank if local_rank is not None else dist.get_local_rank()
+        self.world_size = world_size if world_size is not None else dist.get_world_size()
+        # If the dataset length is evenly divisible by # of replicas, then there
+        # is no need to drop any data, since the dataset will be split equally.
+        if self.drop_last and len(self.dataset) % self.world_size != 0:  # type: ignore[arg-type]
+            # Split to nearest available length that is evenly divisible by world size.
+            # This is to ensure each rank receives the same amount of data.
+            num_samples = math.ceil(
+                (len(self.dataset) - self.world_size) / self.world_size  # type: ignore[arg-type]
+            )
+        else:
+            num_samples = math.ceil(len(self.dataset) / self.world_size)  # type: ignore[arg-type]
+        self.total_size = num_samples * self.world_size
+        assert global_batch_size % self.world_size == 0
+        self.device_batch_size = global_batch_size // self.world_size
+        self.global_indices_file: Optional[Path] = None
+        self.work_dir = work_dir
+
+        if work_dir is not None:
+            self._build_and_save_global_indices()
+
+    def _build_and_save_global_indices(self):
+        assert self.work_dir is not None
+        self.global_indices_file = Path(self.work_dir) / "global_indices.npy"
+        if self.local_rank == 0:
+            logger.info("Saving global data order indices...")
+            self.global_indices_file.parent.mkdir(parents=True, exist_ok=True)
+            global_indices = self._build_global_indices()
+            global_indices_mmap = np.memmap(
+                self.global_indices_file, dtype=np.uint32, mode="w+", shape=(len(global_indices),)
+            )
+            global_indices_mmap[:] = global_indices
+            global_indices_mmap.flush()
+            del global_indices_mmap
+            logger.info(f"Global data order indices saved to {self.global_indices_file}")
+        dist.barrier()
+
+    def _build_global_indices(self) -> np.ndarray:
+        assert len(self.dataset) < np.iinfo(np.uint32).max
+        indices = np.arange(len(self.dataset), dtype=np.uint32)
+        if self.shuffle:
+            # Deterministically shuffle based on epoch and seed
+            # Torch built-in randomness is not very random, so we use numpy.
+            rng = np.random.Generator(np.random.PCG64(seed=self.seed + self.epoch))
+            rng.shuffle(indices)
+
+        if not self.drop_last:
+            # Add extra samples to make it evenly divisible
+            padding_size = self.total_size - len(indices)
+            arrays_to_concatenate = [indices]
+            while padding_size > 0:
+                array_to_concatenate = indices[: min(padding_size, len(indices))]
+                arrays_to_concatenate.append(array_to_concatenate)
+                padding_size -= len(array_to_concatenate)
+                del array_to_concatenate
+            indices = np.concatenate(arrays_to_concatenate)
+        else:
+            # Remove tail of data to make it evenly divisible.
+            indices = indices[: self.total_size]
+        assert len(indices) == self.total_size
+        return indices
+
+    def get_global_indices(self) -> np.ndarray:
+        if self.global_indices_file is not None:
+            return np.memmap(self.global_indices_file, mode="r", dtype=np.uint32)  # type: ignore
+        else:
+            return self._build_global_indices()
+
+    def reshuffle(self, epoch: int):
+        self.epoch = epoch
+        if self.work_dir is not None:
+            self._build_and_save_global_indices()
+
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        indices = self.get_global_indices()
+
+        # Start at the specified index.
+        if self.start_index > 0:
+            #  assert self.start_index % self.world_size == 0
+            indices = indices[self.start_index :]
+
+        # Slice indices by rank to avoid duplicates.
+        indices = indices[self.rank : self.total_size : self.world_size]
+
+        # Slice the indices by data loader worker rank to avoid duplicates.
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            # Note that each data loading worker gathers a whole batch at a time, and the workers
+            # are called round-robin by rank. So to slice these up in a way that preserves order, regardless
+            # of the number of workers, we should give worker 0 the first chunk of `device_batch_size` indices,
+            # worker 1 the 2nd chunk of `device_train_batch_size` indices, etc...
+            truncated_size = self.device_batch_size * (len(indices) // self.device_batch_size)
+            left_overs = indices[truncated_size + worker_info.id :: worker_info.num_workers]
+            indices = (
+                indices[:truncated_size]
+                .reshape((-1, self.device_batch_size))[worker_info.id :: worker_info.num_workers]  # type: ignore
+                .reshape((-1,))
+            )
+            indices = np.concatenate([indices, left_overs])
+
+        return (self._get_dataset_item(int(idx)) for idx in indices)
+
+    def _get_dataset_item(self, idx: int) -> Dict[str, Any]:
+        item = self.dataset[idx]
+        if isinstance(item, dict):
+            return dict(**item, index=idx)
+        else:
+            return {"input_ids": item, "index": idx}
+
 
 # Helpful to test if your dataloader is working locally
 # Run `python data.py  --local_path [local] [--remote_path remote, optional]` and verify that batches are printed out
