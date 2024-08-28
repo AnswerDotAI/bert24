@@ -524,7 +524,7 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
         if self.shuffle:
             # Deterministically shuffle based on epoch and seed
             # Torch built-in randomness is not very random, so we use numpy.
-            rng = np.random.Generator(np.random.PCG64(seed=self.seed + self.epoch))
+            rng = np.random.Generator(np.random.PCG64DXSM(seed=self.seed + self.epoch))
             rng.shuffle(indices)
 
         if not self.drop_last:
