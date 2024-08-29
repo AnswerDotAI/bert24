@@ -29,7 +29,6 @@ class SequencePacker(ABC):
         out_pseq_len: int,
         # params defining internal behavior
         buffer_size: int,
-        # expected_packing_efficiency: float,
         pad_token_id: int = -1,
         mask_token_id: int = 0,
         ignore_token_id: int = -100,
@@ -64,8 +63,6 @@ class SequencePacker(ABC):
 
             buffer_size: The maximum number of seqs which may be buffered internally.
 
-            expected_packing_efficiency: Expected ratio of packed batches to unpacked batches.
-
             pad_token_id: The token ID used for padding the space which cannot be filled to reach out_pseq_len.
 
             mask_token_id: The token ID used for masking tokens in the input sequence.
@@ -79,7 +76,6 @@ class SequencePacker(ABC):
         self.out_batch_size = out_batch_size
         self.out_pseq_len = out_pseq_len
         self.buffer_size = buffer_size
-        # self.expected_packing_efficiency = expected_packing_efficiency
         self.pad_token_id = pad_token_id
         self.mask_token_id = mask_token_id
         self.ignore_token_id = ignore_token_id
@@ -298,7 +294,6 @@ class GreedyBestFitSequencePacker(SequencePacker):
     def from_composer(
         cls,
         src_iterable: Iterable[list[list[int]]],
-        expected_packing_efficiency: float,
         batch_size: int = 512,
         micro_batch_size: int = 32,
         max_seq_len: int = 1024,
@@ -322,7 +317,6 @@ class GreedyBestFitSequencePacker(SequencePacker):
             out_pseq_len=int(micro_batch_size * max_seq_len),
             # internal
             buffer_size=buffer_size,
-            expected_packing_efficiency=expected_packing_efficiency,
             # transformation
             pad_token_id=pad_token_id,
             mask_token_id=mask_token_id,
@@ -391,10 +385,6 @@ class BufferedIterable(Generic[T]):
         """
         self.iterable = iterable
         self.buffer_size = buffer_size
-        self.src_len = len(iterable)
-
-    def __len__(self):
-        return self.src_len
 
     def __iter__(self):
         return BufferedIterator(self.iterable, self.buffer_size)

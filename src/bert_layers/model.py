@@ -1086,7 +1086,7 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if self.unpad_embeddings and (indices is None or cu_seqlens is None or max_seqlen is None):
+        if self.unpad_embeddings and (indices is None and cu_seqlens is None and max_seqlen is None):
             batch_size, seq_len = input_ids.shape[:2]
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
                 input_ids, attention_mask, position_ids, labels

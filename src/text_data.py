@@ -341,12 +341,14 @@ def build_streaming_dataset(
 def build_no_streaming_dataset(
     cfg: DictConfig,
     tokenizer: Tokenizer,
+    pad_sequences: bool = True,
 ):
     return NoStreamingDataset(
         tokenizer=tokenizer,
         local=cfg.dataset.get("local", None),
         split=cfg.dataset.get("split", None),
         max_seq_len=cfg.dataset.max_seq_len,
+        pad_sequences=pad_sequences,
     )
 
 
@@ -397,8 +399,6 @@ def build_text_dataloader(
             timeout=cfg.get("timeout", 0),
             sampler=sampler,
         )
-        if cfg.get("expected_packing_efficiency", None) is None:
-            raise ValueError("`expected_packing_efficiency` must be set when using sequence_packing")
         sequence_packer = GreedyBestFitSequencePacker.from_composer(
             dataloader,
             batch_size=device_batch_size,

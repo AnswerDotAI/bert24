@@ -143,6 +143,8 @@ def build_callback(name, kwargs):
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
             batch_log_interval=kwargs.get("batch_log_interval", 10),
         )
+    elif name == "dataloader_speed":
+        return DataloaderSpeedMonitor()
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
