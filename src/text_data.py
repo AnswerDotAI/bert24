@@ -9,6 +9,7 @@
 import logging
 import math
 import os
+import sys
 import json
 from itertools import islice
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
@@ -19,7 +20,7 @@ import transformers
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from streaming import Stream, StreamingDataset
-from torch.utils.data import DataLoader, Dataset, IterableDataset
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 from streaming.base.format import reader_from_json
@@ -27,6 +28,11 @@ from streaming.base.spanner import Spanner
 from composer.utils import dist
 
 from transformers.tokenization_utils_base import BatchEncoding
+
+# Add src folder root to path to allow us to use relative imports regardless of what directory the script is run from
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+
+from src.sequence_packer import BufferedIterable, GreedyBestFitSequencePacker
 
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
 
@@ -348,6 +354,7 @@ def build_text_dataloader(
     cfg: DictConfig,
     tokenizer: Tokenizer,
     device_batch_size: int,
+    device_microbatch_size: int,
 ):
     assert cfg.name == "text", f"Tried to build text dataloader with cfg.name={cfg.name}"
     if cfg.dataset.get("group_method", None) is not None:
@@ -362,9 +369,9 @@ def build_text_dataloader(
         sampler = None
     else:
         assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
+        # sequence packing should never use padded sequences, regular dataloaders may if tokenizing on the fly
         dataset = build_no_streaming_dataset(
-            cfg,
-            tokenizer=tokenizer,
+            cfg, tokenizer=tokenizer, pad_sequences=not cfg.get("sequence_packing", False)
         )
         sampler = DistributedSamplerPCG64DXSM(
             dataset,
@@ -376,30 +383,59 @@ def build_text_dataloader(
         )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
-    collate_fn = transformers.DataCollatorForLanguageModeling(
-        tokenizer=dataset.tokenizer, mlm=mlm_probability is not None, mlm_probability=mlm_probability
-    )
-
-    eos_token_id = cfg.dataset.get("eos_token_id")
-    bos_token_id = cfg.dataset.get("bos_token_id")
-    if (eos_token_id is not None) or (bos_token_id is not None):
-        # Note: Will raise an error if both are non-None
-        collate_fn = ConcatenatedSequenceCollatorWrapper(
-            base_collator=collate_fn, eos_token_id=eos_token_id, bos_token_id=bos_token_id
+    # only use sequence packing if using the no_streaming_dataset
+    if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
+        dataloader = DataLoader(
+            dataset,
+            collate_fn=lambda x: x,
+            batch_size=device_batch_size,
+            drop_last=False,
+            num_workers=cfg.num_workers,
+            pin_memory=cfg.get("pin_memory", True),
+            prefetch_factor=cfg.get("prefetch_factor", 2),
+            persistent_workers=cfg.get("persistent_workers", True),
+            timeout=cfg.get("timeout", 0),
+            sampler=sampler,
+        )
+        if cfg.get("expected_packing_efficiency", None) is None:
+            raise ValueError("`expected_packing_efficiency` must be set when using sequence_packing")
+        sequence_packer = GreedyBestFitSequencePacker.from_composer(
+            dataloader,
+            batch_size=device_batch_size,
+            micro_batch_size=device_microbatch_size,
+            max_seq_len=cfg.dataset.max_seq_len,
+            buffer_size=cfg.get("packing_buffer_size", 5 * device_batch_size),
+            mask_token_id=tokenizer.mask_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            mask_prob=mlm_probability,
+            seed=cfg.dataset.get("shuffle_seed", 42),
+        )
+        return BufferedIterable(sequence_packer, buffer_size=cfg.get("packing_prefetch_factor", 5))
+    else:
+        collate_fn = transformers.DataCollatorForLanguageModeling(
+            tokenizer=dataset.tokenizer, mlm=mlm_probability is not None, mlm_probability=mlm_probability
         )
 
-    return DataLoader(
-        dataset,
-        collate_fn=collate_fn,
-        batch_size=device_batch_size,
-        drop_last=cfg.drop_last,
-        num_workers=cfg.num_workers,
-        pin_memory=cfg.get("pin_memory", True),
-        prefetch_factor=cfg.get("prefetch_factor", 2),
-        persistent_workers=cfg.get("persistent_workers", True),
-        timeout=cfg.get("timeout", 0),
-        sampler=sampler,
-    )
+        eos_token_id = cfg.dataset.get("eos_token_id")
+        bos_token_id = cfg.dataset.get("bos_token_id")
+        if (eos_token_id is not None) or (bos_token_id is not None):
+            # Note: Will raise an error if both are non-None
+            collate_fn = ConcatenatedSequenceCollatorWrapper(
+                base_collator=collate_fn, eos_token_id=eos_token_id, bos_token_id=bos_token_id
+            )
+
+        return DataLoader(
+            dataset,
+            collate_fn=collate_fn,
+            batch_size=device_batch_size,
+            drop_last=cfg.drop_last,
+            num_workers=cfg.num_workers,
+            pin_memory=cfg.get("pin_memory", True),
+            prefetch_factor=cfg.get("prefetch_factor", 2),
+            persistent_workers=cfg.get("persistent_workers", True),
+            timeout=cfg.get("timeout", 0),
+            sampler=sampler,
+        )
 
 
 class NoStreamingDataset(Dataset):
@@ -409,7 +445,14 @@ class NoStreamingDataset(Dataset):
     this class is slimmer, more efficient, and does not contain redundant code required for streaming.
     """
 
-    def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
+    def __init__(
+        self,
+        local: str,
+        split: str,
+        max_seq_len: int,
+        tokenizer: Optional[Tokenizer] = None,
+        pad_sequences: bool = True,
+    ) -> None:
         super().__init__()
         split_path = os.path.join(local, split)
         index_file_path = os.path.join(split_path, "index.json")
@@ -426,6 +469,7 @@ class NoStreamingDataset(Dataset):
         self.spanner = Spanner(samples_per_shard)
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
+        self.pad_sequences = pad_sequences
 
     def _tokenize(self, text_sample):
         assert self.tokenizer is not None, "Tokenizer required if data is not pretokenized"
@@ -433,7 +477,12 @@ class NoStreamingDataset(Dataset):
             # Some tokenizers (e.g. GPT2 tokenizer) have no padding token which causes bugs
             raise RuntimeError("If tokenizing on-the-fly, tokenizer must have a pad_token_id")
 
-        return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
+        return self.tokenizer(
+            text_sample["text"],
+            truncation=True,
+            padding="max_length" if self.pad_sequences else False,
+            max_length=self.max_seq_len,
+        )
 
     def __getitem__(self, index: int):
         shard_id, shard_sample_id = self.spanner[index]
