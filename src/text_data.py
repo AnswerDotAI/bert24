@@ -321,7 +321,6 @@ def build_no_streaming_dataset(
             seed=cfg.dataset.get("shuffle_seed", 9176),
             shuffle=cfg.dataset.get("shuffle", False),
             drop_last=cfg.drop_last,
-            rng_cache=cfg.get("rng_cache", None),
         )
     else:
         return NoStreamingDataset(
@@ -473,7 +472,6 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
         world_size: Optional[int] = None,
         rank: Optional[int] = None,
         local_rank: Optional[int] = None,
-        rng_cache: Optional[Union[Path, str]] = None,
     ):
         self.dataset = dataset
         self.seed = seed
@@ -497,28 +495,9 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
         self.total_size = num_samples * self.world_size
         assert global_batch_size % self.world_size == 0
         self.device_batch_size = global_batch_size // self.world_size
-        self.global_indices_file: Optional[Path] = None
-        self.rng_cache = rng_cache
+        self.epoch = -1
 
-        if rng_cache is not None:
-            self._build_and_save_global_indices()
-
-    def _build_and_save_global_indices(self):
-        assert self.rng_cache is not None
-        self.global_indices_file = Path(self.rng_cache) / "global_indices.npy"
-        if self.local_rank == 0:
-            logger.info("Saving global data order indices...")
-            self.global_indices_file.parent.mkdir(parents=True, exist_ok=True)
-            global_indices = self._build_global_indices()
-            global_indices_mmap = np.memmap(
-                self.global_indices_file, dtype=np.uint32, mode="w+", shape=(len(global_indices),)
-            )
-            global_indices_mmap[:] = global_indices
-            global_indices_mmap.flush()
-            del global_indices_mmap
-            logger.info(f"Global data order indices saved to {self.global_indices_file}")
-
-    def _build_global_indices(self) -> np.ndarray:
+    def create_global_indices(self) -> np.ndarray:
         assert len(self.dataset) < np.iinfo(np.uint32).max
         indices = np.arange(len(self.dataset), dtype=np.uint32)
         if self.shuffle:
@@ -543,19 +522,10 @@ class DistributedSamplingDataset(IterableDataset[Dict[str, Any]]):
         assert len(indices) == self.total_size
         return indices
 
-    def get_global_indices(self) -> np.ndarray:
-        if self.global_indices_file is not None:
-            return np.memmap(self.global_indices_file, mode="r", dtype=np.uint32)  # type: ignore
-        else:
-            return self._build_global_indices()
-
-    def reshuffle(self, epoch: int):
-        self.epoch = epoch
-        if self.rng_cache is not None:
-            self._build_and_save_global_indices()
-
     def __iter__(self) -> Iterator[Dict[str, Any]]:
-        indices = self.get_global_indices()
+        # hack to change the per-epoch random state every time the dataset it iterated over
+        self.epoch += 1
+        indices = self.create_global_indices()
 
         # Start at the specified index.
         if self.start_index > 0:
