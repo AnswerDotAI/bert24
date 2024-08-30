@@ -409,6 +409,9 @@ def build_text_dataloader(
             pad_token_id=tokenizer.pad_token_id,
             mask_prob=mlm_probability,
             seed=cfg.dataset.get("shuffle_seed", 42),
+            batch_size_warmup_min_size=cfg.get("batch_size_warmup_min_size", None),
+            batch_size_warmup_tokens=cfg.get("batch_size_warmup_tokens", None),
+            world_size=dist.get_world_size(),
         )
         return BufferedIterable(sequence_packer, buffer_size=cfg.get("packing_prefetch_factor", 5))
     else:

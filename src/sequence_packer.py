@@ -10,6 +10,35 @@ import torch
 from numba import njit
 
 
+import math
+from composer.core import Time
+
+
+class BatchSizeWarmupScheduler:
+    def __init__(
+        self,
+        min_batch_size: int,
+        max_batch_size: int,
+        warmup_tokens: Union[str, Time],
+        world_size: int,
+    ):
+        self.min_batch_size = min_batch_size
+        self.max_batch_size = max_batch_size
+        if isinstance(warmup_tokens, str):
+            self.warmup_tokens = Time.from_timestring(warmup_tokens).value
+        else:
+            self.warmup_tokens = warmup_tokens.value
+        self.warmup_tokens = math.ceil(self.warmup_tokens / world_size)
+
+    def __call__(self, current_tokens: int):
+        if current_tokens >= self.warmup_tokens:
+            return self.max_batch_size
+
+        progress = current_tokens / self.warmup_tokens
+        batch_size = self.min_batch_size + progress * (self.max_batch_size - self.min_batch_size)
+        return math.floor(batch_size)
+
+
 class SequencePackerBatchOutputTuple(NamedTuple):
     masked_pseqs: torch.Tensor
     labels: Optional[torch.Tensor]
@@ -35,6 +64,9 @@ class SequencePacker(ABC):
         mask_prob: float = 0.3,
         seed=42,
         suppress_masking: bool = False,
+        batch_size_warmup_min_size: Optional[int] = None,
+        batch_size_warmup_tokens: Optional[Union[str, Time]] = None,
+        world_size: int = 1,
     ):
         """
         Takes batches of unpacked, unpadded sequences (seqs) to batches of packed and padded sequences (pseqs).
@@ -68,6 +100,15 @@ class SequencePacker(ABC):
             mask_token_id: The token ID used for masking tokens in the input sequence.
 
             ignore_token_id: The token ID used to ignore tokens. Expected to be applied to every non-masked token, so the model only trains on predictions of masked tokens.
+
+            suppress_masking: If True, the sequence packer will not perform masked language modeling.
+
+            batch_size_warmup_min_size: If not None, the sequence packer will gradually increase the batch size from batch_size_warmup_min_size to out_batch_size over the course of the warmup_tokens.
+                                    batch_size_warmup_min_size must be a multiple of micro_batch_size.
+
+            batch_size_warmup_tokens: If not None, the sequence packer will gradually increase the batch size from batch_size_warmup_min_size to out_batch_size over the course of the warmup_tokens.
+
+            world_size: The number of processes participating in this training run. batch_size_warmup_min_size is divided by this number.
         """
         assert buffer_size >= out_batch_size, f"required that {buffer_size=} >= {out_batch_size=}"
         self.src_dataloader_len = len(src_iterable)
@@ -89,6 +130,14 @@ class SequencePacker(ABC):
         # Set random seed
         self.seed = seed
         self.epoch = -1
+        self._token_count = 0
+        self.batch_size_scheduler = None
+        if batch_size_warmup_min_size is not None and batch_size_warmup_tokens is not None:
+            self.batch_size_scheduler = BatchSizeWarmupScheduler(
+                batch_size_warmup_min_size, out_batch_size, batch_size_warmup_tokens, world_size
+            )
+        else:
+            self.batch_size_scheduler = None
 
     @property
     def seqs_emitted(self):
@@ -179,7 +228,12 @@ class SequencePacker(ABC):
             max_seq_lens = [torch.max(x[1:] - x[:-1]).item() for x in cu_seq_lens]
             assert isinstance(cu_seq_lens, list), f"Unexpected {type(cu_seq_lens)=}"
             if self.suppress_masking:
-                yieldval = SequencePackerBatchOutputTuple(torch.from_numpy(batch), None, cu_seq_lens, max_seq_lens)
+                yieldval = {
+                    "input_ids": torch.from_numpy(batch),
+                    "labels": None,
+                    "cu_seqlens": cu_seq_lens,
+                    "max_seqlen": max_seq_lens,
+                }
             else:
                 (masked_batch, labels) = SequencePacker.mlm_masking(
                     batch, self.mask_prob, self.mask_token_id, self.pad_token_id, self.ignore_token_id, self.np_rng
@@ -191,6 +245,7 @@ class SequencePacker(ABC):
                     "max_seqlen": max_seq_lens,
                     "attention_mask": torch.from_numpy(np.where(masked_batch == self.pad_token_id, 0, 1)),
                 }
+                self._token_count += yieldval["attention_mask"].sum().item()
             # # assert isinstance(yieldval[0], torch.Tensor), f"Unexpected {type(yieldval[0])=}"
             # if not self.suppress_masking:
             #     assert isinstance(yieldval[1], torch.Tensor), f"Unexpected {type(yieldval[1])=}"
@@ -311,7 +366,14 @@ class GreedyBestFitSequencePacker(SequencePacker):
         # transform values
         seed=42,
         suppress_masking=False,
+        batch_size_warmup_min_size: Optional[int] = None,
+        batch_size_warmup_tokens: Optional[Union[str, Time]] = None,
+        world_size: int = 1,
     ) -> "GreedyBestFitSequencePacker":
+        if batch_size_warmup_min_size is not None:
+            if batch_size_warmup_min_size % micro_batch_size != 0:
+                raise ValueError(f"{batch_size_warmup_min_size=} must be a multiple of {micro_batch_size=}")
+            batch_size_warmup_min_size = int(batch_size_warmup_min_size / micro_batch_size)
         return cls(
             # input shape
             src_iterable=src_iterable,
@@ -329,9 +391,15 @@ class GreedyBestFitSequencePacker(SequencePacker):
             mask_prob=mask_prob,
             seed=seed,
             suppress_masking=suppress_masking,
+            batch_size_warmup_min_size=batch_size_warmup_min_size,
+            batch_size_warmup_tokens=batch_size_warmup_tokens,
+            world_size=world_size,
         )
 
     def _create_batch(self) -> Optional[tuple[np.ndarray, list[list[int]]]]:
+        if self.batch_size_scheduler:
+            self.out_batch_size = self.batch_size_scheduler(self._token_count)
+
         batch = np.full(
             (self.out_batch_size, self.out_pseq_len), self.pad_token_id, dtype=np.int64
         )  # the pseqs being constructed
