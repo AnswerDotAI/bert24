@@ -293,7 +293,7 @@ class SequencePacker(ABC):
                 labels: the original input seq with non-masked tokens replaced by `ignore_index`
         """
         # Create labels
-        labels = np.where(seq == pad_token, -100, seq)
+        labels = np.where(seq == pad_token, ignore_index, seq)
 
         # Create a single mask
         rand = np_rng.random(seq.shape)
