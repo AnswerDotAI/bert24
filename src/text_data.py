@@ -1,12 +1,17 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+# Copyright 2024 OLMo authors
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a StreamingTextDataset dataset and dataloader for training."""
 
+import logging
+import math
 import os
 import json
 from itertools import islice
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -14,7 +19,7 @@ import transformers
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from streaming import Stream, StreamingDataset
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 from streaming.base.format import reader_from_json
@@ -24,6 +29,38 @@ from composer.utils import dist
 from transformers.tokenization_utils_base import BatchEncoding
 
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+
+logger = logging.getLogger(__name__)
+
+
+# Subclass DistributedSampler to use PCG64DXSM for shuffling
+class DistributedSamplerPCG64DXSM(DistributedSampler):
+    def __iter__(self) -> Iterator[int]:
+        if self.shuffle:
+            # deterministically shuffle based on epoch and seed
+            # use numpy's RNG PCG64DXSM instead of torch.randperm
+            rng = np.random.Generator(np.random.PCG64DXSM(self.seed + self.epoch))
+            indices = rng.permutation(len(self.dataset)).tolist()  # type: ignore[arg-type]
+        else:
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
+
+        if not self.drop_last:
+            # add extra samples to make it evenly divisible
+            padding_size = self.total_size - len(indices)
+            if padding_size <= len(indices):
+                indices += indices[:padding_size]
+            else:
+                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
+        else:
+            # remove tail of data to make it evenly divisible.
+            indices = indices[: self.total_size]
+        assert len(indices) == self.total_size
+
+        # subsample
+        indices = indices[self.rank : self.total_size : self.num_replicas]
+        assert len(indices) == self.num_samples
+
+        return iter(indices)
 
 
 def build_tokenizer(
@@ -294,16 +331,18 @@ def build_streaming_dataset(
     )
     return dataset
 
+
 def build_no_streaming_dataset(
     cfg: DictConfig,
     tokenizer: Tokenizer,
 ):
-    return NoStreamingDataset(    
+    return NoStreamingDataset(
         tokenizer=tokenizer,
         local=cfg.dataset.get("local", None),
         split=cfg.dataset.get("split", None),
         max_seq_len=cfg.dataset.max_seq_len,
     )
+
 
 def build_text_dataloader(
     cfg: DictConfig,
@@ -323,15 +362,18 @@ def build_text_dataloader(
         sampler = None
     else:
         assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
-        dataset = build_no_streaming_dataset(cfg, tokenizer)
-        sampler = DistributedSampler(
-            dataset, 
-            num_replicas=dist.get_world_size(), 
-            rank=dist.get_global_rank(), 
+        dataset = build_no_streaming_dataset(
+            cfg,
+            tokenizer=tokenizer,
+        )
+        sampler = DistributedSamplerPCG64DXSM(
+            dataset,
+            num_replicas=dist.get_world_size(),
+            rank=dist.get_global_rank(),
             shuffle=cfg.dataset.get("shuffle", False),
             seed=cfg.dataset.get("shuffle_seed", 9176),
-            drop_last=cfg.drop_last
-            )
+            drop_last=cfg.drop_last,
+        )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     collate_fn = transformers.DataCollatorForLanguageModeling(
@@ -356,23 +398,24 @@ def build_text_dataloader(
         prefetch_factor=cfg.get("prefetch_factor", 2),
         persistent_workers=cfg.get("persistent_workers", True),
         timeout=cfg.get("timeout", 0),
-        sampler=sampler
+        sampler=sampler,
     )
 
 
 class NoStreamingDataset(Dataset):
     """
     A dataset class that can read data with raw mds-format (mosaic streaming-format without compression)
-    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
+    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local,
     this class is slimmer, more efficient, and does not contain redundant code required for streaming.
     """
+
     def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
         super().__init__()
-        split_path = os.path.join(local,split)
+        split_path = os.path.join(local, split)
         index_file_path = os.path.join(split_path, "index.json")
         obj = json.load(open(index_file_path))
         self.shards = []
-        for info in obj['shards']:
+        for info in obj["shards"]:
             shard = reader_from_json(local, split, info)
             raw_filename = os.path.join(shard.dirname, shard.split, shard.raw_data.basename)
             assert os.path.isfile(raw_filename), f"Raw file {raw_filename} does not exist"
@@ -399,7 +442,7 @@ class NoStreamingDataset(Dataset):
         if "input_ids" in sample:
             for k in list(sample.keys()):
                 if isinstance(sample[k], np.ndarray):
-                    sample[k] = sample[k][:self.max_seq_len]
+                    sample[k] = sample[k][: self.max_seq_len]
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
@@ -412,6 +455,7 @@ class NoStreamingDataset(Dataset):
 
     def __len__(self):
         return self.len
+
 
 # Helpful to test if your dataloader is working locally
 # Run `python data.py  --local_path [local] [--remote_path remote, optional]` and verify that batches are printed out

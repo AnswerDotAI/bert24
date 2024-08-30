@@ -292,7 +292,7 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         cfg.train_loader,
         model.tokenizer,
         cfg.global_train_batch_size // dist.get_world_size(),
-        count_padding_tokens,
+        count_padding_tokens=count_padding_tokens,
     )
     print("Building eval loader...")
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
