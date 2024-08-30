@@ -199,7 +199,10 @@ class SequencePacker(ABC):
                 assert (
                     len(incoming_batch) <= self.src_batch_size
                 ), f"expected {len(incoming_batch)=} <= {self.src_batch_size=}"
-                self.buffer.extend([x["input_ids"] for x in incoming_batch])
+                for item in incoming_batch:
+                    lst = item["input_ids"]
+                    if lst:
+                        self.buffer.append(lst)
                 items_added += len(incoming_batch)
                 self._seqs_consumed += len(incoming_batch)
             except StopIteration:
