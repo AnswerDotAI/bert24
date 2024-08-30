@@ -107,6 +107,11 @@ class SequencePacker(ABC):
         self._seqs_emitted = 0
         self.np_rng = np.random.default_rng(self.epoch + self.seed)
 
+        # Update the epoch for the sampler
+        if isinstance(self.src_iterable, torch.utils.data.dataloader.DataLoader):
+            if isinstance(self.src_iterable.sampler, torch.utils.data.distributed.DistributedSampler):
+                self.src_iterable.sampler.set_epoch(self.epoch)
+
     def __iter__(self):
         self._reset_state()
         self.src_iterator = iter(self.src_iterable)
