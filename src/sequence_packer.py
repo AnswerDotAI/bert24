@@ -19,24 +19,43 @@ class BatchSizeWarmupScheduler:
         self,
         min_batch_size: int,
         max_batch_size: int,
-        warmup_tokens: Union[str, Time],
+        warmup_tokens: Union[str, Time, int],
         world_size: int,
     ):
         self.min_batch_size = min_batch_size
         self.max_batch_size = max_batch_size
+
         if isinstance(warmup_tokens, str):
             self.warmup_tokens = Time.from_timestring(warmup_tokens).value
-        else:
+        elif isinstance(warmup_tokens, Time):
             self.warmup_tokens = warmup_tokens.value
+        else:
+            self.warmup_tokens = warmup_tokens
         self.warmup_tokens = math.ceil(self.warmup_tokens / world_size)
+        self._step_thresholds = self._calculate_step_thresholds()
 
-    def __call__(self, current_tokens: int):
-        if current_tokens >= self.warmup_tokens:
+    def _calculate_step_thresholds(self):
+        total_batch_sizes = sum(range(self.min_batch_size, self.max_batch_size))
+        steps_per_unit = self.warmup_tokens / total_batch_sizes
+
+        thresholds = []
+        cumsum = 0
+        for batch_size in range(self.min_batch_size, self.max_batch_size):
+            cumsum += batch_size
+            steps = math.ceil(steps_per_unit * cumsum)
+            thresholds.append(steps)
+        return thresholds
+
+    def __call__(self, current_step: int) -> int:
+        if current_step >= self.warmup_tokens:
             return self.max_batch_size
 
-        progress = current_tokens / self.warmup_tokens
-        batch_size = self.min_batch_size + progress * (self.max_batch_size - self.min_batch_size)
-        return math.floor(batch_size)
+        for i, threshold in enumerate(self._step_thresholds):
+            if current_step < threshold:
+                return self.min_batch_size + i
+
+        # should never hit this, but just in case
+        return self.max_batch_size
 
 
 class SequencePackerBatchOutputTuple(NamedTuple):
