@@ -25,7 +25,14 @@ def get_base_folder(artifact_name):
     return name
 
 
-def main(api):
+def get_ba(artifact_name):
+    name = artifact_name.replace("checkpoint-", "")
+    ba = name.split("-")[-1].split(":")[0]
+    ba = int(ba.replace("ba", "").strip())
+    return ba
+
+
+def main(api, ba_th):
     print("Fetching all model artifacts...")
     artifacts = get_model_artifacts(api)
     print(f"Found {len(artifacts)} model artifacts.")
@@ -33,6 +40,17 @@ def main(api):
     for run, artifact in artifacts:
         print(f"Run: {run.name}")
         print(f"Artifact: {artifact.name}")
+        ba = get_ba(artifact.name)
+        print(f"ba = {ba}")
+
+        if "bert24-base-v2" not in artifact.name:
+            print(f"skipping {artifact.name}")
+            continue
+
+        if ba <= ba_th:
+            print(f"skipping {artifact.name}")
+            continue
+
         base_dir = os.path.join(LOCAL_DOWNLOAD_DIR, get_base_folder(artifact.name))
 
         os.makedirs(base_dir, exist_ok=True)
@@ -64,4 +82,5 @@ if __name__ == "__main__":
     # crontab -e
     # 0 * * * * WANDB_API_KEY=api_key /opt/conda/envs/bert24/bin/python /home/rb/bert24/download_artifacts_from_wandb.py >> /home/rb/wandb_checkpoint_downloader.log 2>&1
     api = wandb.Api(api_key=os.environ.get("WANDB_API_KEY"))
-    main(api)
+    ba_skip_before = 0
+    main(api, ba_skip_before)

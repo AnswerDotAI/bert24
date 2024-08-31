@@ -23,7 +23,7 @@ run_single_eval() {
         --checkpoints "$checkpoint_path" \
         --skip-semipro \
         --skip-eurlex \
-        --fast-ultrafeedback \
+        --skip-ultrafeedback \
         --parallel \
         --override-existing-symlinks \
         --track-run; then
@@ -37,8 +37,7 @@ run_single_eval() {
 # Function to run the evaluation jobs
 run_eval_jobs() {
     local checkpoints=(
-        "/home/rb/bert24_checkpoints/bert24-base-3.9e-3"
-        "/home/rb/bert24_checkpoints/bert24-base-8e-4"
+        "/home/rb/bert24_checkpoints/bert24-base-v2"
     )
     
     for checkpoint in "${checkpoints[@]}"; do

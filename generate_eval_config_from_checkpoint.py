@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Annotated, List, Optional
 
 import typer
-import wandb
 import yaml
 from typer import Option
+
+import wandb
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
@@ -271,7 +272,7 @@ def main(
 
     if not skip_mnli:
         mnli = OrderedDict()
-        mnli["seeds"] = seeds[:3] # [seeds[0]]
+        mnli["seeds"] = seeds[:3] # 
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
         tasks["mnli"] = mnli
 
