@@ -35,6 +35,7 @@ from src.callbacks.log_grad_norm import LogGradNorm
 from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
 from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
+from src.callbacks.packing_efficiency import PackingEfficency
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -137,7 +138,7 @@ def build_callback(name, kwargs):
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
         )
     elif name == "scheduled_gc":
-        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 10000))
+        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 100_000))
     elif name == "log_grad_norm":
         return LogGradNorm(
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
@@ -145,6 +146,8 @@ def build_callback(name, kwargs):
         )
     elif name == "dataloader_speed":
         return DataloaderSpeedMonitor()
+    elif name == "packing_efficiency":
+        return PackingEfficency(log_interval=kwargs.get("log_interval", 10))
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
