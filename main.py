@@ -33,6 +33,9 @@ import src.text_data as text_data_module
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
 from src.callbacks.log_grad_norm import LogGradNorm
 from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
+from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
+from src.callbacks.packing_efficiency import PackingEfficency
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -135,12 +138,16 @@ def build_callback(name, kwargs):
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
         )
     elif name == "scheduled_gc":
-        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 10000))
+        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 100_000))
     elif name == "log_grad_norm":
         return LogGradNorm(
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
             batch_log_interval=kwargs.get("batch_log_interval", 10),
         )
+    elif name == "dataloader_speed":
+        return DataloaderSpeedMonitor()
+    elif name == "packing_efficiency":
+        return PackingEfficency(log_interval=kwargs.get("log_interval", 10))
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
@@ -230,13 +237,39 @@ def get_num_tokens_in_batch_unpadded(batch: dict):
     return batch["attention_mask"].sum().item()
 
 
-def build_dataloader(cfg, tokenizer, device_batch_size, count_padding_tokens=True):
+def build_dataloader(
+    cfg,
+    tokenizer,
+    device_batch_size,
+    count_padding_tokens=True,
+    device_microbatch_size: int | None = None,
+):
+    split_batch_fn = None
+    num_samples_in_batch_fn = None
+    num_tokens_in_batch_fn = None
+
     if cfg.name == "text":
-        data_loader = text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
+        data_loader = text_data_module.build_text_dataloader(
+            cfg,
+            tokenizer,
+            device_batch_size,
+            device_microbatch_size=device_microbatch_size,
+        )
     else:
         raise ValueError(f"Not sure how to build dataloader with config: {cfg}")
+
     if not count_padding_tokens:
-        data_loader = DataSpec(data_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
+        num_tokens_in_batch_fn = get_num_tokens_in_batch_unpadded
+    if cfg.get("sequence_packing", False):
+        split_batch_fn = split_packed_batch
+        num_samples_in_batch_fn = get_num_samples_in_packed_batch
+
+    data_loader = DataSpec(
+        data_loader,
+        get_num_tokens_in_batch=num_tokens_in_batch_fn,
+        split_batch=split_batch_fn,
+        get_num_samples_in_batch=num_samples_in_batch_fn,
+    )
     return data_loader
 
 
@@ -287,19 +320,19 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
 
     # Dataloaders
     print("Building train loader...")
-    count_padding_tokens = cfg.get("count_padding_tokens", True)
     train_loader = build_dataloader(
-        cfg.train_loader,
-        model.tokenizer,
-        cfg.global_train_batch_size // dist.get_world_size(),
-        count_padding_tokens=count_padding_tokens,
+        cfg=cfg.train_loader,
+        tokenizer=model.tokenizer,
+        device_batch_size=cfg.global_train_batch_size // dist.get_world_size(),
+        count_padding_tokens=cfg.get("count_padding_tokens", True),
+        device_microbatch_size=cfg.device_train_microbatch_size,
     )
     print("Building eval loader...")
     global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
     eval_loader = build_dataloader(
-        cfg.eval_loader,
-        model.tokenizer,
-        cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
+        cfg=cfg.eval_loader,
+        tokenizer=model.tokenizer,
+        device_batch_size=cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
     )
     eval_evaluator = Evaluator(
         label="eval",

@@ -633,7 +633,7 @@ class FlexBertUnpadEncoder(FlexBertEncoderBase):
         cu_seqlens: Optional[torch.Tensor] = None,
         max_seqlen: Optional[int] = None,
     ) -> torch.Tensor:
-        if indices is None or cu_seqlens is None or max_seqlen is None:
+        if indices is None and cu_seqlens is None and max_seqlen is None:
             attention_mask_bool = attention_mask.bool()
             batch, seqlen = hidden_states.shape[:2]
             hidden_states, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(
