@@ -220,7 +220,7 @@ class SequencePacker(ABC):
                 ), f"expected {len(incoming_batch)=} <= {self.src_batch_size=}"
                 for item in incoming_batch:
                     lst = item["input_ids"]
-                    if lst:
+                    if len(lst) > 0:  # ignore empty sequences
                         self.buffer.append(lst)
                 items_added += len(incoming_batch)
                 self._seqs_consumed += len(incoming_batch)
