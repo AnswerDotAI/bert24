@@ -38,14 +38,14 @@ def main(api, ba_th):
     print(f"Found {len(artifacts)} model artifacts.")
 
     for run, artifact in artifacts:
+        if "bert24-base-v2" not in artifact.name:
+            # print(f"skipping {artifact.name}")
+            continue
+
         print(f"Run: {run.name}")
         print(f"Artifact: {artifact.name}")
         ba = get_ba(artifact.name)
         print(f"ba = {ba}")
-
-        if "bert24-base-v2" not in artifact.name:
-            print(f"skipping {artifact.name}")
-            continue
 
         if ba <= ba_th:
             print(f"skipping {artifact.name}")
@@ -82,5 +82,5 @@ if __name__ == "__main__":
     # crontab -e
     # 0 * * * * WANDB_API_KEY=api_key /opt/conda/envs/bert24/bin/python /home/rb/bert24/download_artifacts_from_wandb.py >> /home/rb/wandb_checkpoint_downloader.log 2>&1
     api = wandb.Api(api_key=os.environ.get("WANDB_API_KEY"))
-    ba_skip_before = 48000
+    ba_skip_before = 0
     main(api, ba_skip_before)
