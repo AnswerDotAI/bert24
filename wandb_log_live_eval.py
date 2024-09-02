@@ -15,6 +15,15 @@ task2metric_dict = {
     "boolq": ["metrics/superglue_boolq/MulticlassAccuracy"],
 }
 
+metric2num_seeds = {
+    "metrics/glue_mnli/MulticlassAccuracy": 3,
+    "metrics/glue_mnli_mismatched/MulticlassAccuracy": 3,
+    "metrics/mlmmlu_rookie/MulticlassAccuracy": 4,
+    "metrics/mlmmlu_reserve/MulticlassAccuracy": 4,
+    "metrics/superglue_wic/MulticlassAccuracy": 3,
+    "metrics/superglue_boolq/MulticlassAccuracy": 3,
+}
+
 
 def parse_model_string(s):
     pattern = r"(bert\d+-base-v2)-ba(\d+)_task=(\w+)(?:_\w+)?_seed=(\d+)"
@@ -60,6 +69,9 @@ def process_data():
     # Aggregate stats
     stats_df = pd.DataFrame(stats)
     grouped_df = stats_df.groupby(["run", "batch", "task", "metric"])["score"].mean().reset_index()
+    count_df = stats_df.groupby(["run", "batch", "task", "metric"])["score"].count().reset_index()
+    count_df.rename(columns={"score": "count"}, inplace=True)
+    grouped_df = pd.merge(grouped_df, count_df, on=["run", "batch", "task", "metric"])
 
     # Log metrics to W&B
     batch_ticks = sorted(grouped_df["batch"].unique().tolist())
@@ -69,9 +81,10 @@ def process_data():
         for step in batch_ticks:
             for metric in all_metrics:
                 ex = grouped_df[(grouped_df["batch"] == step) & (grouped_df["metric"] == metric)]
-                if len(ex) == 1:
-                    score = ex["score"].values[0]
-                    run.log({metric: score}, step=step)
+                if len(ex) == 1:  # at least one seed in completed
+                    if ex["count"].values[0] == metric2num_seeds[metric]:  # make sure all seeds are completed
+                        score = ex["score"].values[0]
+                        run.log({metric: score}, step=step)
 
     print(f"Finished data processing at {datetime.now()}")
 
