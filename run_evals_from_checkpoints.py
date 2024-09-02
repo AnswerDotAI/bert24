@@ -155,9 +155,9 @@ def check_finished_jobs(quiet: bool = False):
         potentially_free_gpus.append(gpu_id)
 
 
-def manage_jobs(config_directory: Path, quiet=False):
+def manage_jobs(configs: List[Path], quiet=False):
     """Manage the launching of jobs for each configuration file in the directory."""
-    configs = list(config_directory.glob("*_evaluation.yaml"))
+    # configs = list(config_directory.glob("*_evaluation.yaml"))
 
     if quiet:
         overall_progress = Progress(
@@ -495,7 +495,8 @@ def main(
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)
     elif len(config_files) > 1:
-        manage_jobs(checkpoints, quiet)
+        # manage_jobs(checkpoints, quiet)
+        manage_jobs(config_files, quiet)
     else:
         message = "No configuration files found in the specified directory."
         if quiet:

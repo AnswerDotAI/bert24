@@ -65,6 +65,6 @@ while true; do
         fi
     fi
 
-    log "Sleeping for 1 hour before next check"
-    sleep 3600
+    log "Sleeping for 30 mins before next check"
+    sleep 1800
 done

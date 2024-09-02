@@ -230,7 +230,7 @@ def main(
 
     loggers = OrderedDict()
     wandb_config = OrderedDict()
-    wandb_config["project"] = "bert24-base-in-run-evals" # f"{wandb_project}-evals"
+    wandb_config["project"] = "bert24-base-v2-evals" # f"{wandb_project}-evals"
     wandb_config["entity"] = "bert24" # wandb_entity
     loggers["wandb"] = wandb_config
     if track_run:
