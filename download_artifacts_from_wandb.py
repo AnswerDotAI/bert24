@@ -38,18 +38,17 @@ def main(api, ba_th):
     print(f"Found {len(artifacts)} model artifacts.")
 
     for run, artifact in artifacts:
-        if "bert24-base-v2" not in artifact.name:
-            # print(f"skipping {artifact.name}")
-            continue
+        # if "bert24-base-v2" not in artifact.name:
+        #     continue
 
         print(f"Run: {run.name}")
         print(f"Artifact: {artifact.name}")
-        ba = get_ba(artifact.name)
-        print(f"ba = {ba}")
 
-        if ba <= ba_th:
-            print(f"skipping {artifact.name}")
-            continue
+        # ba = get_ba(artifact.name)
+        # print(f"ba = {ba}")
+        # if ba <= ba_th:
+        #     print(f"skipping {artifact.name}")
+        #     continue
 
         base_dir = os.path.join(LOCAL_DOWNLOAD_DIR, get_base_folder(artifact.name))
 
@@ -57,7 +56,9 @@ def main(api, ba_th):
         out_dir = os.path.join(base_dir, artifact.name)
         if os.path.exists(out_dir):
             print(f"Artifact already exists locally: {out_dir}")
+            artifact.delete(delete_aliases=True)
             continue
+
         os.makedirs(out_dir, exist_ok=True)
         artifact.download(root=out_dir)
 
