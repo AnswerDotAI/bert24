@@ -22,6 +22,7 @@ metric2num_seeds = {
     "metrics/mlmmlu_reserve/MulticlassAccuracy": 4,
     "metrics/superglue_wic/MulticlassAccuracy": 3,
     "metrics/superglue_boolq/MulticlassAccuracy": 3,
+    "metrics/long_context_ultrafeedback/UltrafeedbackAUROC": 2,
 }
 
 
