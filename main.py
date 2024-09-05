@@ -327,18 +327,21 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         count_padding_tokens=cfg.get("count_padding_tokens", True),
         device_microbatch_size=cfg.device_train_microbatch_size,
     )
-    print("Building eval loader...")
-    global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
-    eval_loader = build_dataloader(
-        cfg=cfg.eval_loader,
-        tokenizer=model.tokenizer,
-        device_batch_size=cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
-    )
-    eval_evaluator = Evaluator(
-        label="eval",
-        dataloader=eval_loader,
-        device_eval_microbatch_size=cfg.get("device_eval_microbatch_size", None),
-    )
+    if cfg.get("eval_loader", None) is not None:
+        print("Building eval loader...")
+        global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
+        eval_loader = build_dataloader(
+            cfg=cfg.eval_loader,
+            tokenizer=model.tokenizer,
+            device_batch_size=cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
+        )
+        eval_evaluator = Evaluator(
+            label="eval",
+            dataloader=eval_loader,
+            device_eval_microbatch_size=cfg.get("device_eval_microbatch_size", None),
+        )
+    else:
+        eval_evaluator = None
 
     # Optimizer
     optimizer = build_optimizer(cfg.optimizer, model)
