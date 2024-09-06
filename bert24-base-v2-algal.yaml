@@ -145,7 +145,7 @@ callbacks:
 # W&B logging
 loggers:
   wandb:
-    project: bert24-runs
+    project: bert24-runs-algal
     entity: bert24
 
 # Checkpoint to local filesystem or remote object store
