@@ -145,7 +145,7 @@ callbacks:
 # W&B logging
 loggers:
   wandb:
-    project: bert24-runs-algal
+    project: sequence_packer_test
     entity: bert24
 
 # Checkpoint to local filesystem or remote object store
