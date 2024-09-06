@@ -79,6 +79,7 @@ train_loader:
   sequence_packing: true
   batch_size_warmup_min_size: ${device_train_microbatch_size}
   batch_size_warmup_tokens: 50_000_000_000tok
+  packing_buffer_size: 46_000
 
 
 # eval_loader:
