@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
 import sys
 import warnings
 from typing import Optional, cast
@@ -9,6 +10,7 @@ from typing import Optional, cast
 import torch
 from torch import nn
 
+from src.bert_layers.configuration_bert import FlexBertConfig
 from src.bert_layers.model import init_mlm_model_from_pretrained
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
@@ -16,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 from composer import Evaluator, Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
-from composer.core import State, DataSpec
+from composer.core import DataSpec
 from composer.loggers import WandBLogger
 from composer.optim import DecoupledAdamW
 from composer.optim.scheduler import (
@@ -27,7 +29,7 @@ from composer.optim.scheduler import (
 from composer.utils import dist, reproducibility
 from composer.utils.checkpoint import _ensure_valid_checkpoint
 from composer.utils.misc import partial_format
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from omegaconf import OmegaConf as om
 from torch.optim import AdamW
 
@@ -35,13 +37,13 @@ import src.flex_bert as flex_bert_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
-from src.callbacks.scheduled_gc import ScheduledGarbageCollector
-from src.callbacks.log_grad_norm import LogGradNorm
-from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
-from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
-from src.callbacks.packing_efficiency import PackingEfficency
 from src.callbacks.debug import DebugCallback
+from src.callbacks.log_grad_norm import LogGradNorm
+from src.callbacks.packing_efficiency import PackingEfficency
+from src.callbacks.scheduled_gc import ScheduledGarbageCollector
+from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.sequence_packer import get_num_samples_in_packed_batch, split_packed_batch
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -313,11 +315,15 @@ def build_model(cfg: DictConfig):
 
 
 def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
-    print(f"Initializing model from checkpoint: {cfg.checkpoint}")
-    pretrained_cfg = om.load(cfg.checkpoint_cfg)
+    print(f"Initializing model from checkpoint {cfg.checkpoint_run_name}")
+    checkpoint_cfg = Path(cfg.checkpoint_cfg)
+    assert checkpoint_cfg.exists(), f"Checkpoint config {checkpoint_cfg} does not exist"
+    pretrained_cfg = om.load(checkpoint_cfg)
+
     pretrained_model = build_model(pretrained_cfg.model)
 
-    checkpoint_filepath = partial_format(cfg.path, run_name=cfg.run_name)
+    checkpoint_filepath = Path(cfg.checkpoint_load_path) / f"{cfg.checkpoint_run_name}" / "latest-rank0.pt"
+    assert checkpoint_filepath.exists(), f"Checkpoint {checkpoint_filepath} does not exist"
     state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath))
 
     state_dict = state.get("state", {})
@@ -325,7 +331,19 @@ def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
     assert len(model_state) > 0, "Model state is empty, please check the checkpoint and checkpoint path"
 
     pretrained_model.load_state_dict(model_state)
-    init_mlm_model_from_pretrained(pretrained_model, new_model)
+
+    if isinstance(pretrained_cfg.model.model_config, DictConfig):
+        model_config = OmegaConf.to_container(pretrained_cfg.model.model_config, resolve=True)
+    pretrained_config = FlexBertConfig.from_pretrained(pretrained_cfg.model.pretrained_model_name, **model_config)
+
+    init_mlm_model_from_pretrained(
+        config=pretrained_config,
+        pretrained_model=pretrained_model.model,
+        new_model=new_model.model,
+        mode=cfg.get("mode", "tile_weights_from_middle"),
+        skip_norms=cfg.get("skip_norms", False),
+        clamp_weights=cfg.get("clamp_weights", None),
+    )
 
 
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:

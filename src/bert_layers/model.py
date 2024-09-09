@@ -69,8 +69,8 @@ from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
 from bert_padding import index_put_first_axis
 
-from .activation import get_act_fn
-from .attention import (
+from src.bert_layers.activation import get_act_fn
+from src.bert_layers.attention import (
     FlexBertPaddedAttention,
     FlexBertPaddedParallelAttention,
     FlexBertPaddedRopeAttention,
@@ -80,14 +80,15 @@ from .attention import (
     FlexBertUnpadRopeAttention,
     FlexBertUnpadRopeParallelAttention,
 )
-from .configuration_bert import FlexBertConfig
-from .embeddings import (
+from src.bert_layers.configuration_bert import FlexBertConfig
+from src.bert_layers.embeddings import (
     BertAlibiEmbeddings,
     FlexBertAbsoluteEmbeddings,
+    FlexBertCompiledSansPositionEmbeddings,
     FlexBertSansPositionEmbeddings,
     get_embedding_layer,
 )
-from .initialization import (
+from src.bert_layers.initialization import (
     ModuleType,
     TileLinear,
     TileMode,
@@ -96,7 +97,7 @@ from .initialization import (
     tile_linear,
     tile_norm,
 )
-from .layers import (
+from src.bert_layers.layers import (
     BertAlibiEncoder,
     BertPooler,
     BertPredictionHeadTransform,
@@ -111,10 +112,10 @@ from .layers import (
     FlexBertUnpadPreNormLayer,
     get_encoder_layer,
 )
-from .loss import get_loss_fn
-from .mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
-from .normalization import get_norm_layer
-from .padding import pad_input, unpad_input
+from src.bert_layers.loss import get_loss_fn
+from src.bert_layers.mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
+from src.bert_layers.normalization import get_norm_layer
+from src.bert_layers.padding import pad_input, unpad_input
 
 logger = logging.getLogger(__name__)
 
@@ -1527,7 +1528,8 @@ def init_model_from_pretrained(
         new_model.embeddings, type(pretrained_model.embeddings)
     ), f"Pretrained and new_model layers must be the same type, got {type(new_model.embeddings)} and {type(pretrained_model.embeddings)}"
     assert isinstance(
-        new_model.embeddings, (FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings)
+        new_model.embeddings,
+        (FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings, FlexBertCompiledSansPositionEmbeddings),
     ), f"Unsupported embedding layer type: {type(new_model.embeddings)}"
 
     tile_embedding(
@@ -1562,8 +1564,8 @@ def init_model_from_pretrained(
 
     # Initialize layers
     for new_model_idx, pretrained_idx in enumerate(layer_mapping):
-        new_model_layer = new_model.encoder.layer[new_model_idx]
-        pretrained_layer = pretrained_model.encoder.layer[pretrained_idx]
+        new_model_layer = new_model.encoder.layers[new_model_idx]
+        pretrained_layer = pretrained_model.encoder.layers[pretrained_idx]
 
         # first tile the PreNorm/PostNorm layers
         assert isinstance(
@@ -1716,10 +1718,12 @@ def init_mlm_model_from_pretrained(
         skip_norms=skip_norms,
         clamp_weights=clamp_weights,
     )
-    if not isinstance(pretrained_model.head, FlexBertPredictionHead):
-        raise ValueError(f"Pretrained model must have a prediction head: {type(pretrained_model.head)}")
-    if not isinstance(new_model.head, FlexBertPredictionHead):
-        raise ValueError(f"New model must have a prediction head: {type(new_model.head)}")
+
+    # TODO: uncomment this when the repo is turned into a pip installable package
+    # if not isinstance(pretrained_model.head, FlexBertPredictionHead):
+    #     raise ValueError(f"Pretrained model must have a prediction head: {type(pretrained_model.head)}")
+    # if not isinstance(new_model.head, FlexBertPredictionHead):
+    #     raise ValueError(f"New model must have a prediction head: {type(new_model.head)}")
 
     # tile the prediction head
     tile_linear(
