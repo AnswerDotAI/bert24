@@ -317,10 +317,11 @@ def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
     pretrained_cfg = om.load(checkpoint_cfg)
 
     pretrained_model = build_model(pretrained_cfg.model)
+    n_params = sum(p.numel() for p in pretrained_model.parameters())
 
     checkpoint_filepath = Path(cfg.checkpoint_load_path) / f"{cfg.checkpoint_run_name}" / "latest-rank0.pt"
     assert checkpoint_filepath.exists(), f"Checkpoint {checkpoint_filepath} does not exist"
-    state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath))
+    state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath), map_location="cpu")
 
     state_dict = state.get("state", {})
     model_state = state_dict.get("model", {})
@@ -340,6 +341,7 @@ def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
         skip_norms=cfg.get("skip_norms", False),
         clamp_weights=cfg.get("clamp_weights", None),
     )
+    print(f"Initalized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
 
 
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
