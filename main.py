@@ -28,7 +28,6 @@ from composer.optim.scheduler import (
 )
 from composer.utils import dist, reproducibility
 from composer.utils.checkpoint import _ensure_valid_checkpoint
-from composer.utils.misc import partial_format
 from omegaconf import DictConfig, OmegaConf
 from omegaconf import OmegaConf as om
 from torch.optim import AdamW
@@ -38,7 +37,6 @@ import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
-from src.callbacks.debug import DebugCallback
 from src.callbacks.log_grad_norm import LogGradNorm
 from src.callbacks.packing_efficiency import PackingEfficency
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
@@ -156,8 +154,6 @@ def build_callback(name, kwargs):
         return DataloaderSpeedMonitor()
     elif name == "packing_efficiency":
         return PackingEfficency(log_interval=kwargs.get("log_interval", 10))
-    elif name == "debug":
-        return DebugCallback()
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
