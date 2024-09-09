@@ -32,7 +32,7 @@ import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
 from src.callbacks.log_grad_norm import LogGradNorm
-from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler, OneMinusSqrtScheduler
 from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
 from src.callbacks.packing_efficiency import PackingEfficency
@@ -179,6 +179,12 @@ def build_scheduler(cfg):
             alpha_s=cfg.get("alpha_s", 0.0),
             warmup_schedule=cfg.get("warmup_schedule", "linear"),
             cooldown_schedule=cfg.get("cooldown_schedule", "linear"),
+        )
+    elif cfg.name == "one_minus_sqrt":
+        return OneMinusSqrtScheduler(
+            t_decay=cfg.t_decay,
+            t_max=cfg.t_max,
+            alpha_f=cfg.alpha_f,
         )
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
