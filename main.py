@@ -6,14 +6,17 @@ import sys
 import warnings
 from typing import Optional, cast
 
+import torch
 from torch import nn
+
+from src.bert_layers.model import init_mlm_model_from_pretrained
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 from composer import Evaluator, Trainer, algorithms
 from composer.callbacks import LRMonitor, MemoryMonitor, OptimizerMonitor, RuntimeEstimator, SpeedMonitor
-from composer.core import DataSpec
+from composer.core import State, DataSpec
 from composer.loggers import WandBLogger
 from composer.optim import DecoupledAdamW
 from composer.optim.scheduler import (
@@ -22,6 +25,8 @@ from composer.optim.scheduler import (
     LinearWithWarmupScheduler,
 )
 from composer.utils import dist, reproducibility
+from composer.utils.checkpoint import _ensure_valid_checkpoint
+from composer.utils.misc import partial_format
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from torch.optim import AdamW
@@ -36,6 +41,7 @@ from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
 from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
 from src.callbacks.packing_efficiency import PackingEfficency
+from src.callbacks.debug import DebugCallback
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -148,6 +154,8 @@ def build_callback(name, kwargs):
         return DataloaderSpeedMonitor()
     elif name == "packing_efficiency":
         return PackingEfficency(log_interval=kwargs.get("log_interval", 10))
+    elif name == "debug":
+        return DebugCallback()
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
@@ -304,6 +312,22 @@ def build_model(cfg: DictConfig):
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 
 
+def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
+    print(f"Initializing model from checkpoint: {cfg.checkpoint}")
+    pretrained_cfg = om.load(cfg.checkpoint_cfg)
+    pretrained_model = build_model(pretrained_cfg.model)
+
+    checkpoint_filepath = partial_format(cfg.path, run_name=cfg.run_name)
+    state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath))
+
+    state_dict = state.get("state", {})
+    model_state = state_dict.get("model", {})
+    assert len(model_state) > 0, "Model state is empty, please check the checkpoint and checkpoint path"
+
+    pretrained_model.load_state_dict(model_state)
+    init_mlm_model_from_pretrained(pretrained_model, new_model)
+
+
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
     print("Training using config: ")
     print(om.to_yaml(cfg))
@@ -317,6 +341,9 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     model = build_model(cfg.model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{n_params=:.4e}")
+
+    if cfg.get("init_from_checkpoint", None) is not None:
+        init_from_checkpoint(cfg.init_from_checkpoint, model)
 
     # Dataloaders
     print("Building train loader...")
