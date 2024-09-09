@@ -1586,11 +1586,11 @@ def init_model_from_pretrained(
 
         # First tile the normalization layers
         if hasattr(pretrained_layer, "attn_norm") and not skip_norms:
-            tile_norm(pretrained_layer.attn_norm, new_model_layer.attn_norm, mode=mode, clamp_weights=clamp_weights)
+            tile_norm(pretrained_layer.attn_norm, new_model_layer.attn_norm, mode=mode)
         if hasattr(pretrained_layer, "norm") and not skip_norms:
-            tile_norm(pretrained_layer.norm, new_model_layer.norm, mode=mode, clamp_weights=clamp_weights)
+            tile_norm(pretrained_layer.norm, new_model_layer.norm, mode=mode)
         if hasattr(pretrained_layer, "mlp_norm") and not skip_norms:
-            tile_norm(pretrained_layer.mlp_norm, new_model_layer.mlp_norm, mode=mode, clamp_weights=clamp_weights)
+            tile_norm(pretrained_layer.mlp_norm, new_model_layer.mlp_norm, mode=mode)
 
         # Then tile the attention & mlp layers
         assert isinstance(
@@ -1734,7 +1734,7 @@ def init_mlm_model_from_pretrained(
         clamp_weights=clamp_weights,
     )
     if not skip_norms:
-        tile_norm(pretrained_model.head.norm, new_model.head.norm, mode=mode, clamp_weights=clamp_weights)
+        tile_norm(pretrained_model.head.norm, new_model.head.norm, mode=mode)
 
     # setup weight tying
     if config.tie_word_embeddings:
