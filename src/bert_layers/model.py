@@ -1503,9 +1503,7 @@ def init_model_from_pretrained(
     pretrained_model: FlexBertModel,
     new_model: FlexBertModel,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    skip_norms: bool = False,
-    clamp_weights: Optional[float] = None,
-) -> None:
+):
     """
     Initialize the new model from the pretrained model.
 
@@ -1516,8 +1514,6 @@ def init_model_from_pretrained(
         pretrained_model (FlexBertModel): The smaller, pre-trained model
         new_model (FlexBertModel): The larger model to be initialized
         mode (Union[str, TileMode]): The Phi-style weight tiling mode to use
-        skip_norms (bool): Skips initializing the new_model norms from the pretrained_model
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
 
     This function assumes that the new_model has more layers and a larger hidden size
     than the pretrained_model, but the same vocabulary size.
@@ -1532,21 +1528,11 @@ def init_model_from_pretrained(
         (FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings, FlexBertCompiledSansPositionEmbeddings),
     ), f"Unsupported embedding layer type: {type(new_model.embeddings)}"
 
-    tile_embedding(
-        pretrained_model.embeddings.tok_embeddings,
-        new_model.embeddings.tok_embeddings,
-        mode=mode,
-        clamp_weights=clamp_weights,
-    )
+    tile_embedding(pretrained_model.embeddings.tok_embeddings, new_model.embeddings.tok_embeddings, mode=mode)
     if isinstance(pretrained_model.embeddings, FlexBertAbsoluteEmbeddings):
-        tile_embedding(
-            pretrained_model.embeddings.pos_embeddings,
-            new_model.embeddings.pos_embeddings,
-            mode=mode,
-            clamp_weights=clamp_weights,
-        )
+        tile_embedding(pretrained_model.embeddings.pos_embeddings, new_model.embeddings.pos_embeddings, mode=mode)
 
-    if hasattr(pretrained_model.embeddings, "norm") and not skip_norms:
+    if hasattr(pretrained_model.embeddings, "norm"):
         tile_norm(pretrained_model.embeddings.norm, new_model.embeddings.norm, mode=mode)
 
     # Tile encoder layers
@@ -1585,11 +1571,11 @@ def init_model_from_pretrained(
         ), f"Unsupported prenorm/postnorm layer type: {type(new_model_layer)}"
 
         # First tile the normalization layers
-        if hasattr(pretrained_layer, "attn_norm") and not skip_norms:
+        if hasattr(pretrained_layer, "attn_norm"):
             tile_norm(pretrained_layer.attn_norm, new_model_layer.attn_norm, mode=mode)
-        if hasattr(pretrained_layer, "norm") and not skip_norms:
+        if hasattr(pretrained_layer, "norm"):
             tile_norm(pretrained_layer.norm, new_model_layer.norm, mode=mode)
-        if hasattr(pretrained_layer, "mlp_norm") and not skip_norms:
+        if hasattr(pretrained_layer, "mlp_norm"):
             tile_norm(pretrained_layer.mlp_norm, new_model_layer.mlp_norm, mode=mode)
 
         # Then tile the attention & mlp layers
@@ -1620,7 +1606,6 @@ def init_model_from_pretrained(
                 new_attn_size=new_model_layer.attn_size,
                 new_mlp_size=new_model_layer.mlp_size,
                 wqkvff_is_glu=True,
-                clamp_weights=clamp_weights,
             )
 
         # then try the fused attention layers
@@ -1633,24 +1618,12 @@ def init_model_from_pretrained(
                 FlexBertPaddedRopeAttention,
             ),
         ):
-            tile_linear(
-                pretrained_layer.attn.Wqkv,
-                new_model_layer.attn.Wqkv,
-                linear_type=TileLinear.wqkv,
-                mode=mode,
-                clamp_weights=clamp_weights,
-            )
+            tile_linear(pretrained_layer.attn.Wqkv, new_model_layer.attn.Wqkv, linear_type=TileLinear.wqkv, mode=mode)
         else:
             raise ValueError(f"Unsupported attention layer type: {type(pretrained_layer.attn)}")
 
         # finally, tile the attention output layer
-        tile_linear(
-            pretrained_layer.attn.Wo,
-            new_model_layer.attn.Wo,
-            linear_type=TileLinear.default,
-            mode=mode,
-            clamp_weights=clamp_weights,
-        )
+        tile_linear(pretrained_layer.attn.Wo, new_model_layer.attn.Wo, linear_type=TileLinear.default, mode=mode)
 
         # tile the mlp layer if the model is not using parallel attention layers
         if not isinstance(pretrained_layer.mlp, (FlexBertMLP, FlexBertGLU, FlexBertParallelGLU)):
@@ -1661,29 +1634,11 @@ def init_model_from_pretrained(
 
         # already tiled the parallel glu layer if it exists, so only need to handle mlp & glu Wi
         if isinstance(pretrained_layer.mlp, FlexBertGLU):
-            tile_linear(
-                pretrained_layer.mlp.Wi,
-                new_model_layer.mlp.Wi,
-                linear_type=TileLinear.glu,
-                mode=mode,
-                clamp_weights=clamp_weights,
-            )
+            tile_linear(pretrained_layer.mlp.Wi, new_model_layer.mlp.Wi, linear_type=TileLinear.glu, mode=mode)
         elif isinstance(pretrained_layer.mlp, FlexBertMLP):
-            tile_linear(
-                pretrained_layer.mlp.Wi,
-                new_model_layer.mlp.Wi,
-                linear_type=TileLinear.default,
-                mode=mode,
-                clamp_weights=clamp_weights,
-            )
+            tile_linear(pretrained_layer.mlp.Wi, new_model_layer.mlp.Wi, linear_type=TileLinear.default, mode=mode)
         # tile the output for both ParallelGLU and MLP/GLU
-        tile_linear(
-            pretrained_layer.mlp.Wo,
-            new_model_layer.mlp.Wo,
-            linear_type=TileLinear.default,
-            mode=mode,
-            clamp_weights=clamp_weights,
-        )
+        tile_linear(pretrained_layer.mlp.Wo, new_model_layer.mlp.Wo, linear_type=TileLinear.default, mode=mode)
 
 
 def init_mlm_model_from_pretrained(
@@ -1691,9 +1646,7 @@ def init_mlm_model_from_pretrained(
     pretrained_model: FlexBertForMaskedLM,
     new_model: FlexBertForMaskedLM,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    skip_norms: bool = False,
-    clamp_weights: Optional[float] = None,
-) -> None:
+):
     """
     Initialize the new model from the pretrained model.
 
@@ -1705,19 +1658,11 @@ def init_mlm_model_from_pretrained(
         pretrained_model (FlexBertForMaskedLM): The smaller, pre-trained model
         new_model (FlexBertForMaskedLM): The larger model to be initialized from the pretrained model
         mode (Union[str, TileMode]): The Phi-style weight tiling mode to use
-        skip_norms (bool): Skips initializing the new_model norms from the pretrained_model
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
 
     This function assumes that the new_model has more layers and a larger hidden size
     than the pretrained_model, but the same vocabulary size.
     """
-    init_model_from_pretrained(
-        pretrained_model.bert,
-        new_model.bert,
-        mode=mode,
-        skip_norms=skip_norms,
-        clamp_weights=clamp_weights,
-    )
+    init_model_from_pretrained(pretrained_model.bert, new_model.bert, mode=mode)
 
     # TODO: uncomment this when the repo is turned into a pip installable package
     # if not isinstance(pretrained_model.head, FlexBertPredictionHead):
@@ -1726,32 +1671,14 @@ def init_mlm_model_from_pretrained(
     #     raise ValueError(f"New model must have a prediction head: {type(new_model.head)}")
 
     # tile the prediction head
-    tile_linear(
-        pretrained_model.head.dense,
-        new_model.head.dense,
-        linear_type=TileLinear.default,
-        mode=mode,
-        clamp_weights=clamp_weights,
-    )
-    if not skip_norms:
-        tile_norm(pretrained_model.head.norm, new_model.head.norm, mode=mode)
+    tile_linear(pretrained_model.head.dense, new_model.head.dense, linear_type=TileLinear.default, mode=mode)
+    tile_norm(pretrained_model.head.norm, new_model.head.norm, mode=mode)
 
     # setup weight tying
     if config.tie_word_embeddings:
         new_model.decoder.weight = new_model.bert.embeddings.tok_embeddings.weight
         tile_linear(
-            pretrained_model.decoder,
-            new_model.decoder,
-            linear_type=TileLinear.default,
-            mode=mode,
-            clamp_weights=clamp_weights,
-            bias_only=True,
+            pretrained_model.decoder, new_model.decoder, linear_type=TileLinear.default, mode=mode, bias_only=True
         )
     else:
-        tile_linear(
-            pretrained_model.decoder,
-            new_model.decoder,
-            linear_type=TileLinear.default,
-            mode=mode,
-            clamp_weights=clamp_weights,
-        )
+        tile_linear(pretrained_model.decoder, new_model.decoder, linear_type=TileLinear.default, mode=mode)

@@ -173,7 +173,6 @@ def tile_weight(
     pretrained_weights: torch.Tensor,
     new_weights: torch.Tensor,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    clamp_weights: Optional[float] = None,
 ) -> torch.Tensor:
     """
     Tile or center an input tensor to a larger desired size. Works for both 2D and 1D tensors.
@@ -193,14 +192,12 @@ def tile_weight(
     pretrained_weights = pretrained_weights.clone()
 
     if pretrained_weights.dim() == 1:
-        return _tile_1d(pretrained_weights, new_weights, mode, clamp_weights)
+        return _tile_1d(pretrained_weights, new_weights, mode)
     else:
-        return _tile_2d(pretrained_weights, new_weights, mode, clamp_weights)
+        return _tile_2d(pretrained_weights, new_weights, mode)
 
 
-def _tile_1d(
-    pretrained_weights: torch.Tensor, new_weights: torch.Tensor, mode: TileMode, clamp_weights: Optional[float] = None
-) -> torch.Tensor:
+def _tile_1d(pretrained_weights: torch.Tensor, new_weights: torch.Tensor, mode: TileMode) -> torch.Tensor:
     assert pretrained_weights.dim() == 1, "Input tensor must be 1-dimensional"
     input_size = pretrained_weights.shape[0]
     new_size = new_weights.shape[0]
@@ -209,14 +206,10 @@ def _tile_1d(
     if mode == TileMode.center_weights:
         offset = (new_size - input_size) // 2
         new_weights[offset : offset + input_size] = pretrained_weights
-        if clamp_weights is not None:
-            new_weights.clamp_(-clamp_weights, clamp_weights)
         return new_weights.clone()
     elif mode == TileMode.tile_weights_from_edge:
         repeat_count = (new_size + input_size - 1) // input_size
         tiled_tensor = pretrained_weights.repeat(repeat_count)
-        if clamp_weights is not None:
-            tiled_tensor.clamp_(-clamp_weights, clamp_weights)
         return tiled_tensor[:new_size].clone()
     elif mode == TileMode.tile_weights_from_middle:
         # Calculate offsets to center the original tensor
@@ -233,14 +226,10 @@ def _tile_1d(
             result[offset - 1 - i] = pretrained_weights[input_size - 1 - (i % input_size)]
         for i in range(offset + input_size, new_size):
             result[i] = pretrained_weights[(i - offset) % input_size]
-        if clamp_weights is not None:
-            result.clamp_(-clamp_weights, clamp_weights)
         return result.clone()
 
 
-def _tile_2d(
-    pretrained_weights: torch.Tensor, new_weights: torch.Tensor, mode: TileMode, clamp_weights: Optional[float] = None
-) -> torch.Tensor:
+def _tile_2d(pretrained_weights: torch.Tensor, new_weights: torch.Tensor, mode: TileMode) -> torch.Tensor:
     assert pretrained_weights.dim() == 2, "Input tensor must be 2-dimensional"
     input_height, input_width = pretrained_weights.shape
     new_height, new_width = new_weights.shape
@@ -251,15 +240,11 @@ def _tile_2d(
         height_offset = (new_height - input_height) // 2
         width_offset = (new_width - input_width) // 2
         new_weights[height_offset : height_offset + input_height, width_offset : width_offset + input_width] = pretrained_weights  # fmt: skip
-        if clamp_weights is not None:
-            new_weights.clamp_(-clamp_weights, clamp_weights)
         return new_weights.clone()
     elif mode == TileMode.tile_weights_from_edge:
         repeat_height = (new_height + input_height - 1) // input_height
         repeat_width = (new_width + input_width - 1) // input_width
         tiled_tensor = pretrained_weights.repeat(repeat_height, repeat_width)
-        if clamp_weights is not None:
-            tiled_tensor.clamp_(-clamp_weights, clamp_weights)
         return tiled_tensor[:new_height, :new_width].clone()
     elif mode == TileMode.tile_weights_from_middle:
         # Calculate offsets to center the original tensor
@@ -295,8 +280,6 @@ def _tile_2d(
         for i in range(height_offset + input_height, new_height):
             row_to_copy = (i - height_offset) % input_height
             result[i, :] = horizontal_tiled[row_to_copy, :]
-        if clamp_weights is not None:
-            result.clamp_(-clamp_weights, clamp_weights)
         return result.clone()
 
 
@@ -304,7 +287,6 @@ def tile_fused_qkv(
     pretrained_qkv_weight: torch.Tensor,
     new_qkv_weight: torch.Tensor,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    clamp_weights: Optional[float] = None,
 ):
     """
     Tile the weights of a fused pretrained QKV layer to a new, larger QKV dimension.
@@ -313,7 +295,6 @@ def tile_fused_qkv(
         pretrained_qkv_weight (torch.Tensor): The original fused QKV layer
         new_qkv_weight (torch.Tensor): The new fused QKV layer with larger linear_dim
         mode (Union[str, TileMode]): The tiling mode to use
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
     Returns:
         torch.Tensor: The new fused QKV layer with tiled weights
     """
@@ -322,9 +303,9 @@ def tile_fused_qkv(
     new_q, new_k, new_v = new_qkv_weight.chunk(3, dim=0)
 
     # Tile Q, K, V separately
-    new_q = tile_weight(pretrained_q, new_q, mode=mode, clamp_weights=clamp_weights)
-    new_k = tile_weight(pretrained_k, new_k, mode=mode, clamp_weights=clamp_weights)
-    new_v = tile_weight(pretrained_v, new_v, mode=mode, clamp_weights=clamp_weights)
+    new_q = tile_weight(pretrained_q, new_q, mode=mode)
+    new_k = tile_weight(pretrained_k, new_k, mode=mode)
+    new_v = tile_weight(pretrained_v, new_v, mode=mode)
 
     # Concatenate tiled Q, K, V
     return torch.cat([new_q, new_k, new_v], dim=0)
@@ -334,7 +315,6 @@ def tile_fused_glu(
     pretrained_glu_weight: torch.Tensor,
     new_glu_weight: torch.Tensor,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    clamp_weights: Optional[float] = None,
 ):
     """
     Tile the weights of a fused pretrained GLU layer to a new, larger GLU dimension.
@@ -343,7 +323,6 @@ def tile_fused_glu(
         pretrained_glu_weight (torch.Tensor): The original fused GLU layer
         new_glu_weight (torch.Tensor): The new fused GLU layer with larger linear_dim
         mode (Union[str, TileMode]): The tiling mode to use
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
     Returns:
         torch.Tensor: The new fused GLU layer with tiled weights
     """
@@ -352,8 +331,8 @@ def tile_fused_glu(
     new_glu_wi, new_glu_wg = new_glu_weight.chunk(2, dim=0)
 
     # Tile GLU separately
-    new_glu_wi = tile_weight(pretrained_glu_wi, new_glu_wi, mode=mode, clamp_weights=clamp_weights)
-    new_glu_wg = tile_weight(pretrained_glu_wg, new_glu_wg, mode=mode, clamp_weights=clamp_weights)
+    new_glu_wi = tile_weight(pretrained_glu_wi, new_glu_wi, mode=mode)
+    new_glu_wg = tile_weight(pretrained_glu_wg, new_glu_wg, mode=mode)
 
     # Concatenate tiled GLU
     return torch.cat([new_glu_wi, new_glu_wg], dim=0)
@@ -368,7 +347,6 @@ def tile_fused_qkvff(
     new_mlp_size: int,
     is_glu: bool = False,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    clamp_weights: Optional[float] = None,
 ):
     """
     Tile the weights of a fused pretrained QKVFF layer to a new, larger QKVFF dimension.
@@ -382,7 +360,6 @@ def tile_fused_qkvff(
         new_mlp_size (int): The mlp size of the new fused QKVFF layer
         is_glu (bool): Whether the QKVFF layer is a GLU layer
         mode (Union[str, TileMode]): The tiling mode to use
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
     Returns:
         torch.Tensor: The new fused QKVFF layer with tiled weights
     """
@@ -391,11 +368,11 @@ def tile_fused_qkvff(
     new_qkv, new_ff = new_qkvff_weight.split([new_attn_size, new_mlp_size], dim=0)
 
     # Tile QKVFF separately
-    new_qkv = tile_fused_qkv(pretrained_qkv, new_qkv, mode=mode, clamp_weights=clamp_weights)
+    new_qkv = tile_fused_qkv(pretrained_qkv, new_qkv, mode=mode)
     if is_glu:
-        new_ff = tile_fused_glu(pretrained_ff, new_ff, mode=mode, clamp_weights=clamp_weights)
+        new_ff = tile_fused_glu(pretrained_ff, new_ff, mode=mode)
     else:
-        new_ff = tile_weight(pretrained_ff, new_ff, mode=mode, clamp_weights=clamp_weights)
+        new_ff = tile_weight(pretrained_ff, new_ff, mode=mode)
 
     # Concatenate tiled QKVFF
     return torch.cat([new_qkv, new_ff], dim=0)
@@ -419,7 +396,6 @@ def tile_linear(
     new_mlp_size: Optional[int] = None,
     wqkvff_is_glu: Optional[bool] = None,
     bias_only: Optional[bool] = False,
-    clamp_weights: Optional[float] = None,
 ):
     """
     Tile the weights of a linear layer to a new, larger linear dimension.
@@ -435,7 +411,6 @@ def tile_linear(
         new_mlp_size (int): The mlp size of the new linear layer. Only used if linear_type is wqkvff.
         wqkvff_is_glu (bool): Whether the wqkvff layer is a GLU layer. Only used if linear_type is wqkvff.
         bias_only (bool): Whether to only tile the bias. Only used if tiling weight tied decoder.
-        clamp_weights (Optional[float]): The maximum/minimum value for the weights. If None, no clamping is done.
     """
     if isinstance(linear_type, str):
         linear_type = TileLinear(linear_type)
@@ -446,23 +421,23 @@ def tile_linear(
         if linear_type == TileLinear.wqkv:
             if not bias_only:
                 new_linear.weight = nn.Parameter(
-                    tile_fused_qkv(pretrained_linear.weight, new_linear.weight, mode=mode, clamp_weights=clamp_weights),
+                    tile_fused_qkv(pretrained_linear.weight, new_linear.weight, mode=mode),
                     requires_grad=new_linear.weight.requires_grad,
                 )
             if pretrained_linear.bias is not None:
                 new_linear.bias = nn.Parameter(
-                    tile_fused_qkv(pretrained_linear.bias, new_linear.bias, mode=mode, clamp_weights=clamp_weights),
+                    tile_fused_qkv(pretrained_linear.bias, new_linear.bias, mode=mode),
                     requires_grad=new_linear.bias.requires_grad,
                 )
         elif linear_type == TileLinear.glu:
             if not bias_only:
                 new_linear.weight = nn.Parameter(
-                    tile_fused_glu(pretrained_linear.weight, new_linear.weight, mode=mode, clamp_weights=clamp_weights),
+                    tile_fused_glu(pretrained_linear.weight, new_linear.weight, mode=mode),
                     requires_grad=new_linear.weight.requires_grad,
                 )
             if pretrained_linear.bias is not None:
                 new_linear.bias = nn.Parameter(
-                    tile_fused_glu(pretrained_linear.bias, new_linear.bias, mode=mode, clamp_weights=clamp_weights),
+                    tile_fused_glu(pretrained_linear.bias, new_linear.bias, mode=mode),
                     requires_grad=new_linear.bias.requires_grad,
                 )
         elif linear_type == TileLinear.wqkvff:
@@ -477,7 +452,6 @@ def tile_linear(
                         new_mlp_size,
                         wqkvff_is_glu,
                         mode=mode,
-                        clamp_weights=clamp_weights,
                     ),
                     requires_grad=new_linear.weight.requires_grad,
                 )
@@ -492,19 +466,18 @@ def tile_linear(
                         new_mlp_size,
                         wqkvff_is_glu,
                         mode=mode,
-                        clamp_weights=clamp_weights,
                     ),
                     requires_grad=new_linear.bias.requires_grad,
                 )
         else:
             if not bias_only:
                 new_linear.weight = nn.Parameter(
-                    tile_weight(pretrained_linear.weight, new_linear.weight, mode=mode, clamp_weights=clamp_weights),
+                    tile_weight(pretrained_linear.weight, new_linear.weight, mode=mode),
                     requires_grad=new_linear.weight.requires_grad,
                 )
             if pretrained_linear.bias is not None:
                 new_linear.bias = nn.Parameter(
-                    tile_weight(pretrained_linear.bias, new_linear.bias, mode=mode, clamp_weights=clamp_weights),
+                    tile_weight(pretrained_linear.bias, new_linear.bias, mode=mode),
                     requires_grad=new_linear.bias.requires_grad,
                 )
 
@@ -543,7 +516,6 @@ def tile_embedding(
     pretrained_embedding: nn.Embedding,
     new_embedding: nn.Embedding,
     mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
-    clamp_weights: Optional[float] = None,
 ) -> nn.Embedding:
     """
     Tile the weights of an embedding layer to a new, larger embedding dimension.
@@ -567,7 +539,7 @@ def tile_embedding(
 
         # Tile the weights
         new_embedding.weight.data = nn.Parameter(
-            tile_weight(pretrained_embedding.weight, new_embedding.weight, mode=mode, clamp_weights=clamp_weights),
+            tile_weight(pretrained_embedding.weight, new_embedding.weight, mode=mode),
             requires_grad=new_embedding.weight.requires_grad,
         )
 

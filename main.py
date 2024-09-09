@@ -338,8 +338,6 @@ def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
         pretrained_model=pretrained_model.model,
         new_model=new_model.model,
         mode=cfg.get("mode", "tile_weights_from_middle"),
-        skip_norms=cfg.get("skip_norms", False),
-        clamp_weights=cfg.get("clamp_weights", None),
     )
     print(f"Initalized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
 
