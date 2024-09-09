@@ -45,11 +45,11 @@ See :file:`./mosaic_bert.py` for utilities to simplify working with MosaicBERT i
 of the core Mosaic BERT classes.
 """
 
-from dataclasses import dataclass
 import logging
 import os
 import sys
 import warnings
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
@@ -61,26 +61,61 @@ from einops import rearrange
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from transformers.modeling_outputs import (
     MaskedLMOutput,
+    ModelOutput,
     MultipleChoiceModelOutput,
     SequenceClassifierOutput,
 )
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
-from transformers.modeling_outputs import ModelOutput
 
 from bert_padding import index_put_first_axis
-from .padding import unpad_input, pad_input
-from .loss import get_loss_fn
-from .layers import (
+
+from src.bert_layers.activation import get_act_fn
+from src.bert_layers.attention import (
+    FlexBertPaddedAttention,
+    FlexBertPaddedParallelAttention,
+    FlexBertPaddedRopeAttention,
+    FlexBertPaddedRopeParallelAttention,
+    FlexBertUnpadAttention,
+    FlexBertUnpadParallelAttention,
+    FlexBertUnpadRopeAttention,
+    FlexBertUnpadRopeParallelAttention,
+)
+from src.bert_layers.configuration_bert import FlexBertConfig
+from src.bert_layers.embeddings import (
+    BertAlibiEmbeddings,
+    FlexBertAbsoluteEmbeddings,
+    FlexBertCompiledSansPositionEmbeddings,
+    FlexBertSansPositionEmbeddings,
+    get_embedding_layer,
+)
+from src.bert_layers.initialization import (
+    ModuleType,
+    TileLinear,
+    TileMode,
+    init_weights,
+    tile_embedding,
+    tile_linear,
+    tile_norm,
+)
+from src.bert_layers.layers import (
     BertAlibiEncoder,
     BertPooler,
     BertPredictionHeadTransform,
+    FlexBertCompileUnpadPreNormLayer,
+    FlexBertPaddedEncoder,
+    FlexBertPaddedParallelPreNormLayer,
+    FlexBertPaddedPostNormLayer,
+    FlexBertPaddedPreNormLayer,
+    FlexBertUnpadEncoder,
+    FlexBertUnpadParallelPreNormLayer,
+    FlexBertUnpadPostNormLayer,
+    FlexBertUnpadPreNormLayer,
     get_encoder_layer,
 )
-from .embeddings import BertAlibiEmbeddings, get_embedding_layer
-from .configuration_bert import FlexBertConfig
-from .normalization import get_norm_layer
-from .activation import get_act_fn
-from .initialization import ModuleType, init_weights
+from src.bert_layers.loss import get_loss_fn
+from src.bert_layers.mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
+from src.bert_layers.normalization import get_norm_layer
+from src.bert_layers.padding import pad_input, unpad_input
 
 logger = logging.getLogger(__name__)
 
@@ -1462,3 +1497,188 @@ class FlexBertForMultipleChoice(FlexBertPreTrainedModel):
         params += _count_parameters(self.head, trainable)
         params += _count_parameters(self.classifier, trainable)
         return params
+
+
+def init_model_from_pretrained(
+    pretrained_model: FlexBertModel,
+    new_model: FlexBertModel,
+    mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
+):
+    """
+    Initialize the new model from the pretrained model.
+
+    This method uses Gopher layer scaling and Phi-style weight tiling as selected by `mode`.
+    The new model must have the same or more layers and the same or larger dimensions than the pretrained model.
+
+    Args:
+        pretrained_model (FlexBertModel): The smaller, pre-trained model
+        new_model (FlexBertModel): The larger model to be initialized
+        mode (Union[str, TileMode]): The Phi-style weight tiling mode to use
+
+    This function assumes that the new_model has more layers and a larger hidden size
+    than the pretrained_model, but the same vocabulary size.
+    """
+
+    # Tile embeddings
+    assert isinstance(
+        new_model.embeddings, type(pretrained_model.embeddings)
+    ), f"Pretrained and new_model layers must be the same type, got {type(new_model.embeddings)} and {type(pretrained_model.embeddings)}"
+    assert isinstance(
+        new_model.embeddings,
+        (FlexBertAbsoluteEmbeddings, FlexBertSansPositionEmbeddings, FlexBertCompiledSansPositionEmbeddings),
+    ), f"Unsupported embedding layer type: {type(new_model.embeddings)}"
+
+    tile_embedding(pretrained_model.embeddings.tok_embeddings, new_model.embeddings.tok_embeddings, mode=mode)
+    if isinstance(pretrained_model.embeddings, FlexBertAbsoluteEmbeddings):
+        tile_embedding(pretrained_model.embeddings.pos_embeddings, new_model.embeddings.pos_embeddings, mode=mode)
+
+    if hasattr(pretrained_model.embeddings, "norm"):
+        tile_norm(pretrained_model.embeddings.norm, new_model.embeddings.norm, mode=mode)
+
+    # Tile encoder layers
+    assert isinstance(
+        pretrained_model.encoder, (FlexBertUnpadEncoder, FlexBertPaddedEncoder)
+    ), f"Unsupported encoder layer type: {type(pretrained_model.encoder)}"
+    assert isinstance(
+        new_model.encoder, type(pretrained_model.encoder)
+    ), f"Pretrained and new_model encoder layers must be the same type, got {type(new_model.encoder)} and {type(pretrained_model.encoder)}"
+
+    # Calculate the layer mapping
+    pretrained_layers = len(pretrained_model.encoder.layers)
+    new_layers = len(new_model.encoder.layers)
+    layer_mapping = [round(i * pretrained_layers / new_layers) for i in range(new_layers)]
+
+    # Initialize layers
+    for new_model_idx, pretrained_idx in enumerate(layer_mapping):
+        new_model_layer = new_model.encoder.layers[new_model_idx]
+        pretrained_layer = pretrained_model.encoder.layers[pretrained_idx]
+
+        # first tile the PreNorm/PostNorm layers
+        assert isinstance(
+            new_model_layer, type(pretrained_layer)
+        ), f"Pretrained and new_model prenorm/postnorm layers must be the same type, got {type(new_model_layer)} and {type(pretrained_layer)}"
+        assert isinstance(
+            new_model_layer,
+            (
+                FlexBertUnpadPreNormLayer,
+                FlexBertCompileUnpadPreNormLayer,
+                FlexBertUnpadParallelPreNormLayer,
+                FlexBertUnpadPostNormLayer,
+                FlexBertPaddedPreNormLayer,
+                FlexBertPaddedParallelPreNormLayer,
+                FlexBertPaddedPostNormLayer,
+            ),
+        ), f"Unsupported prenorm/postnorm layer type: {type(new_model_layer)}"
+
+        # First tile the normalization layers
+        if hasattr(pretrained_layer, "attn_norm"):
+            tile_norm(pretrained_layer.attn_norm, new_model_layer.attn_norm, mode=mode)
+        if hasattr(pretrained_layer, "norm"):
+            tile_norm(pretrained_layer.norm, new_model_layer.norm, mode=mode)
+        if hasattr(pretrained_layer, "mlp_norm"):
+            tile_norm(pretrained_layer.mlp_norm, new_model_layer.mlp_norm, mode=mode)
+
+        # Then tile the attention & mlp layers
+        assert isinstance(
+            new_model_layer.attn, type(pretrained_layer.attn)
+        ), f"Pretrained and new_model attention layers must be the same type, got {type(new_model_layer.attn)} and {type(pretrained_layer.attn)}"
+
+        # first try the parallel attention layers
+        if isinstance(pretrained_layer, (FlexBertUnpadParallelPreNormLayer, FlexBertPaddedParallelPreNormLayer)):
+            assert isinstance(
+                pretrained_layer.attn,
+                (
+                    FlexBertUnpadParallelAttention,
+                    FlexBertPaddedParallelAttention,
+                    FlexBertUnpadRopeParallelAttention,
+                    FlexBertPaddedRopeParallelAttention,
+                ),
+            ), f"Parallel prenorm layer must have parallel attention layer: {type(pretrained_layer.attn)}"
+            if not isinstance(pretrained_layer.mlp, (FlexBertParallelGLU)):
+                raise ValueError(f"Parallel prenorm layer must have parallel MLP layer: {type(pretrained_layer.mlp)}")
+            tile_linear(
+                pretrained_layer.Wqkvff,
+                new_model_layer.Wqkvff,
+                linear_type=TileLinear.wqkvff,
+                mode=mode,
+                pretrained_attn_size=pretrained_layer.attn_size,
+                pretrained_mlp_size=pretrained_layer.mlp_size,
+                new_attn_size=new_model_layer.attn_size,
+                new_mlp_size=new_model_layer.mlp_size,
+                wqkvff_is_glu=True,
+            )
+
+        # then try the fused attention layers
+        elif isinstance(
+            pretrained_layer.attn,
+            (
+                FlexBertUnpadAttention,
+                FlexBertPaddedAttention,
+                FlexBertUnpadRopeAttention,
+                FlexBertPaddedRopeAttention,
+            ),
+        ):
+            tile_linear(pretrained_layer.attn.Wqkv, new_model_layer.attn.Wqkv, linear_type=TileLinear.wqkv, mode=mode)
+        else:
+            raise ValueError(f"Unsupported attention layer type: {type(pretrained_layer.attn)}")
+
+        # finally, tile the attention output layer
+        tile_linear(pretrained_layer.attn.Wo, new_model_layer.attn.Wo, linear_type=TileLinear.default, mode=mode)
+
+        # tile the mlp layer if the model is not using parallel attention layers
+        if not isinstance(pretrained_layer.mlp, (FlexBertMLP, FlexBertGLU, FlexBertParallelGLU)):
+            raise ValueError(f"Unsupported MLP layer type: {type(pretrained_layer.mlp)}")
+        assert isinstance(
+            new_model_layer.mlp, type(pretrained_layer.mlp)
+        ), f"Pretrained and new_model mlp layers must be the same type, got {type(new_model_layer.mlp)} and {type(pretrained_layer.mlp)}"
+
+        # already tiled the parallel glu layer if it exists, so only need to handle mlp & glu Wi
+        if isinstance(pretrained_layer.mlp, FlexBertGLU):
+            tile_linear(pretrained_layer.mlp.Wi, new_model_layer.mlp.Wi, linear_type=TileLinear.glu, mode=mode)
+        elif isinstance(pretrained_layer.mlp, FlexBertMLP):
+            tile_linear(pretrained_layer.mlp.Wi, new_model_layer.mlp.Wi, linear_type=TileLinear.default, mode=mode)
+        # tile the output for both ParallelGLU and MLP/GLU
+        tile_linear(pretrained_layer.mlp.Wo, new_model_layer.mlp.Wo, linear_type=TileLinear.default, mode=mode)
+
+
+def init_mlm_model_from_pretrained(
+    config: FlexBertConfig,
+    pretrained_model: FlexBertForMaskedLM,
+    new_model: FlexBertForMaskedLM,
+    mode: Union[str, TileMode] = TileMode.tile_weights_from_middle,
+):
+    """
+    Initialize the new model from the pretrained model.
+
+    This method uses Gopher layer scaling and Phi-style weight tiling as selected by `mode`.
+    The new model must have the same or more layers and the same or larger dimensions than the pretrained model.
+
+    Args:
+        config (FlexBertConfig): The configuration of the new_model
+        pretrained_model (FlexBertForMaskedLM): The smaller, pre-trained model
+        new_model (FlexBertForMaskedLM): The larger model to be initialized from the pretrained model
+        mode (Union[str, TileMode]): The Phi-style weight tiling mode to use
+
+    This function assumes that the new_model has more layers and a larger hidden size
+    than the pretrained_model, but the same vocabulary size.
+    """
+    init_model_from_pretrained(pretrained_model.bert, new_model.bert, mode=mode)
+
+    # TODO: uncomment this when the repo is turned into a pip installable package
+    # if not isinstance(pretrained_model.head, FlexBertPredictionHead):
+    #     raise ValueError(f"Pretrained model must have a prediction head: {type(pretrained_model.head)}")
+    # if not isinstance(new_model.head, FlexBertPredictionHead):
+    #     raise ValueError(f"New model must have a prediction head: {type(new_model.head)}")
+
+    # tile the prediction head
+    tile_linear(pretrained_model.head.dense, new_model.head.dense, linear_type=TileLinear.default, mode=mode)
+    tile_norm(pretrained_model.head.norm, new_model.head.norm, mode=mode)
+
+    # setup weight tying
+    if config.tie_word_embeddings:
+        new_model.decoder.weight = new_model.bert.embeddings.tok_embeddings.weight
+        tile_linear(
+            pretrained_model.decoder, new_model.decoder, linear_type=TileLinear.default, mode=mode, bias_only=True
+        )
+    else:
+        tile_linear(pretrained_model.decoder, new_model.decoder, linear_type=TileLinear.default, mode=mode)

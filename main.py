@@ -4,9 +4,14 @@
 import os
 import sys
 import warnings
+from pathlib import Path
 from typing import Optional, cast
 
+import torch
 from torch import nn
+
+from src.bert_layers.configuration_bert import FlexBertConfig
+from src.bert_layers.model import init_mlm_model_from_pretrained
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -22,7 +27,8 @@ from composer.optim.scheduler import (
     LinearWithWarmupScheduler,
 )
 from composer.utils import dist, reproducibility
-from omegaconf import DictConfig
+from composer.utils.checkpoint import _ensure_valid_checkpoint
+from omegaconf import DictConfig, OmegaConf
 from omegaconf import OmegaConf as om
 from torch.optim import AdamW
 
@@ -30,12 +36,12 @@ import src.flex_bert as flex_bert_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
-from src.callbacks.scheduled_gc import ScheduledGarbageCollector
-from src.callbacks.log_grad_norm import LogGradNorm
-from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler, OneMinusSqrtScheduler
-from src.sequence_packer import split_packed_batch, get_num_samples_in_packed_batch
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
+from src.callbacks.log_grad_norm import LogGradNorm
 from src.callbacks.packing_efficiency import PackingEfficency
+from src.callbacks.scheduled_gc import ScheduledGarbageCollector
+from src.scheduler import CosineInverseSqrtScheduler, OneMinusSqrtScheduler, WarmupStableDecayScheduler
+from src.sequence_packer import get_num_samples_in_packed_batch, split_packed_batch
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -181,11 +187,7 @@ def build_scheduler(cfg):
             cooldown_schedule=cfg.get("cooldown_schedule", "linear"),
         )
     elif cfg.name == "one_minus_sqrt":
-        return OneMinusSqrtScheduler(
-            t_decay=cfg.t_decay,
-            t_max=cfg.t_max,
-            alpha_f=cfg.alpha_f,
-        )
+        return OneMinusSqrtScheduler(t_decay=cfg.t_decay, t_max=cfg.t_max, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -310,6 +312,38 @@ def build_model(cfg: DictConfig):
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 
 
+def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
+    print(f"Initializing model from checkpoint {cfg.checkpoint_run_name}")
+    checkpoint_cfg = Path(cfg.checkpoint_cfg)
+    assert checkpoint_cfg.exists(), f"Checkpoint config {checkpoint_cfg} does not exist"
+    pretrained_cfg = om.load(checkpoint_cfg)
+
+    pretrained_model = build_model(pretrained_cfg.model)
+    n_params = sum(p.numel() for p in pretrained_model.parameters())
+
+    checkpoint_filepath = Path(cfg.checkpoint_load_path) / f"{cfg.checkpoint_run_name}" / "latest-rank0.pt"
+    assert checkpoint_filepath.exists(), f"Checkpoint {checkpoint_filepath} does not exist"
+    state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath), map_location="cpu")
+
+    state_dict = state.get("state", {})
+    model_state = state_dict.get("model", {})
+    assert len(model_state) > 0, "Model state is empty, please check the checkpoint and checkpoint path"
+
+    pretrained_model.load_state_dict(model_state)
+
+    if isinstance(pretrained_cfg.model.model_config, DictConfig):
+        model_config = OmegaConf.to_container(pretrained_cfg.model.model_config, resolve=True)
+    pretrained_config = FlexBertConfig.from_pretrained(pretrained_cfg.model.pretrained_model_name, **model_config)
+
+    init_mlm_model_from_pretrained(
+        config=pretrained_config,
+        pretrained_model=pretrained_model.model,
+        new_model=new_model.model,
+        mode=cfg.get("mode", "tile_weights_from_middle"),
+    )
+    print(f"Initalized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
+
+
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
     print("Training using config: ")
     print(om.to_yaml(cfg))
@@ -323,6 +357,9 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     model = build_model(cfg.model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{n_params=:.4e}")
+
+    if cfg.get("init_from_checkpoint", None) is not None:
+        init_from_checkpoint(cfg.init_from_checkpoint, model)
 
     # Dataloaders
     print("Building train loader...")
