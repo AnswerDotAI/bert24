@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from pathlib import Path
 import sys
 import warnings
+from pathlib import Path
 from typing import Optional, cast
 
 import torch
@@ -40,7 +40,7 @@ from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
 from src.callbacks.log_grad_norm import LogGradNorm
 from src.callbacks.packing_efficiency import PackingEfficency
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
-from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.scheduler import CosineInverseSqrtScheduler, OneMinusSqrtScheduler, WarmupStableDecayScheduler
 from src.sequence_packer import get_num_samples_in_packed_batch, split_packed_batch
 
 
@@ -186,6 +186,8 @@ def build_scheduler(cfg):
             warmup_schedule=cfg.get("warmup_schedule", "linear"),
             cooldown_schedule=cfg.get("cooldown_schedule", "linear"),
         )
+    elif cfg.name == "one_minus_sqrt":
+        return OneMinusSqrtScheduler(t_decay=cfg.t_decay, t_max=cfg.t_max, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
