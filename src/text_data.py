@@ -351,6 +351,34 @@ def build_no_streaming_dataset(
         pad_sequences=pad_sequences,
     )
 
+def consume_dataloader_logging_length_stats(dataset_size, data_iterable,cfg,sample_size):
+    n = dataset_size
+    print(f"Number of examples: {n:,}")
+    print(f"Sampling {sample_size:,} examples")
+
+    def progress_bar(curr, total, width=80):
+        filled = int((curr+1)/total*width)
+        bar = '*'*filled + '.'*(width-filled)
+        print(f'\r[{bar}] {curr+1:,}/{total:,}', end='' if curr < total else '\n')
+
+    lengths = {}
+    for (i,e) in enumerate(data_iterable):
+        progress_bar(i,sample_size)
+        if i >= sample_size:
+            break
+        length = e["input_ids"].numel()
+        lengths[length] = lengths.get(length, 0) + 1
+    lengths = {key: lengths[key] for key in sorted(lengths.keys(), reverse=True)}
+    print(f"Number of samples: {n:,}")
+    print(f"Lengths: {lengths}")
+    report = {
+              "cfg.dataset.local": cfg.dataset.local,
+              "cfg.dataset.shuffle" : cfg.dataset.shuffle,
+              "n": n, 
+              "lengths": lengths,
+              }
+    with open("data_stats.yaml", "w") as f:
+        om.save(report, f)
 
 def build_text_dataloader(
     cfg: DictConfig,
@@ -387,6 +415,15 @@ def build_text_dataloader(
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     # only use sequence packing if using the no_streaming_dataset
     if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
+        should_log_length_stats_and_exit = False
+        if should_log_length_stats_and_exit:
+            dataloader = DataLoader(
+                dataset,
+                sampler=sampler,
+            )
+            sample_size = 100_000
+            consume_dataloader_logging_length_stats(len(dataset),dataloader,cfg,sample_size)
+            exit(0)
         dataloader = DataLoader(
             dataset,
             collate_fn=lambda x: x,
