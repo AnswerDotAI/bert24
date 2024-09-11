@@ -463,7 +463,7 @@ def build_text_dataloader(
     # only use sequence packing if using the no_streaming_dataset
     if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
         
-        should_log_length_stats_and_exit = False
+        should_log_length_stats_and_exit = cfg.get("log_seq_length_stats_and_exit", False)
         if should_log_length_stats_and_exit:
             dataloader = DataLoader(
                 dataset,
@@ -499,7 +499,7 @@ def build_text_dataloader(
             batch_size_warmup_tokens=cfg.get("batch_size_warmup_tokens", None),
             world_size=dist.get_world_size(),
         )
-        should_log_packing_efficiency_and_exit = False
+        should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
         if should_log_packing_efficiency_and_exit:
             sample_size = 500
             consume_dataloader_logging_packing_efficiency_stats(len(dataset),
@@ -532,7 +532,7 @@ def build_text_dataloader(
             timeout=cfg.get("timeout", 0),
             sampler=sampler,
         )
-        should_log_packing_efficiency_and_exit = True
+        should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
         if should_log_packing_efficiency_and_exit:
             sample_size = 2_000
             consume_dataloader_logging_packing_efficiency_stats(len(dataset),
