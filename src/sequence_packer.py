@@ -264,7 +264,7 @@ class SequencePacker(ABC):
                     "labels": torch.from_numpy(labels),
                     "cu_seqlens": cu_seq_lens,
                     "max_seqlen": max_seq_lens,
-                    "attention_mask": torch.from_numpy(np.where(masked_batch == self.pad_token_id, 0, 1)),
+                    "attention_mask": torch.from_numpy(np.where(batch == self.pad_token_id, 0, 1)),
                 }
                 self._token_count += yieldval["attention_mask"].sum().item()
             # # assert isinstance(yieldval[0], torch.Tensor), f"Unexpected {type(yieldval[0])=}"
