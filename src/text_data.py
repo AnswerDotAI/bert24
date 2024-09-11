@@ -501,7 +501,7 @@ def build_text_dataloader(
         )
         should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
         if should_log_packing_efficiency_and_exit:
-            sample_size = 500
+            sample_size = 100
             consume_dataloader_logging_packing_efficiency_stats(len(dataset),
                                                                 sequence_packer,cfg,sample_size)
             exit(0)
@@ -534,7 +534,7 @@ def build_text_dataloader(
         )
         should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
         if should_log_packing_efficiency_and_exit:
-            sample_size = 2_000
+            sample_size = 100
             consume_dataloader_logging_packing_efficiency_stats(len(dataset),
                                                                 retval,cfg,sample_size)
             exit(0)
