@@ -37,7 +37,7 @@ run_single_eval() {
 # Function to run the evaluation jobs
 run_eval_jobs() {
     local checkpoints=(
-        "/home/rb/bert24_checkpoints/bert24-base-v2"
+        "/home/rb/bert24_checkpoints/bert24-large-v2"
     )
     
     for checkpoint in "${checkpoints[@]}"; do
@@ -68,3 +68,4 @@ while true; do
     log "Sleeping for 30 mins before next check"
     sleep 1800
 done
+
