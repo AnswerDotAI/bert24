@@ -259,7 +259,7 @@ def main(
 
     if not skip_reserve:
         mlmmlu_rookie_reserve = OrderedDict()
-        mlmmlu_rookie_reserve["seeds"] = seeds[:4]
+        mlmmlu_rookie_reserve["seeds"] = seeds[:3]
         mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
@@ -272,7 +272,7 @@ def main(
 
     if not skip_mnli:
         mnli = OrderedDict()
-        mnli["seeds"] = seeds[:3] # 
+        mnli["seeds"] = seeds[:3]
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
         tasks["mnli"] = mnli
 

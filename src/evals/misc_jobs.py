@@ -500,7 +500,7 @@ class MLMMLUReserveRookie(ClassificationJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "100ba",
+        eval_interval: str = "200ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 384,
         max_duration: Optional[str] = "3ep",
