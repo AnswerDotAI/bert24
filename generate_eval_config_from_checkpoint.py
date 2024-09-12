@@ -279,13 +279,13 @@ def main(
     if not skip_boolq:
         boolq = OrderedDict()
         boolq["seeds"] = seeds[:3]
-        boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "4ep"}
         tasks["boolq"] = boolq
 
     if not skip_wic:
         wic = OrderedDict()
         wic["seeds"] = seeds[:3]
-        wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "2ep"}
         tasks["wic"] = wic
 
     if not skip_ultrafeedback:
