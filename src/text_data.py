@@ -351,6 +351,89 @@ def build_no_streaming_dataset(
         pad_sequences=pad_sequences,
     )
 
+def consume_dataloader_logging_packing_efficiency_stats(example_count_size, 
+                                                        batch_iterable,
+                                                        cfg,
+                                                        batch_count_sample_size,
+                                                        dump_batch_index=None,
+                                                        ):
+    """
+    example_count_size: int - number of seqs in the underlying dataset
+    batch_iterable: Iterable - iterable over batches of pseqs (packed seqs)
+    batch_count_sample_size: int - number of batches to sample, for calculating packing efficiency 
+    dump_batch_index: int - index of a batch to dump the first row of.
+    """
+    n = example_count_size
+    print(f"Number of example seqs: {n:,}")
+    print(f"Sampling {batch_count_sample_size:,} batches of pseqs (packed seqs)")
+
+    def progress_bar(curr, total, width=80):
+        filled = int((curr+1)/total*width)
+        bar = '*'*filled + '.'*(width-filled)
+        print(f'\r[{bar}] {curr+1:,}/{total:,}', end='' if curr < total else '\n')
+
+    batch_pes = []
+    outgoing_pseq_length = None
+    for (batch_i,batch) in enumerate(batch_iterable):
+        progress_bar(batch_i,batch_count_sample_size)
+        if batch_i >= batch_count_sample_size:
+            break
+        batch_packing_efficiency = batch["attention_mask"].sum().item() / batch["attention_mask"].numel()
+        if not outgoing_pseq_length:
+            outgoing_pseq_length = batch["attention_mask"].shape[1]
+        if dump_batch_index is not None and batch_i == dump_batch_index:
+            d = {k:v.detach().cpu().numpy() for k,v in batch.items() if isinstance(v,torch.Tensor)}
+            for (k,nparray) in d.items():
+                row_to_save = 0
+                fname = f"batch_{batch_i}_{k}.txt"
+                np.savetxt(fname,nparray[row_to_save],fmt='%d')
+        batch_pes.append(batch_packing_efficiency)
+
+    batch_pes_np = np.array(batch_pes)
+    report = {
+        "cfg.sequence_packing": cfg.sequence_packing,
+              "cfg.dataset.local": cfg.dataset.local,
+              "cfg.dataset.shuffle" : cfg.dataset.shuffle,
+              "outgoing pseq length": outgoing_pseq_length,
+              "seqs count": n, 
+              "pseq batches sampled": batch_count_sample_size,
+                'packing_efficiency min':    float(np.min(batch_pes_np)),
+                'packing_efficiency max':    float(np.max(batch_pes_np)),
+                'packing_efficiency median': float(np.median(batch_pes_np)),
+                'packing_efficiency mean':   float(np.mean(batch_pes_np)),
+              "packing efficiencies": batch_pes,
+              }
+    with open("data_packing_efficiency_stats.yaml", "w") as f:
+        om.save(report, f)
+
+def consume_dataloader_logging_length_stats(dataset_size, data_iterable,cfg,sample_size):
+    n = dataset_size
+    print(f"Number of example seqs: {n:,}")
+    print(f"Sampling {sample_size:,} example seqs")
+
+    def progress_bar(curr, total, width=80):
+        filled = int((curr+1)/total*width)
+        bar = '*'*filled + '.'*(width-filled)
+        print(f'\r[{bar}] {curr+1:,}/{total:,}', end='' if curr < total else '\n')
+
+    lengths = {}
+    for (i,e) in enumerate(data_iterable):
+        progress_bar(i,sample_size)
+        if i >= sample_size:
+            break
+        length = e["input_ids"].numel()
+        lengths[length] = lengths.get(length, 0) + 1
+    lengths = {key: lengths[key] for key in sorted(lengths.keys(), reverse=True)}
+    print(f"Number of samples: {n:,}")
+    print(f"Lengths: {lengths}")
+    report = {
+              "cfg.dataset.local": cfg.dataset.local,
+              "cfg.dataset.shuffle" : cfg.dataset.shuffle,
+              "n": n, 
+              "lengths": lengths,
+              }
+    with open("data_seq_length_stats.yaml", "w") as f:
+        om.save(report, f)
 
 def build_text_dataloader(
     cfg: DictConfig,
@@ -387,6 +470,17 @@ def build_text_dataloader(
     mlm_probability = cfg.dataset.get("mlm_probability", None)
     # only use sequence packing if using the no_streaming_dataset
     if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
+        
+        should_log_length_stats_and_exit = cfg.get("log_seq_length_stats_and_exit", False)
+        if should_log_length_stats_and_exit:
+            dataloader = DataLoader(
+                dataset,
+                sampler=sampler,
+            )
+            sample_size = 100_000
+            consume_dataloader_logging_length_stats(len(dataset),dataloader,cfg,sample_size)
+            exit(0)
+
         dataloader = DataLoader(
             dataset,
             collate_fn=lambda x: x,
@@ -413,6 +507,12 @@ def build_text_dataloader(
             batch_size_warmup_tokens=cfg.get("batch_size_warmup_tokens", None),
             world_size=dist.get_world_size(),
         )
+        should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
+        if should_log_packing_efficiency_and_exit:
+            sample_size = 100
+            consume_dataloader_logging_packing_efficiency_stats(len(dataset), sequence_packer,cfg, sample_size)
+            exit(0)
+
         return BufferedIterable(sequence_packer, buffer_size=cfg.get("packing_prefetch_factor", 5))
     else:
         collate_fn = transformers.DataCollatorForLanguageModeling(
@@ -427,7 +527,7 @@ def build_text_dataloader(
                 base_collator=collate_fn, eos_token_id=eos_token_id, bos_token_id=bos_token_id
             )
 
-        return DataLoader(
+        retval =  DataLoader(
             dataset,
             collate_fn=collate_fn,
             batch_size=device_batch_size,
@@ -439,6 +539,13 @@ def build_text_dataloader(
             timeout=cfg.get("timeout", 0),
             sampler=sampler,
         )
+        should_log_packing_efficiency_and_exit = cfg.get("log_packing_effiency_stats_and_exit", False)
+        if should_log_packing_efficiency_and_exit:
+            sample_size = 100
+            consume_dataloader_logging_packing_efficiency_stats(len(dataset), retval, cfg, sample_size)
+            exit(0)
+
+        return retval
 
 
 class NoStreamingDataset(Dataset):
