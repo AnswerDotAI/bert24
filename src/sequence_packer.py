@@ -207,7 +207,7 @@ class SequencePacker(ABC):
         in the internal buffer.
         """
         items_added = 0
-        while (self.buffer_size - len(self.buffer)) > self.src_batch_size:
+        while (self.buffer_size - len(self.buffer)) >= self.src_batch_size:
             try:
                 # if pulling another batch would fetch more than the requested max, stop
                 if max_items_to_add < float("inf"):
@@ -221,8 +221,8 @@ class SequencePacker(ABC):
                 for item in incoming_batch:
                     if len(item["input_ids"]) > 0:  # ignore empty sequences
                         self.buffer.append(item["input_ids"])
-                items_added += len(incoming_batch)
-                self._seqs_consumed += len(incoming_batch)
+                        items_added += 1
+                        self._seqs_consumed += 1
             except StopIteration:
                 break
         return items_added
@@ -526,7 +526,7 @@ class BufferedIterator(Generic[T]):
                     return self.buffer.popleft()
 
 
-def split_packed_batch(batch: Any, microbatch_size: Union[int, float], strip_padding=True) -> Sequence:
+def split_packed_batch(batch: Any, microbatch_size: Union[int, float], padding_tolerance=1.0) -> Sequence:
     # NOTE: Packed sequences are already packed into a microbatch size worth of tokens.
     # So to correctly return a microbatch worth of data, we will simply return each item (i.e. microbatch_size 1)
 
@@ -536,24 +536,34 @@ def split_packed_batch(batch: Any, microbatch_size: Union[int, float], strip_pad
     split_attention_masks = [x.squeeze() for x in batch["attention_mask"].split(1)]
     split_cu_seqlens = batch["cu_seqlens"]
 
-    if strip_padding:
-        last_non_pad = [x.nonzero().max() for x in split_attention_masks]
-        split_inputs = [x[: lnp + 1] for x, lnp in zip(split_inputs, last_non_pad)]
-        split_labels = [x[: lnp + 1] for x, lnp in zip(split_labels, last_non_pad)]
-        split_cu_seqlens = [x[:-1] if att[-1] == 0 else x for x, att in zip(split_cu_seqlens, split_attention_masks)]
-        split_attention_masks = [x[: lnp + 1] for x, lnp in zip(split_attention_masks, last_non_pad)]
-        assert all([x.shape[-1] == y[-1] for x, y in zip(split_inputs, split_cu_seqlens)])
+    result = []
+    for i in range(num_items):
+        attention_mask = split_attention_masks[i]
+        padding_amount = 1 - (attention_mask.sum() / len(attention_mask))
 
-    return [
-        {
-            "input_ids": split_inputs[i],
-            "labels": split_labels[i],
-            "cu_seqlens": split_cu_seqlens[i],
-            "max_seqlen": batch["max_seqlen"][i],
-            "attention_mask": split_attention_masks[i],
-        }
-        for i in range(num_items)
-    ]
+        if padding_amount > padding_tolerance:
+            last_non_pad = attention_mask.nonzero().max()
+            input_ids = split_inputs[i][: last_non_pad + 1]
+            labels = split_labels[i][: last_non_pad + 1]
+            cu_seqlens = split_cu_seqlens[i][:-1]
+            attention_mask = attention_mask[: last_non_pad + 1]
+        else:
+            input_ids = split_inputs[i]
+            labels = split_labels[i]
+            cu_seqlens = split_cu_seqlens[i]
+
+        result.append(
+            {
+                "input_ids": input_ids,
+                "labels": labels,
+                "cu_seqlens": cu_seqlens,
+                "max_seqlen": batch["max_seqlen"][i],
+                "attention_mask": attention_mask,
+            }
+        )
+
+    assert all([x["input_ids"].shape[-1] == y["cu_seqlens"][-1] for x, y in zip(result, result)])
+    return result
 
 
 def get_num_samples_in_packed_batch(batch: Batch) -> int:

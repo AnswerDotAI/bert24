@@ -518,7 +518,7 @@ def test_split_packed_batch():
         },
     ]
 
-    out_microbatches = [split_packed_batch(x, 3, strip_padding=False) for x in input_batches]
+    out_microbatches = [split_packed_batch(x, 3, padding_tolerance=1.0) for x in input_batches]
 
     # expected given a seed of 42!
     out_expected = [
@@ -672,7 +672,7 @@ def test_split_packed_batch_strip_padding():
         },
     ]
 
-    out_microbatches = [split_packed_batch(x, 3, strip_padding=True) for x in input_batches]
+    out_microbatches = [split_packed_batch(x, 3, padding_tolerance=0.2) for x in input_batches]
 
     # expected given a seed of 42!
     out_expected = [
@@ -692,15 +692,15 @@ def test_split_packed_batch_strip_padding():
             },
             {
                 "input_ids": tensor(
-                    [5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6],
+                    [5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, -1, -1],
                 ),
                 "labels": tensor(
-                    [-3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3],
+                    [-3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3],
                 ),
-                "cu_seqlens": tensor([0, 6, 13], dtype=torch.int32),
+                "cu_seqlens": tensor([0, 6, 13, 15], dtype=torch.int32),
                 "max_seqlen": 7,
                 "attention_mask": tensor(
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
                 ),
             },
             {
@@ -720,15 +720,15 @@ def test_split_packed_batch_strip_padding():
         [
             {
                 "input_ids": tensor(
-                    [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21],
+                    [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, -1],
                 ),
                 "labels": tensor(
-                    [-3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3],
+                    [-3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3, -3],
                 ),
-                "cu_seqlens": tensor([0, 10, 14], dtype=torch.int32),
+                "cu_seqlens": tensor([0, 10, 14, 15], dtype=torch.int32),
                 "max_seqlen": 10,
                 "attention_mask": tensor(
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
                 ),
             },
             {
