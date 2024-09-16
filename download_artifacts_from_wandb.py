@@ -1,21 +1,12 @@
+import argparse
 import itertools
 import os
 
 import wandb
 
-###############
-# WANDB CONFIGS
-WANDB_ENTITY = "bert24"
-WANDB_PROJECT = "bert24-large-in-run-evals"  # TODO: avoid hard coding
-LOCAL_DOWNLOAD_DIR = os.path.expanduser("~/bert24_checkpoints/")
-################
 
-# Create download directory if it doesn't exist
-os.makedirs(LOCAL_DOWNLOAD_DIR, exist_ok=True)
-
-
-def get_model_artifacts(api):
-    runs = api.runs(f"{WANDB_ENTITY}/{WANDB_PROJECT}")
+def get_model_artifacts(api, entity, project):
+    runs = api.runs(f"{entity}/{project}")
     return list(itertools.chain(*[[(run, a) for a in run.logged_artifacts() if a.type == "model"] for run in runs]))
 
 
@@ -32,16 +23,16 @@ def get_ba(artifact_name):
     return ba
 
 
-def main(api):
+def main(api, args):
     print("Fetching all model artifacts...")
-    artifacts = get_model_artifacts(api)
+    artifacts = get_model_artifacts(api, args.wandb_entity, args.wandb_project)
     print(f"Found {len(artifacts)} model artifacts.")
 
     for run, artifact in artifacts:
         print(f"Run: {run.name}")
         print(f"Artifact: {artifact.name}")
 
-        base_dir = os.path.join(LOCAL_DOWNLOAD_DIR, get_base_folder(artifact.name))
+        base_dir = os.path.join(args.local_download_dir, get_base_folder(artifact.name))
 
         os.makedirs(base_dir, exist_ok=True)
         out_dir = os.path.join(base_dir, artifact.name)
@@ -61,8 +52,8 @@ def main(api):
             "artifact_updated_at": artifact.updated_at,
             "run_id": run.id,
             "run_name": run.name,
-            "project": WANDB_PROJECT,
-            "entity": WANDB_ENTITY,
+            "project": args.wandb_project,
+            "entity": args.wandb_entity,
         }
 
         with open(meta_fn, "w") as fd:
@@ -70,8 +61,21 @@ def main(api):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download WandB artifacts")
+    parser.add_argument("--wandb_entity", default="bert24", help="WandB entity name")
+    parser.add_argument("--wandb_project", default="bert24-large-in-run-evals", help="WandB project name")
+    parser.add_argument(
+        "--local_download_dir",
+        default=os.path.expanduser("~/bert24_checkpoints/"),
+        help="Local directory to download artifacts",
+    )
+    args = parser.parse_args()
+
+    # Create download directory if it doesn't exist
+    os.makedirs(args.local_download_dir, exist_ok=True)
+
     # Usage
     # crontab -e
     # 0 * * * * WANDB_API_KEY=api_key /opt/conda/envs/bert24/bin/python /home/rb/bert24/download_artifacts_from_wandb.py >> /home/rb/wandb_checkpoint_downloader.log 2>&1
     api = wandb.Api(api_key=os.environ.get("WANDB_API_KEY"))
-    main(api)
+    main(api, args)

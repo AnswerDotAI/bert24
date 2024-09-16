@@ -288,6 +288,7 @@ def generate_eval_configs(
     wandb_project: Optional[str],
     wandb_entity: Optional[str],
     track_run: bool,
+    track_run_project: Optional[str],
     pooling_type: Optional[str],
     head_class_act: Optional[str],
     head_class_norm: Optional[str],
@@ -326,6 +327,7 @@ def generate_eval_configs(
                 cmd.extend(["--wandb-entity", wandb_entity])
             if track_run:
                 cmd.append("--track-run")
+                cmd.extend(["--track-run-project", track_run_project])
 
             # classification head options
             if pooling_type:
@@ -419,6 +421,7 @@ def main(
     wandb_project: Annotated[Optional[str], Option(help="wandb project for the run", rich_help_panel="W&B")] = None,
     wandb_entity: Annotated[Optional[str], Option(help="wandb entity for the project", rich_help_panel="W&B")] = None,
     track_run: Annotated[bool, Option("--track-run", help="Track the eval run with wandb", rich_help_panel="W&B")] = False,
+    track_run_project: Annotated[Optional[str], Option(help="wandb project for tracking the run", rich_help_panel="W&B")] = None,
     pooling_type: Annotated[Optional[str], Option(help="Pooling type for the classification head", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_act: Annotated[Optional[str], Option(help="Classification head activation function", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_norm: Annotated[Optional[str], Option(help="Classification head normalization function", show_default=False, rich_help_panel="Model Options")] = None,
@@ -464,6 +467,7 @@ def main(
             wandb_project=wandb_project,
             wandb_entity=wandb_entity,
             track_run=track_run,
+            track_run_project=track_run_project,
             pooling_type=pooling_type,
             head_class_act=head_class_act,
             head_class_norm=head_class_norm,

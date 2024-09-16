@@ -120,6 +120,7 @@ def main(
     wandb_project: Annotated[Optional[str], Option(help="wandb project for the run", rich_help_panel="W&B")] = None,
     wandb_entity: Annotated[Optional[str], Option(help="wandb entity for the project", rich_help_panel="W&B")] = None,
     track_run: Annotated[bool, Option("--track-run", help="Track the eval run with wandb", rich_help_panel="W&B")] = False,
+    track_run_project: Annotated[Optional[str], Option(help="wandb project for tracking the run", rich_help_panel="W&B")] = None,
     pooling_type: Annotated[Optional[str], Option(help="Pooling type for the classification head", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_act: Annotated[Optional[str], Option(help="Classification head activation function. Defaults to hidden_act if set, then tanh", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_norm: Annotated[Optional[str], Option(help="Classification head normalization function", show_default=False, rich_help_panel="Model Options")] = None,
@@ -229,11 +230,14 @@ def main(
     new_config["save_finetune_checkpoint_folder"] = "${save_finetune_checkpoint_prefix}/${base_run_name}"
 
     loggers = OrderedDict()
-    wandb_config = OrderedDict()
-    wandb_config["project"] = "bert24-large-v2-evals" # TODO: avoid hard coding
-    wandb_config["entity"] = "bert24" # wandb_entity
-    loggers["wandb"] = wandb_config
+
     if track_run:
+        wandb_config = OrderedDict()
+        assert wandb_entity is not None, "set wandb entity"
+        assert track_run_project is not None, "set wandb project for tracking"
+        wandb_config["project"] = track_run_project # "bert24-large-v2-evals"
+        wandb_config["entity"] = wandb_entity # "bert24"
+        loggers["wandb"] = wandb_config
         new_config["loggers"] = loggers
 
     callbacks = OrderedDict()

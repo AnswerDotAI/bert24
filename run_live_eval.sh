@@ -26,6 +26,8 @@ run_single_eval() {
         --skip-ultrafeedback \
         --parallel \
         --override-existing-symlinks \
+        --track-run-project "bert24-large-v2-evals" \
+        --wandb-entity "bert24" \
         --track-run; then
         log "Evaluation completed successfully for $checkpoint_path"
     else
