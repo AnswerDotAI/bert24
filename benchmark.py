@@ -122,13 +122,13 @@ def get_model(
         raise ValueError(f"Invalid model type: {model_type}")
 
 
-def get_gpu_power():
-    handle = pynvml.nvmlDeviceGetHandleByIndex(1)  # Assuming we're using the first GPU
+def get_gpu_power(gpu_idx=0):
+    handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_idx)  # Assuming we're using the first GPU
     power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0  # Convert mW to W
     return power
 
 
-def benchmark_training(model, dataloader, num_warmup_batches=10):
+def benchmark_training(model, dataloader, num_warmup_batches=10, gpu_idx=0):
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     device = next(model.parameters()).device
@@ -172,7 +172,7 @@ def benchmark_training(model, dataloader, num_warmup_batches=10):
             optimizer.zero_grad()
             progress.update(train_task, advance=1)
             if i % 10 == 0:
-                power_readings.append(get_gpu_power())
+                power_readings.append(get_gpu_power(gpu_idx))
                 max_allocated_memory = max(max_allocated_memory, torch.cuda.max_memory_allocated())
                 max_reserved_memory = max(max_reserved_memory, torch.cuda.max_memory_reserved())
         epoch_end_time = time.time()
@@ -184,7 +184,7 @@ def benchmark_training(model, dataloader, num_warmup_batches=10):
     return avg_epoch_time, avg_power, max_power, max_allocated_memory, max_reserved_memory, loss.item()
 
 
-def benchmark_inference(model, dataloader, num_warmup_batches=10):
+def benchmark_inference(model, dataloader, num_warmup_batches=10, gpu_idx=0):
     model.eval()
     device = next(model.parameters()).device
 
@@ -221,7 +221,7 @@ def benchmark_inference(model, dataloader, num_warmup_batches=10):
                     _ = model(input_ids, attention_mask=attention_mask)
                 progress.update(inference_task, advance=1)
                 if i % 10 == 0:
-                    power_readings.append(get_gpu_power())
+                    power_readings.append(get_gpu_power(gpu_idx))
                     max_allocated_memory = max(max_allocated_memory, torch.cuda.max_memory_allocated())
                     max_reserved_memory = max(max_reserved_memory, torch.cuda.max_memory_reserved())
             run_end_time = time.time()
@@ -240,7 +240,6 @@ def create_dummy_data(num_samples, seq_length, vocab_size, model_type):
         labels = torch.randint(0, vocab_size, (num_samples, seq_length))
         mask = torch.rand(num_samples, seq_length) < 0.7
         labels[mask] = -100
-        print(labels[0])
     elif model_type == ModelType.seqcls:
         labels = torch.randint(0, 5, (num_samples, 1))
     else:
@@ -266,7 +265,7 @@ def main(
     global_attn_every_n_layers: Annotated[List[int], Option(help="Use global attention every `n` layers and sliding window for the rest. -1 to disable.")] = [-1],
     normalization: Annotated[List[str], Option(help="Normalization type: layernorm or triton_layernorm")] = ["layernorm"],
     compile_model: Annotated[List[bool], Option(help="Compile model")] = [True],
-    masked_prediction: Annotated[List[bool], Option(help="Only pass the masked tokens through the final MLM layers")] = [False],
+    masked_prediction: Annotated[List[bool], Option(help="Only pass the masked tokens through the final MLM layers")] = [True],
     model_type: Annotated[List[ModelType], Option(help="Model type: MLM or Multiple Choice")] = [ModelType.mlm],
     vocab_size: Annotated[List[int], Option(help="Vocabulary size")] = [32768],
     num_samples: Annotated[int, Option(help="Number of samples")] = 1000,
@@ -277,6 +276,7 @@ def main(
     print_model: Annotated[bool, Option(help="Print model")] = False,
     num_workers: Annotated[int, Option(help="Number of workers")] = 8,
     skip_inference: Annotated[bool, Option(help="Skip inference")] = False,
+    gpu_idx: Annotated[int, Option(help="GPU index for power measurements")] = 0,
     config: Annotated[
         Optional[Path],
         Option(
@@ -377,7 +377,7 @@ def main(
 
         print("Training benchmark:")
         train_run_time, avg_train_power, max_train_power, max_train_allocated_memory, max_train_reserved_memory, loss = (
-            benchmark_training(model, dataloader, num_warmup_batches=25)
+            benchmark_training(model, dataloader, num_warmup_batches=25, gpu_idx=gpu_idx)
         )
 
         model = None
@@ -390,7 +390,7 @@ def main(
             model = get_model(**config_params).to(device)
             print("\nInference benchmark:")
             infer_run_time, avg_infer_power, max_infer_power, max_infer_allocated_memory, max_infer_reserved_memory = (
-                benchmark_inference(model, dataloader, num_warmup_batches=50)
+                benchmark_inference(model, dataloader, num_warmup_batches=50, gpu_idx=gpu_idx)
             )
 
         # Calculate tokens per second

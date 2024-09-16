@@ -253,3 +253,37 @@ class CosineInverseSqrtScheduler(ComposerScheduler):
                 f"same unit as the trainer's max_duration parameter."
             ),
         )
+
+
+class OneMinusSqrtScheduler(ComposerScheduler):
+    """
+    Decays the learning rate according to a 1 - sqrt function, without an initial warmup phase.
+    The learning rate decays from 1 to alpha_f according to the formula:
+    f(n, N_T, N_C) = alpha_f + (1 - alpha_f)(1 - sqrt((n - (N_T - N_C)) / N_C))
+    where N_T is t_max and N_C is t_decay.
+    """
+
+    def __init__(
+        self,
+        t_decay: Union[str, Time] = "0.1dur",
+        t_max: Union[str, Time] = "1dur",
+        alpha_f: float = 0.1,
+    ):
+        self.t_decay = t_decay
+        self.t_max = t_max
+        self.alpha_f = alpha_f
+
+    def __call__(self, state: State, ssr: float = 1.0):
+        assert state.max_duration is not None, "max_duration should be set whenever schedulers are invoked"
+
+        t_decay = _convert_time(self.t_decay, state)
+        t_max = _convert_time(self.t_max, state, ssr=ssr)
+
+        current_time = state.timestamp.get(t_max.unit)
+
+        if current_time <= t_max - t_decay:
+            return 1.0
+        else:
+            relative_time = (current_time - (t_max - t_decay)) / t_decay
+            lr_scale = self.alpha_f + (1 - self.alpha_f) * (1 - math.sqrt(relative_time.value))
+            return max(self.alpha_f, lr_scale)

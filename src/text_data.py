@@ -1,12 +1,18 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+# Copyright 2024 OLMo authors
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a StreamingTextDataset dataset and dataloader for training."""
 
+import logging
+import math
 import os
+import sys
 import json
 from itertools import islice
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -23,7 +29,44 @@ from composer.utils import dist
 
 from transformers.tokenization_utils_base import BatchEncoding
 
+# Add src folder root to path to allow us to use relative imports regardless of what directory the script is run from
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+
+from src.sequence_packer import BufferedIterable, GreedyBestFitSequencePacker
+
 Tokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+
+logger = logging.getLogger(__name__)
+
+
+# Subclass DistributedSampler to use PCG64DXSM for shuffling
+class DistributedSamplerPCG64DXSM(DistributedSampler):
+    def __iter__(self) -> Iterator[int]:
+        if self.shuffle:
+            # deterministically shuffle based on epoch and seed
+            # use numpy's RNG PCG64DXSM instead of torch.randperm
+            rng = np.random.Generator(np.random.PCG64DXSM(self.seed + self.epoch))
+            indices = rng.permutation(len(self.dataset)).tolist()  # type: ignore[arg-type]
+        else:
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
+
+        if not self.drop_last:
+            # add extra samples to make it evenly divisible
+            padding_size = self.total_size - len(indices)
+            if padding_size <= len(indices):
+                indices += indices[:padding_size]
+            else:
+                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
+        else:
+            # remove tail of data to make it evenly divisible.
+            indices = indices[: self.total_size]
+        assert len(indices) == self.total_size
+
+        # subsample
+        indices = indices[self.rank : self.total_size : self.num_replicas]
+        assert len(indices) == self.num_samples
+
+        return iter(indices)
 
 
 def build_tokenizer(
@@ -294,21 +337,26 @@ def build_streaming_dataset(
     )
     return dataset
 
+
 def build_no_streaming_dataset(
     cfg: DictConfig,
     tokenizer: Tokenizer,
+    pad_sequences: bool = True,
 ):
-    return NoStreamingDataset(    
+    return NoStreamingDataset(
         tokenizer=tokenizer,
         local=cfg.dataset.get("local", None),
         split=cfg.dataset.get("split", None),
         max_seq_len=cfg.dataset.max_seq_len,
+        pad_sequences=pad_sequences,
     )
+
 
 def build_text_dataloader(
     cfg: DictConfig,
     tokenizer: Tokenizer,
     device_batch_size: int,
+    device_microbatch_size: int,
 ):
     assert cfg.name == "text", f"Tried to build text dataloader with cfg.name={cfg.name}"
     if cfg.dataset.get("group_method", None) is not None:
@@ -323,56 +371,97 @@ def build_text_dataloader(
         sampler = None
     else:
         assert cfg.dataset.get("local", None) is not None, "Local path must be provided when not using streaming"
-        dataset = build_no_streaming_dataset(cfg, tokenizer)
-        sampler = DistributedSampler(
-            dataset, 
-            num_replicas=dist.get_world_size(), 
-            rank=dist.get_global_rank(), 
+        # sequence packing should never use padded sequences, regular dataloaders may if tokenizing on the fly
+        dataset = build_no_streaming_dataset(
+            cfg, tokenizer=tokenizer, pad_sequences=not cfg.get("sequence_packing", False)
+        )
+        sampler = DistributedSamplerPCG64DXSM(
+            dataset,
+            num_replicas=dist.get_world_size(),
+            rank=dist.get_global_rank(),
             shuffle=cfg.dataset.get("shuffle", False),
             seed=cfg.dataset.get("shuffle_seed", 9176),
-            drop_last=cfg.drop_last
-            )
-
-    mlm_probability = cfg.dataset.get("mlm_probability", None)
-    collate_fn = transformers.DataCollatorForLanguageModeling(
-        tokenizer=dataset.tokenizer, mlm=mlm_probability is not None, mlm_probability=mlm_probability
-    )
-
-    eos_token_id = cfg.dataset.get("eos_token_id")
-    bos_token_id = cfg.dataset.get("bos_token_id")
-    if (eos_token_id is not None) or (bos_token_id is not None):
-        # Note: Will raise an error if both are non-None
-        collate_fn = ConcatenatedSequenceCollatorWrapper(
-            base_collator=collate_fn, eos_token_id=eos_token_id, bos_token_id=bos_token_id
+            drop_last=cfg.drop_last,
         )
 
-    return DataLoader(
-        dataset,
-        collate_fn=collate_fn,
-        batch_size=device_batch_size,
-        drop_last=cfg.drop_last,
-        num_workers=cfg.num_workers,
-        pin_memory=cfg.get("pin_memory", True),
-        prefetch_factor=cfg.get("prefetch_factor", 2),
-        persistent_workers=cfg.get("persistent_workers", True),
-        timeout=cfg.get("timeout", 0),
-        sampler=sampler
-    )
+    mlm_probability = cfg.dataset.get("mlm_probability", None)
+    # only use sequence packing if using the no_streaming_dataset
+    if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
+        dataloader = DataLoader(
+            dataset,
+            collate_fn=lambda x: x,
+            batch_size=device_batch_size,
+            drop_last=False,
+            num_workers=cfg.num_workers,
+            pin_memory=cfg.get("pin_memory", True),
+            prefetch_factor=cfg.get("prefetch_factor", 2),
+            persistent_workers=cfg.get("persistent_workers", True),
+            timeout=cfg.get("timeout", 0),
+            sampler=sampler,
+        )
+        sequence_packer = GreedyBestFitSequencePacker.from_composer(
+            dataloader,
+            batch_size=device_batch_size,
+            micro_batch_size=device_microbatch_size,
+            max_seq_len=cfg.dataset.max_seq_len,
+            buffer_size=cfg.get("packing_buffer_size", 5 * device_batch_size),
+            mask_token_id=tokenizer.mask_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            mask_prob=mlm_probability,
+            seed=cfg.dataset.get("shuffle_seed", 42),
+            batch_size_warmup_min_size=cfg.get("batch_size_warmup_min_size", None),
+            batch_size_warmup_tokens=cfg.get("batch_size_warmup_tokens", None),
+            world_size=dist.get_world_size(),
+        )
+        return BufferedIterable(sequence_packer, buffer_size=cfg.get("packing_prefetch_factor", 5))
+    else:
+        collate_fn = transformers.DataCollatorForLanguageModeling(
+            tokenizer=dataset.tokenizer, mlm=mlm_probability is not None, mlm_probability=mlm_probability
+        )
+
+        eos_token_id = cfg.dataset.get("eos_token_id")
+        bos_token_id = cfg.dataset.get("bos_token_id")
+        if (eos_token_id is not None) or (bos_token_id is not None):
+            # Note: Will raise an error if both are non-None
+            collate_fn = ConcatenatedSequenceCollatorWrapper(
+                base_collator=collate_fn, eos_token_id=eos_token_id, bos_token_id=bos_token_id
+            )
+
+        return DataLoader(
+            dataset,
+            collate_fn=collate_fn,
+            batch_size=device_batch_size,
+            drop_last=cfg.drop_last,
+            num_workers=cfg.num_workers,
+            pin_memory=cfg.get("pin_memory", True),
+            prefetch_factor=cfg.get("prefetch_factor", 2),
+            persistent_workers=cfg.get("persistent_workers", True),
+            timeout=cfg.get("timeout", 0),
+            sampler=sampler,
+        )
 
 
 class NoStreamingDataset(Dataset):
     """
     A dataset class that can read data with raw mds-format (mosaic streaming-format without compression)
-    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local, 
+    from local. In comparison with `StreamingTextDataset` that also can read data with mds-format from local,
     this class is slimmer, more efficient, and does not contain redundant code required for streaming.
     """
-    def __init__(self, local: str, split: str, max_seq_len: int, tokenizer: Optional[Tokenizer] = None) -> None:
+
+    def __init__(
+        self,
+        local: str,
+        split: str,
+        max_seq_len: int,
+        tokenizer: Optional[Tokenizer] = None,
+        pad_sequences: bool = True,
+    ) -> None:
         super().__init__()
-        split_path = os.path.join(local,split)
+        split_path = os.path.join(local, split)
         index_file_path = os.path.join(split_path, "index.json")
         obj = json.load(open(index_file_path))
         self.shards = []
-        for info in obj['shards']:
+        for info in obj["shards"]:
             shard = reader_from_json(local, split, info)
             raw_filename = os.path.join(shard.dirname, shard.split, shard.raw_data.basename)
             assert os.path.isfile(raw_filename), f"Raw file {raw_filename} does not exist"
@@ -383,6 +472,7 @@ class NoStreamingDataset(Dataset):
         self.spanner = Spanner(samples_per_shard)
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
+        self.pad_sequences = pad_sequences
 
     def _tokenize(self, text_sample):
         assert self.tokenizer is not None, "Tokenizer required if data is not pretokenized"
@@ -390,7 +480,12 @@ class NoStreamingDataset(Dataset):
             # Some tokenizers (e.g. GPT2 tokenizer) have no padding token which causes bugs
             raise RuntimeError("If tokenizing on-the-fly, tokenizer must have a pad_token_id")
 
-        return self.tokenizer(text_sample["text"], truncation=True, padding="max_length", max_length=self.max_seq_len)
+        return self.tokenizer(
+            text_sample["text"],
+            truncation=True,
+            padding="max_length" if self.pad_sequences else False,
+            max_length=self.max_seq_len,
+        )
 
     def __getitem__(self, index: int):
         shard_id, shard_sample_id = self.spanner[index]
@@ -399,7 +494,12 @@ class NoStreamingDataset(Dataset):
         if "input_ids" in sample:
             for k in list(sample.keys()):
                 if isinstance(sample[k], np.ndarray):
-                    sample[k] = sample[k][:self.max_seq_len]
+                    if sample[k][0] != 50281:
+                        sample[k] = np.insert(sample[k], 0, 50281)[: self.max_seq_len]
+                    if sample[k][-1] != 50282:
+                        sample[k] = sample[k][: self.max_seq_len - 1]
+                        sample[k] = np.append(sample[k], 50282)
+                    sample[k] = sample[k][: self.max_seq_len]
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
@@ -412,6 +512,7 @@ class NoStreamingDataset(Dataset):
 
     def __len__(self):
         return self.len
+
 
 # Helpful to test if your dataloader is working locally
 # Run `python data.py  --local_path [local] [--remote_path remote, optional]` and verify that batches are printed out

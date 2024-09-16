@@ -4,9 +4,14 @@
 import os
 import sys
 import warnings
+from pathlib import Path
 from typing import Optional, cast
 
+import torch
 from torch import nn
+
+from src.bert_layers.configuration_bert import FlexBertConfig
+from src.bert_layers.model import init_mlm_model_from_pretrained
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -22,7 +27,8 @@ from composer.optim.scheduler import (
     LinearWithWarmupScheduler,
 )
 from composer.utils import dist, reproducibility
-from omegaconf import DictConfig
+from composer.utils.checkpoint import _ensure_valid_checkpoint
+from omegaconf import DictConfig, OmegaConf
 from omegaconf import OmegaConf as om
 from torch.optim import AdamW
 
@@ -30,8 +36,12 @@ import src.flex_bert as flex_bert_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
+from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
+from src.callbacks.log_grad_norm import LogGradNorm
+from src.callbacks.packing_efficiency import PackingEfficency
 from src.callbacks.scheduled_gc import ScheduledGarbageCollector
-from src.scheduler import CosineInverseSqrtScheduler, WarmupStableDecayScheduler
+from src.scheduler import CosineInverseSqrtScheduler, OneMinusSqrtScheduler, WarmupStableDecayScheduler
+from src.sequence_packer import get_num_samples_in_packed_batch, split_packed_batch
 
 
 def update_batch_size_info(cfg: DictConfig):
@@ -134,7 +144,16 @@ def build_callback(name, kwargs):
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
         )
     elif name == "scheduled_gc":
-        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 10000))
+        return ScheduledGarbageCollector(batch_interval=kwargs.get("batch_interval", 100_000))
+    elif name == "log_grad_norm":
+        return LogGradNorm(
+            log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
+            batch_log_interval=kwargs.get("batch_log_interval", 10),
+        )
+    elif name == "dataloader_speed":
+        return DataloaderSpeedMonitor()
+    elif name == "packing_efficiency":
+        return PackingEfficency(log_interval=kwargs.get("log_interval", 10))
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
@@ -167,6 +186,8 @@ def build_scheduler(cfg):
             warmup_schedule=cfg.get("warmup_schedule", "linear"),
             cooldown_schedule=cfg.get("cooldown_schedule", "linear"),
         )
+    elif cfg.name == "one_minus_sqrt":
+        return OneMinusSqrtScheduler(t_decay=cfg.t_decay, t_max=cfg.t_max, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
 
@@ -187,7 +208,10 @@ def build_optimizer(cfg, model):
         return AdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
     elif cfg.name == "stableadamw":
         try:
-            from optimi import StableAdamW
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
         except ImportError:
             raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
 
@@ -198,7 +222,10 @@ def build_optimizer(cfg, model):
         return StableAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
     elif cfg.name == "decoupled_stableadamw":
         try:
-            from optimi import StableAdamW
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
         except ImportError:
             raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
 
@@ -218,13 +245,39 @@ def get_num_tokens_in_batch_unpadded(batch: dict):
     return batch["attention_mask"].sum().item()
 
 
-def build_dataloader(cfg, tokenizer, device_batch_size, count_padding_tokens=True):
+def build_dataloader(
+    cfg,
+    tokenizer,
+    device_batch_size,
+    count_padding_tokens=True,
+    device_microbatch_size: int | None = None,
+):
+    split_batch_fn = None
+    num_samples_in_batch_fn = None
+    num_tokens_in_batch_fn = None
+
     if cfg.name == "text":
-        data_loader = text_data_module.build_text_dataloader(cfg, tokenizer, device_batch_size)
+        data_loader = text_data_module.build_text_dataloader(
+            cfg,
+            tokenizer,
+            device_batch_size,
+            device_microbatch_size=device_microbatch_size,
+        )
     else:
         raise ValueError(f"Not sure how to build dataloader with config: {cfg}")
+
     if not count_padding_tokens:
-        data_loader = DataSpec(data_loader, get_num_tokens_in_batch=get_num_tokens_in_batch_unpadded)
+        num_tokens_in_batch_fn = get_num_tokens_in_batch_unpadded
+    if cfg.get("sequence_packing", False):
+        split_batch_fn = split_packed_batch
+        num_samples_in_batch_fn = get_num_samples_in_packed_batch
+
+    data_loader = DataSpec(
+        data_loader,
+        get_num_tokens_in_batch=num_tokens_in_batch_fn,
+        split_batch=split_batch_fn,
+        get_num_samples_in_batch=num_samples_in_batch_fn,
+    )
     return data_loader
 
 
@@ -259,6 +312,38 @@ def build_model(cfg: DictConfig):
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 
 
+def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
+    print(f"Initializing model from checkpoint {cfg.checkpoint_run_name}")
+    checkpoint_cfg = Path(cfg.checkpoint_cfg)
+    assert checkpoint_cfg.exists(), f"Checkpoint config {checkpoint_cfg} does not exist"
+    pretrained_cfg = om.load(checkpoint_cfg)
+
+    pretrained_model = build_model(pretrained_cfg.model)
+    n_params = sum(p.numel() for p in pretrained_model.parameters())
+
+    checkpoint_filepath = Path(cfg.checkpoint_load_path) / f"{cfg.checkpoint_run_name}" / "latest-rank0.pt"
+    assert checkpoint_filepath.exists(), f"Checkpoint {checkpoint_filepath} does not exist"
+    state = torch.load(_ensure_valid_checkpoint(checkpoint_filepath), map_location="cpu")
+
+    state_dict = state.get("state", {})
+    model_state = state_dict.get("model", {})
+    assert len(model_state) > 0, "Model state is empty, please check the checkpoint and checkpoint path"
+
+    pretrained_model.load_state_dict(model_state)
+
+    if isinstance(pretrained_cfg.model.model_config, DictConfig):
+        model_config = OmegaConf.to_container(pretrained_cfg.model.model_config, resolve=True)
+    pretrained_config = FlexBertConfig.from_pretrained(pretrained_cfg.model.pretrained_model_name, **model_config)
+
+    init_mlm_model_from_pretrained(
+        config=pretrained_config,
+        pretrained_model=pretrained_model.model,
+        new_model=new_model.model,
+        mode=cfg.get("mode", "tile_weights_from_middle"),
+    )
+    print(f"Initalized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
+
+
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:
     print("Training using config: ")
     print(om.to_yaml(cfg))
@@ -273,27 +358,33 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{n_params=:.4e}")
 
+    if cfg.get("init_from_checkpoint", None) is not None:
+        init_from_checkpoint(cfg.init_from_checkpoint, model)
+
     # Dataloaders
     print("Building train loader...")
-    count_padding_tokens = cfg.get("count_padding_tokens", True)
     train_loader = build_dataloader(
-        cfg.train_loader,
-        model.tokenizer,
-        cfg.global_train_batch_size // dist.get_world_size(),
-        count_padding_tokens,
+        cfg=cfg.train_loader,
+        tokenizer=model.tokenizer,
+        device_batch_size=cfg.global_train_batch_size // dist.get_world_size(),
+        count_padding_tokens=cfg.get("count_padding_tokens", True),
+        device_microbatch_size=cfg.device_train_microbatch_size,
     )
-    print("Building eval loader...")
-    global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
-    eval_loader = build_dataloader(
-        cfg.eval_loader,
-        model.tokenizer,
-        cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
-    )
-    eval_evaluator = Evaluator(
-        label="eval",
-        dataloader=eval_loader,
-        device_eval_microbatch_size=cfg.get("device_eval_microbatch_size", None),
-    )
+    if cfg.get("eval_loader", None) is not None:
+        print("Building eval loader...")
+        global_eval_batch_size = cfg.get("global_eval_batch_size", cfg.global_train_batch_size)
+        eval_loader = build_dataloader(
+            cfg=cfg.eval_loader,
+            tokenizer=model.tokenizer,
+            device_batch_size=cfg.get("device_eval_batch_size", global_eval_batch_size // dist.get_world_size()),
+        )
+        eval_evaluator = Evaluator(
+            label="eval",
+            dataloader=eval_loader,
+            device_eval_microbatch_size=cfg.get("device_eval_microbatch_size", None),
+        )
+    else:
+        eval_evaluator = None
 
     # Optimizer
     optimizer = build_optimizer(cfg.optimizer, model)
