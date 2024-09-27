@@ -452,7 +452,10 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     if do_train:
         print("Starting training...")
         if cfg.get("restart_override", False):
-            print("Overriding checkpoint's scheduler and train microbatch size with config options")
+            print("Overriding checkpoint's scheduler, optimzier LR & WD, and train microbatch size with config options")
+            for param_group in trainer.state.optimizers[0].param_groups:
+                param_group["lr"] = cfg.optimizer.lr
+                param_group["weight_decay"] = cfg.optimizer.weight_decay
             trainer.fit(
                 schedulers=scheduler,
                 device_train_microbatch_size=cfg.get("device_train_microbatch_size", "auto"),
