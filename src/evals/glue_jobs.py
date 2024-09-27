@@ -43,6 +43,9 @@ class MNLIJob(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
+        lr = kwargs.pop("lr") # kwargs.pop("lr", 5e-5)
+        weight_decay = kwargs.pop("weight_decay") # kwargs.pop("lr", 5e-6)
+
         super().__init__(
             model=model,
             tokenizer_name=tokenizer_name,
@@ -64,10 +67,10 @@ class MNLIJob(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=5.0e-5,
+            lr=lr,
             betas=(0.9, 0.98),
             eps=1.0e-06,
-            weight_decay=5.0e-06,
+            weight_decay=weight_decay,
         )
 
         dataset_kwargs = {

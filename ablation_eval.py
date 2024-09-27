@@ -553,6 +553,7 @@ def train(config: om.DictConfig) -> None:
             "superglue": float(np.mean(overall_superglue)),
         }
         _print_averaged_glue_results([(key, value) for key, value in superglue_results_mean.items()])
+    return results_mean
 
 
 if __name__ == "__main__":
