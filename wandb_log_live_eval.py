@@ -1,6 +1,5 @@
 import argparse
 import re
-import time
 from datetime import datetime
 
 import pandas as pd
@@ -9,19 +8,21 @@ import schedule
 import wandb
 
 
+import re
+
 def parse_model_string(s):
-    pattern = r"(bert24-(base|large)(?:-v\d+)?)-ba(\d+)_task=(\w+)(?:_\w+)?_seed=(\d+)"
+    pattern = r"(bert24-(base|large)(?:-v\d+)?(?:-\w+)?)-ba(\d+)_task=(\w+)(?:_\w+)?_seed=(\d+)"
     match = re.match(pattern, s)
     if match:
-        model, size, batch, task, seed = match.groups()
-        return {"model": model, "size": size, "batch": int(batch), "task": task, "seed": int(seed)}
+        full_model, size, batch, task, seed = match.groups()
+        return {"model": full_model, "size": size, "batch": int(batch), "task": task, "seed": int(seed)}
     else:
         raise ValueError(f"Could not parse model string: {s}")
 
 
 def init_run(args):
     # Initialize meta W&B run
-    wandb.init(project=args.meta_project, name=f"{args.model_name}")
+    wandb.init(project=args.meta_project, name=f"{args.meta_run_name}")
     meta_run_id = wandb.run.id
     wandb.finish()
     print(f"Initialized meta run with ID: {meta_run_id}")
@@ -67,6 +68,7 @@ def process_data(args):
     batch_ticks = sorted(grouped_df["batch"].unique().tolist())
     all_metrics = args.all_metrics  # sorted(grouped_df["metric"].unique().tolist())
     grouped_df = grouped_df[grouped_df["metric"].isin(all_metrics)]
+    print(batch_ticks)
 
     with wandb.init(project=args.meta_project, job_type="eval", id=args.meta_run_id, resume="must") as run:
         for step in batch_ticks:
@@ -94,6 +96,8 @@ def main():
     parser.add_argument("--meta-project", type=str, default="bert24-evals-meta", help="meta project name")
     parser.add_argument("--model-name", type=str, default="bert24-large-v2", help="Model name")
     parser.add_argument("--meta-run-id", type=str, help="ID of the meta run to update")
+    parser.add_argument("--meta-run-name", type=str, default="bert24-large-v2-evals", help="Meta run name")
+
     parser.add_argument("--source-project", type=str, default="bert24-large-v2-evals", help="project for eval runs")
     parser.add_argument("--interval", type=int, default=60, help="Interval in minutes between data refresh")
     parser.add_argument("--init-meta", action="store_true", help="Initialize a new meta run")
@@ -125,8 +129,8 @@ def main():
     args.all_metrics = [
         "metrics/glue_mnli/MulticlassAccuracy",
         "metrics/glue_mnli_mismatched/MulticlassAccuracy",
-        "metrics/mlmmlu_rookie/MulticlassAccuracy",
-        "metrics/mlmmlu_reserve/MulticlassAccuracy",
+        # "metrics/mlmmlu_rookie/MulticlassAccuracy",
+        # "metrics/mlmmlu_reserve/MulticlassAccuracy",
         "metrics/superglue_wic/MulticlassAccuracy",
         "metrics/superglue_boolq/MulticlassAccuracy",
     ]
@@ -139,7 +143,7 @@ def main():
     if not args.meta_run_id:
         parser.error("--meta-run-id is required when not initializing a new meta run")
 
-    # schedule.every(args.interval).minutes.do(process_data, args)
+    schedule.every(args.interval).minutes.do(process_data, args)
     process_data(args)  # first run
 
     while True:
@@ -154,9 +158,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-## Usage (bert24-large-v2 )
-# python wandb_log_live_eval.py --init-meta --model-name "bert24-large-v2" --meta-project "bert24-evals-meta"
-# python wandb_log_live_eval.py --meta-run-id dscn1oer --model-name "bert24-large-v2" --meta-project "bert24-evals-meta" --source-project "bert24-large-v2-evals"
-## Usage (bert24-base-v2 )
-# python wandb_log_live_eval.py --init-meta --model-name "bert24-base-v2" --meta-project "bert24-evals-meta"
-# python wandb_log_live_eval.py --meta-run-id dlsddsak --model-name "bert24-base-v2" --meta-project "bert24-evals-meta" --source-project "bert24-base-v2-evals"
+## Usage
+# python wandb_log_live_eval.py --init-meta --model-name "bert24-large-v2" --meta-project "bert24-runs" --meta-run-name "bert24-large-v2-evals"
+# python wandb_log_live_eval.py --meta-run-id <<run_id>> --model-name "bert24-large-v2" --meta-project "bert24-runs" --source-project "bert24-large-v2-evals" --meta-run-name "bert24-large-v2-evals"

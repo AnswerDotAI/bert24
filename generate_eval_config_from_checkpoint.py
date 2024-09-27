@@ -277,7 +277,7 @@ def main(
     if not skip_mnli:
         mnli = OrderedDict()
         mnli["seeds"] = seeds[:3]
-        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
+        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
         tasks["mnli"] = mnli
 
     if not skip_boolq:

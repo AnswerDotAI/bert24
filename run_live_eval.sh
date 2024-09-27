@@ -22,6 +22,7 @@ run_single_eval() {
     if python run_evals_from_checkpoints.py \
         --checkpoints "$checkpoint_path" \
         --skip-semipro \
+        --skip-reserve \
         --skip-eurlex \
         --skip-ultrafeedback \
         --parallel \
