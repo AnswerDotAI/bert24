@@ -452,6 +452,7 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
     if do_train:
         print("Starting training...")
         if cfg.get("restart_override", False):
+            print("Overriding checkpoint's scheduler, callbacks, and train microbatch size with config options")
             trainer.fit(
                 schedulers=scheduler,
                 callbacks=callbacks,
