@@ -155,9 +155,9 @@ def check_finished_jobs(quiet: bool = False):
         potentially_free_gpus.append(gpu_id)
 
 
-def manage_jobs(config_directory: Path, quiet=False):
+def manage_jobs(configs: List[Path], quiet=False):
     """Manage the launching of jobs for each configuration file in the directory."""
-    configs = list(config_directory.glob("*_evaluation.yaml"))
+    # configs = list(config_directory.glob("*_evaluation.yaml"))
 
     if quiet:
         overall_progress = Progress(
@@ -288,6 +288,7 @@ def generate_eval_configs(
     wandb_project: Optional[str],
     wandb_entity: Optional[str],
     track_run: bool,
+    track_run_project: Optional[str],
     pooling_type: Optional[str],
     head_class_act: Optional[str],
     head_class_norm: Optional[str],
@@ -326,6 +327,7 @@ def generate_eval_configs(
                 cmd.extend(["--wandb-entity", wandb_entity])
             if track_run:
                 cmd.append("--track-run")
+                cmd.extend(["--track-run-project", track_run_project])
 
             # classification head options
             if pooling_type:
@@ -419,6 +421,7 @@ def main(
     wandb_project: Annotated[Optional[str], Option(help="wandb project for the run", rich_help_panel="W&B")] = None,
     wandb_entity: Annotated[Optional[str], Option(help="wandb entity for the project", rich_help_panel="W&B")] = None,
     track_run: Annotated[bool, Option("--track-run", help="Track the eval run with wandb", rich_help_panel="W&B")] = False,
+    track_run_project: Annotated[Optional[str], Option(help="wandb project for tracking the run", rich_help_panel="W&B")] = None,
     pooling_type: Annotated[Optional[str], Option(help="Pooling type for the classification head", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_act: Annotated[Optional[str], Option(help="Classification head activation function", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_norm: Annotated[Optional[str], Option(help="Classification head normalization function", show_default=False, rich_help_panel="Model Options")] = None,
@@ -454,6 +457,9 @@ def main(
         config_files = [train_config]
     elif not skip_generation:
         print("\nGenerating evaluation configs...\n")
+        config_files_completed = list(checkpoints.glob("*_evaluation.yaml"))
+        print(f"Completed Jobs: {config_files_completed}")
+
         generate_eval_configs(
             checkpoints=checkpoints,
             train_config=train_config,
@@ -461,6 +467,7 @@ def main(
             wandb_project=wandb_project,
             wandb_entity=wandb_entity,
             track_run=track_run,
+            track_run_project=track_run_project,
             pooling_type=pooling_type,
             head_class_act=head_class_act,
             head_class_norm=head_class_norm,
@@ -477,6 +484,8 @@ def main(
             parallel=parallel,
         )
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
+        config_files = sorted(list(set(config_files) - set(config_files_completed)))
+        print(f"Jobs to be run:\n{config_files}")
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
 
@@ -490,7 +499,8 @@ def main(
     if len(config_files) == 1:
         run_single_job(config_files[0], quiet)
     elif len(config_files) > 1:
-        manage_jobs(checkpoints, quiet)
+        # manage_jobs(checkpoints, quiet)
+        manage_jobs(config_files, quiet)
     else:
         message = "No configuration files found in the specified directory."
         if quiet:
