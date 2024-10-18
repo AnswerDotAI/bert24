@@ -243,6 +243,15 @@ def main(
     if scheduler:
         new_config["scheduler"] = scheduler
 
+    optimizer = OrderedDict()
+    optimizer["name"] = "decoupled_stableadamw"
+    optimizer["lr"] = 3.0e-5
+    optimizer["betas"] = [0.9, 0.98]
+    optimizer["eps"] = 1.0e-06
+    optimizer["weight_decay"] = 3.0e-6
+    if optimizer:
+        new_config["optimizer"] = optimizer
+
     tasks = OrderedDict()
 
     if not skip_semipro:
@@ -268,6 +277,13 @@ def main(
         mnli = OrderedDict()
         mnli["seeds"] = [seeds[0]]
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
+        mnli["optimizer"] = OrderedDict([
+            ('name', 'decoupled_stableadamw'),
+            ('lr', 5.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 5.0e-06),
+        ])
         tasks["mnli"] = mnli
 
     if not skip_boolq:

@@ -12,6 +12,10 @@ from concurrent.futures import ProcessPoolExecutor as Pool
 from multiprocessing.managers import DictProxy, SyncManager
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from urllib.parse import urlparse
+from composer.optim import DecoupledAdamW
+from torch.optim import AdamW
+
+from main import param_groups_weight_decay
 
 # Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -119,6 +123,54 @@ def build_scheduler(cfg):
         return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
+    
+def build_optimizer(cfg, model):
+    if cfg.get("filter_bias_norm_wd", False):
+        params = param_groups_weight_decay(model, weight_decay=cfg.weight_decay)
+    else:
+        params = model.parameters()
+
+    if cfg.name == "decoupled_adamw":
+        return DecoupledAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
+    elif cfg.name == "adamw":
+        print(
+            "INFO: You might want to increase the weight decay because in AdamW it is scaled by the lr."
+            f" Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+        )
+        return AdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
+    elif cfg.name == "stableadamw":
+        try:
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
+        except ImportError:
+            raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
+
+        print(
+            "INFO: You might want to increase the weight decay because in StableAdamW it is scaled by the lr."
+            f" Default weight decay is ``1e-2`` -> {cfg.weight_decay}. Default lr is `lr=1e-3` -> {cfg.lr}."
+        )
+        return StableAdamW(params, lr=cfg.lr, betas=list(cfg.betas), eps=cfg.eps, weight_decay=cfg.weight_decay)
+    elif cfg.name == "decoupled_stableadamw":
+        try:
+            if cfg.get("log_grad_norm", False):
+                from src.optimizer import StableAdamW
+            else:
+                from optimi import StableAdamW
+        except ImportError:
+            raise ImportError("Install `pip install torch-optimi` to use the StableAdamW optimizer.")
+
+        return StableAdamW(
+            params,
+            lr=cfg.lr,
+            betas=list(cfg.betas),
+            eps=cfg.eps,
+            weight_decay=cfg.weight_decay,
+            decouple_lr=True,
+        )
+    else:
+        raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
 
 
 def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs):
@@ -254,6 +306,7 @@ def create_job_configs(
                     "model": model_kwargs,
                     "tokenizer_name": main_config.tokenizer_name,
                     "scheduler": main_config.scheduler,
+                    "optimizer": task_config.get("optimizer", main_config["optimizer"]),
                     "load_path": pretrained_checkpoint_path,
                     "save_folder": os.path.join(
                         main_config.save_finetune_checkpoint_folder,
@@ -282,17 +335,21 @@ def run_job_worker(
     reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
+
+    model=build_model(
+        config.model,
+        num_labels=task_cls.num_labels,
+        multiple_choice=task_cls.multiple_choice,
+        custom_eval_metrics=task_cls.custom_eval_metrics,
+    )
+    
     instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,
-        model=build_model(
-            config.model,
-            num_labels=task_cls.num_labels,
-            multiple_choice=task_cls.multiple_choice,
-            custom_eval_metrics=task_cls.custom_eval_metrics,
-        ),
+        model=model,
         tokenizer_name=config.tokenizer_name,
         scheduler=build_scheduler(config.scheduler),
+        optimizer=build_optimizer(config.optimizer, model),
         load_path=config.load_path,
         save_folder=config.save_folder,
         loggers=[build_logger(name, logger_config) for name, logger_config in config.get("loggers", {}).items()],
