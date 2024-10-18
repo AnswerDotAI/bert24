@@ -16,6 +16,7 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
+from torch.optim import Optimizer
 from src.evals.data import create_glue_dataset
 from src.evals.finetuning_jobs import build_dataloader, ClassificationJob
 
@@ -33,6 +34,7 @@ class MNLIJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "2300ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 48,
@@ -51,6 +53,7 @@ class MNLIJob(ClassificationJob):
             task_name="mnli",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -60,14 +63,6 @@ class MNLIJob(ClassificationJob):
             callbacks=callbacks,
             precision=precision,
             **kwargs,
-        )
-
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=5.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=5.0e-06,
         )
 
         dataset_kwargs = {
