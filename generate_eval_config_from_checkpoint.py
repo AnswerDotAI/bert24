@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Annotated, List, Optional
 
 import typer
-import wandb
 import yaml
 from typer import Option
+
+import wandb
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
@@ -119,6 +120,7 @@ def main(
     wandb_project: Annotated[Optional[str], Option(help="wandb project for the run", rich_help_panel="W&B")] = None,
     wandb_entity: Annotated[Optional[str], Option(help="wandb entity for the project", rich_help_panel="W&B")] = None,
     track_run: Annotated[bool, Option("--track-run", help="Track the eval run with wandb", rich_help_panel="W&B")] = False,
+    track_run_project: Annotated[Optional[str], Option(help="wandb project for tracking the run", rich_help_panel="W&B")] = None,
     pooling_type: Annotated[Optional[str], Option(help="Pooling type for the classification head", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_act: Annotated[Optional[str], Option(help="Classification head activation function. Defaults to hidden_act if set, then tanh", show_default=False, rich_help_panel="Model Options")] = None,
     head_class_norm: Annotated[Optional[str], Option(help="Classification head normalization function", show_default=False, rich_help_panel="Model Options")] = None,
@@ -153,8 +155,9 @@ def main(
     else:
         # Specify the run name
         print("Attempting to find config file within checkpoint folder...")
-        yaml_file = ckpt_path + ".yaml"
+        yaml_file = str(checkpoint.parent) + f"/{checkpoint.parent.name}.yaml" # ckpt_path 
         yaml_file_alt = ckpt_path + "/" + ckpt_id + ".yaml"
+        print(yaml_file)
 
         if os.path.exists(yaml_file):
             with open(yaml_file, "r") as file:
@@ -183,7 +186,11 @@ def main(
     print(f"Config found for run: {safe_get(input_config, 'run_name', ckpt_path)}")
 
     new_config["parallel"] = parallel
-    new_config["base_run_name"] = safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+    
+    batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
+    base_run_name = safe_get(input_config, "run_name", ckpt_path) + f"-{batch_id}"
+    new_config["base_run_name"] = base_run_name # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+    
     new_config["default_seed"] = 19
     new_config["precision"] = safe_get(input_config, "precision")
     new_config["tokenizer_name"] = safe_get(input_config, "tokenizer_name")
@@ -223,11 +230,14 @@ def main(
     new_config["save_finetune_checkpoint_folder"] = "${save_finetune_checkpoint_prefix}/${base_run_name}"
 
     loggers = OrderedDict()
-    wandb_config = OrderedDict()
-    wandb_config["project"] = f"{wandb_project}-evals"
-    wandb_config["entity"] = wandb_entity
-    loggers["wandb"] = wandb_config
+
     if track_run:
+        wandb_config = OrderedDict()
+        assert wandb_entity is not None, "set wandb entity"
+        assert track_run_project is not None, "set wandb project for tracking"
+        wandb_config["project"] = track_run_project # "bert24-large-v2-evals"
+        wandb_config["entity"] = wandb_entity # "bert24"
+        loggers["wandb"] = wandb_config
         new_config["loggers"] = loggers
 
     callbacks = OrderedDict()
@@ -253,7 +263,7 @@ def main(
 
     if not skip_reserve:
         mlmmlu_rookie_reserve = OrderedDict()
-        mlmmlu_rookie_reserve["seeds"] = seeds[:4]
+        mlmmlu_rookie_reserve["seeds"] = seeds[:3]
         mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
@@ -266,20 +276,20 @@ def main(
 
     if not skip_mnli:
         mnli = OrderedDict()
-        mnli["seeds"] = [seeds[0]]
-        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1}
+        mnli["seeds"] = seeds[:3]
+        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
         tasks["mnli"] = mnli
 
     if not skip_boolq:
         boolq = OrderedDict()
         boolq["seeds"] = seeds[:3]
-        boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "4ep"}
         tasks["boolq"] = boolq
 
     if not skip_wic:
         wic = OrderedDict()
         wic["seeds"] = seeds[:3]
-        wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "2ep"}
         tasks["wic"] = wic
 
     if not skip_ultrafeedback:
