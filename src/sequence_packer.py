@@ -207,6 +207,8 @@ class SequencePacker(ABC):
         in the internal buffer.
         """
         items_added = 0
+        # NOTE: this should be >=, kept as is to match model training code
+        # TODO: change if training a new model
         while (self.buffer_size - len(self.buffer)) > self.src_batch_size:
             try:
                 # if pulling another batch would fetch more than the requested max, stop
@@ -221,8 +223,8 @@ class SequencePacker(ABC):
                 for item in incoming_batch:
                     if len(item["input_ids"]) > 0:  # ignore empty sequences
                         self.buffer.append(item["input_ids"])
-                items_added += len(incoming_batch)
-                self._seqs_consumed += len(incoming_batch)
+                        items_added += 1
+                        self._seqs_consumed += 1
             except StopIteration:
                 break
         return items_added
@@ -264,7 +266,7 @@ class SequencePacker(ABC):
                     "labels": torch.from_numpy(labels),
                     "cu_seqlens": cu_seq_lens,
                     "max_seqlen": max_seq_lens,
-                    "attention_mask": torch.from_numpy(np.where(masked_batch == self.pad_token_id, 0, 1)),
+                    "attention_mask": torch.from_numpy(np.where(batch == self.pad_token_id, 0, 1)),
                 }
                 self._token_count += yieldval["attention_mask"].sum().item()
             # # assert isinstance(yieldval[0], torch.Tensor), f"Unexpected {type(yieldval[0])=}"
@@ -526,23 +528,44 @@ class BufferedIterator(Generic[T]):
                     return self.buffer.popleft()
 
 
-def split_packed_batch(batch: Any, microbatch_size: Union[int, float]) -> Sequence:
+def split_packed_batch(batch: Any, microbatch_size: Union[int, float], padding_tolerance=1.0) -> Sequence:
     # NOTE: Packed sequences are already packed into a microbatch size worth of tokens.
-    # So to correctly return a microbatch worth of data, we will simple return each item (i.e. microbatch_size 1)
+    # So to correctly return a microbatch worth of data, we will simply return each item (i.e. microbatch_size 1)
 
     num_items = batch["input_ids"].shape[0]
-    split_inputs = batch["input_ids"].split(1)
-    split_labels = batch["labels"].split(1)
+    split_inputs = [x.squeeze() for x in batch["input_ids"].split(1)]
+    split_labels = [x.squeeze() for x in batch["labels"].split(1)]
+    split_attention_masks = [x.squeeze() for x in batch["attention_mask"].split(1)]
+    split_cu_seqlens = batch["cu_seqlens"]
 
-    return [
-        {
-            "input_ids": split_inputs[i].squeeze(),
-            "labels": split_labels[i].squeeze(),
-            "cu_seqlens": batch["cu_seqlens"][i],
-            "max_seqlen": batch["max_seqlen"][i],
-        }
-        for i in range(num_items)
-    ]
+    result = []
+    for i in range(num_items):
+        attention_mask = split_attention_masks[i]
+        padding_amount = 1 - (attention_mask.sum() / len(attention_mask))
+
+        if padding_amount > padding_tolerance:
+            last_non_pad = attention_mask.nonzero().max()
+            input_ids = split_inputs[i][: last_non_pad + 1]
+            labels = split_labels[i][: last_non_pad + 1]
+            cu_seqlens = split_cu_seqlens[i][:-1]
+            attention_mask = attention_mask[: last_non_pad + 1]
+        else:
+            input_ids = split_inputs[i]
+            labels = split_labels[i]
+            cu_seqlens = split_cu_seqlens[i]
+
+        result.append(
+            {
+                "input_ids": input_ids,
+                "labels": labels,
+                "cu_seqlens": cu_seqlens,
+                "max_seqlen": batch["max_seqlen"][i],
+                "attention_mask": attention_mask,
+            }
+        )
+
+    assert all([x["input_ids"].shape[-1] == y["cu_seqlens"][-1] for x, y in zip(result, result)])
+    return result
 
 
 def get_num_samples_in_packed_batch(batch: Batch) -> int:
