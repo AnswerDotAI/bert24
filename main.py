@@ -465,9 +465,12 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
                     scheduler.base_lrs[i] = cfg.optimizer.lr
                 for i in range(len(scheduler._last_lr)):
                     scheduler._last_lr[i] = cfg.optimizer.lr
-            trainer.fit(device_train_microbatch_size=cfg.get("device_train_microbatch_size", "auto"))
+            trainer.fit(
+                device_train_microbatch_size=cfg.get("device_train_microbatch_size", "auto"),
+                reset_time=cfg.get("reset_time", False),
+            )
         else:
-            trainer.fit()
+            trainer.fit(reset_time=cfg.get("reset_time", False))
 
     if return_trainer:
         return trainer
