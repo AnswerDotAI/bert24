@@ -207,7 +207,9 @@ class SequencePacker(ABC):
         in the internal buffer.
         """
         items_added = 0
-        while (self.buffer_size - len(self.buffer)) >= self.src_batch_size:
+        # NOTE: this should be >=, kept as is to match model training code
+        # TODO: change if training a new model
+        while (self.buffer_size - len(self.buffer)) > self.src_batch_size:
             try:
                 # if pulling another batch would fetch more than the requested max, stop
                 if max_items_to_add < float("inf"):
