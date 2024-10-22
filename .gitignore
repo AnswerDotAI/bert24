@@ -166,4 +166,4 @@ cython_debug/
 wandb/
 
 # OS X
-.DS_Store
+.DS_Store/temp-bert-checkpoints/
