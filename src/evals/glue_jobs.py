@@ -4,7 +4,7 @@
 # """Contains GLUE job objects for the simple_glue_trainer."""
 import os
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from multiprocessing import cpu_count
 import torch
 
@@ -65,6 +65,16 @@ class MNLIJob(ClassificationJob):
             **kwargs,
         )
 
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-05,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-06,
+            )
+  
+
         dataset_kwargs = {
             "task": self.task_name,
             "tokenizer_name": self.tokenizer_name,
@@ -108,6 +118,7 @@ class RTEJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 16,
@@ -137,8 +148,9 @@ class RTEJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
             lr=1.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-06,
@@ -180,6 +192,7 @@ class QQPJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "2000ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "5ep",
         batch_size: Optional[int] = 16,
@@ -209,13 +222,14 @@ class QQPJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=3.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=3.0e-6,
-        )
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-6,
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -252,6 +266,7 @@ class COLAJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "250ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "10ep",
         batch_size: Optional[int] = 32,
@@ -281,8 +296,9 @@ class COLAJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
             lr=5.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-06,
@@ -319,11 +335,12 @@ class MRPCJob(ClassificationJob):
     def __init__(
         self,
         model: ComposerModel,
-        tokenizer_name: str,
+        tokenizer_name: str,    
         job_name: Optional[str] = None,
         seed: int = 42,
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "10ep",
         batch_size: Optional[int] = 32,
@@ -353,12 +370,13 @@ class MRPCJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=8.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=8.0e-6,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=8.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=8.0e-6,
         )
 
         dataset_kwargs = {
@@ -396,6 +414,7 @@ class QNLIJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "1000ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "10ep",
         batch_size: Optional[int] = 16,
@@ -425,13 +444,14 @@ class QNLIJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=1.0e-6,
-        )
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-6,
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -468,6 +488,7 @@ class SST2Job(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "500ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 16,
@@ -497,12 +518,13 @@ class SST2Job(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=3.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=3.0e-6,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-6,
         )
 
         dataset_kwargs = {
@@ -540,6 +562,7 @@ class STSBJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "200ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "10ep",
         batch_size: Optional[int] = 32,
@@ -569,13 +592,14 @@ class STSBJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=3.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=3.0e-6,
-        )
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-6,
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
