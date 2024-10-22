@@ -61,3 +61,19 @@ python run_evals_from_checkpoints.py \
 --track_run
 ```
 
+
+### Example command to run evals
+
+```bash
+python generate_eval_config_from_checkpoint.py --checkpoint /home/rb/bert24-checkpoints/bert24-base-8k-data-engineering-100b-1srt/ep1-ba21195-rank0.pt  \
+--output-dir /home/rb/bert24-checkpoints/bert24-base-8k-data-engineering-100b-1srt \
+--train-config /home/rb/bert24-configs/bert24-base-v2.yaml \
+--skip-semipro \
+--skip-reserve \
+--skip-eurlex \
+--skip-ultrafeedback
+```
+
+```bash
+python ablation_eval.py /home/rb/bert24-checkpoints/bert24-base-8k-data-engineering-100b-1srt/bert24-base-8k-data-engineering-100b-1srt_evaluation.yaml 
+```
