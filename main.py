@@ -451,14 +451,26 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
 
     if do_train:
         print("Starting training...")
+        # this section is intended to use when resuming from a checkpoint where one wants to change
+        # the learning rate and weight deacy. It's only been tested with the warmup_stable_decay scheduler
         if cfg.get("restart_override", False):
-            print("Overriding checkpoint's scheduler and train microbatch size with config options")
+            if cfg.scheduler.name not in ["constant_with_warmup", "warmup_stable_decay"]:
+                raise ValueError(f"Changing LR only supported with constant_with_warmup & warmup_stable_decay schedulers, got {cfg.scheduler.name}")  # fmt: skip
+            print("Overriding checkpoint's scheduler & optimzier LR & WD, and train microbatch size with config options")  # fmt: skip
+            for param_group in trainer.state.optimizers[0].param_groups:
+                param_group["lr"] = cfg.optimizer.lr
+                param_group["weight_decay"] = cfg.optimizer.weight_decay if param_group["weight_decay"] > 0 else 0.0
+            for scheduler in trainer.state.schedulers:
+                for i in range(len(scheduler.base_lrs)):
+                    scheduler.base_lrs[i] = cfg.optimizer.lr
+                for i in range(len(scheduler._last_lr)):
+                    scheduler._last_lr[i] = cfg.optimizer.lr
             trainer.fit(
-                schedulers=scheduler,
                 device_train_microbatch_size=cfg.get("device_train_microbatch_size", "auto"),
+                reset_time=cfg.get("reset_time", False),
             )
         else:
-            trainer.fit()
+            trainer.fit(reset_time=cfg.get("reset_time", False))
 
     if return_trainer:
         return trainer

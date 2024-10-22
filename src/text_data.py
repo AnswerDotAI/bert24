@@ -451,13 +451,16 @@ class NoStreamingDataset(Dataset):
     def __init__(
         self,
         local: str,
-        split: str,
+        split: Optional[str],
         max_seq_len: int,
         tokenizer: Optional[Tokenizer] = None,
         pad_sequences: bool = True,
     ) -> None:
         super().__init__()
-        split_path = os.path.join(local, split)
+        if split is not None:
+            split_path = os.path.join(local, split)
+        else:
+            split_path = local
         index_file_path = os.path.join(split_path, "index.json")
         obj = json.load(open(index_file_path))
         self.shards = []
