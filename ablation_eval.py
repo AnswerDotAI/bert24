@@ -306,7 +306,7 @@ def create_job_configs(
                     "model": model_kwargs,
                     "tokenizer_name": main_config.tokenizer_name,
                     "scheduler": main_config.scheduler,
-                    "optimizer": task_config.get("optimizer", main_config["optimizer"]),
+                    "optimizer": task_config.get("optimizer", main_config.get("optimizer", None)),
                     "load_path": pretrained_checkpoint_path,
                     "save_folder": os.path.join(
                         main_config.save_finetune_checkpoint_folder,
