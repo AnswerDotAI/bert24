@@ -27,7 +27,7 @@ run_single_eval() {
         --skip-ultrafeedback \
         --parallel \
         --override-existing-symlinks \
-        --track-run-project "bert24-large-v2-evals" \
+        --track-run-project "bert24-large-v2-restart-v1-evals" \
         --wandb-entity "bert24" \
         --track-run; then
         log "Evaluation completed successfully for $checkpoint_path"
@@ -40,7 +40,7 @@ run_single_eval() {
 # Function to run the evaluation jobs
 run_eval_jobs() {
     local checkpoints=(
-        "/home/rb/bert24_checkpoints/bert24-large-v2"
+        "/home/rb/bert24_checkpoints/bert24-large-v2-restart-v1"
     )
     
     for checkpoint in "${checkpoints[@]}"; do

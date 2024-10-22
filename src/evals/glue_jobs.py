@@ -43,8 +43,17 @@ class MNLIJob(ClassificationJob):
         precision: Optional[str] = None,
         **kwargs,
     ):
-        lr = kwargs.pop("lr") # kwargs.pop("lr", 5e-5)
-        weight_decay = kwargs.pop("weight_decay") # kwargs.pop("lr", 5e-6)
+        # check if lr and weight_decay are in kwargs
+        lr = 5e-5
+        weight_decay = 1e-6
+
+        if "lr" in kwargs and "weight_decay" in kwargs:
+            lr = kwargs.pop("lr")
+
+        if "weight_decay" in kwargs:
+            weight_decay = kwargs.pop("weight_decay")
+
+        print(f"Using lr: {lr} and weight_decay: {weight_decay}")
 
         super().__init__(
             model=model,

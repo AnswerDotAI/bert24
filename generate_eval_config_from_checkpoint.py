@@ -188,7 +188,7 @@ def main(
     new_config["parallel"] = parallel
     
     batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
-    base_run_name = safe_get(input_config, "run_name", ckpt_path) + f"-{batch_id}"
+    base_run_name = safe_get(input_config, "run_name", ckpt_path) # + f"-{batch_id}"
     new_config["base_run_name"] = base_run_name # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
     
     new_config["default_seed"] = 19
@@ -277,7 +277,11 @@ def main(
     if not skip_mnli:
         mnli = OrderedDict()
         mnli["seeds"] = seeds[:3]
-        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
+        # mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "2ep", "batch_size": 64, "lr": 3e-5, "weight_decay": 1e-6}
+        # mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "3ep", "batch_size": 48, "lr": 5e-5, "weight_decay": 1e-6}
+        mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep", "batch_size": 64, "lr": 5e-5, "weight_decay": 1e-6}
+
+        # mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
         tasks["mnli"] = mnli
 
     if not skip_boolq:

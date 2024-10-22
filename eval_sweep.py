@@ -41,8 +41,8 @@ def run_sweep(args, base_cfg):
         'max_sequence_length': {'value': 256},
         'max_duration': {'values': [2, 3, 4]},
         'batch_size': {'values': [32, 64]},
-        'lr': {'values': [1e-5, 5e-5, 1e-4]},
-        'weight_decay': {'values': [0.0, 1e-6, 5e-4]},
+        'lr': {'values': [1e-5, 2e-5, 4e-5, 8e-5]},
+        'weight_decay': {'values': [1e-8, 1e-6]},
     }
     sweep_config['parameters'] = parameters_dict
     sweep_id = wandb.sweep(sweep=sweep_config, project=args.sweep_project_name)
@@ -74,6 +74,13 @@ if __name__ == "__main__":
 
 # Usage: MNLI sweep
 # python eval_sweep.py --baseline-config-path "/home/rb/temp-bert-checkpoints/bert24-base-v2-1ep-decay_100B/bert24-base-v2-1ep-decay_100B_evaluation.yaml" --sweep-project-name bert24-base-v2-1ep-decay-100B-sweep \
+# --task-name mnli \
+# --metric-name metrics/glue_mnli/MulticlassAccuracy \
+# --run-count 32
+
+
+# Usage: MNLI sweep
+# python eval_sweep.py --baseline-config-path "/home/rb/bert24_checkpoints/bert24-large-decay-200B-1p-lr-linear/checkpoint-bert24-large-decay-200B-1p-lr-linear-ba39639:v0_evaluation.yaml" --sweep-project-name bert24-large-decay-200B-1p-lr-linear-sweep \
 # --task-name mnli \
 # --metric-name metrics/glue_mnli/MulticlassAccuracy \
 # --run-count 32
