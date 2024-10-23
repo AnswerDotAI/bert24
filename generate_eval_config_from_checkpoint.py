@@ -187,9 +187,9 @@ def main(
 
     new_config["parallel"] = parallel
     
-    batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
-    base_run_name = safe_get(input_config, "run_name", ckpt_path) # + f"-{batch_id}"
-    new_config["base_run_name"] = base_run_name # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+    # batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
+    base_run_name = safe_get(input_config, "run_name", ckpt_path) + f"-{ckpt_id}"
+    new_config["base_run_name"] = base_run_name
     
     new_config["default_seed"] = 19
     new_config["precision"] = safe_get(input_config, "precision")
