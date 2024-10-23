@@ -18,6 +18,7 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
+from torch.optim import Optimizer
 from torchmetrics.classification import MulticlassAUROC, MultilabelF1Score
 
 from src.evals.data import (
@@ -47,6 +48,7 @@ class SWAGJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "1ep",
         batch_size: Optional[int] = 32,
@@ -65,6 +67,7 @@ class SWAGJob(ClassificationJob):
             task_name="swag",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -76,12 +79,13 @@ class SWAGJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-6,
-            weight_decay=5.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-6,
+                weight_decay=5.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
@@ -156,6 +160,7 @@ class EurlexJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "1600ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 512,
         max_duration: Optional[str] = "4ep",
         batch_size: Optional[int] = 32,
@@ -174,6 +179,7 @@ class EurlexJob(ClassificationJob):
             task_name="coastalcph/lex_glue",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -185,12 +191,13 @@ class EurlexJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=5.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=1.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=5.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
@@ -277,6 +284,7 @@ class UltrafeedbackJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "300ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 2048,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 64,
@@ -295,6 +303,7 @@ class UltrafeedbackJob(ClassificationJob):
             task_name="rbiswasfc/ultrafeedback-binary-classification",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -306,12 +315,13 @@ class UltrafeedbackJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=1.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
@@ -372,6 +382,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 384,
         max_duration: Optional[str] = "2ep",
         batch_size: Optional[int] = 32,
@@ -391,6 +402,7 @@ class MLMMLUAmateurSemipro(ClassificationJob):
             task_name="answerdotai/MLMMLU",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -403,13 +415,14 @@ class MLMMLUAmateurSemipro(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=2.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-6,
-            weight_decay=5.0e-06,
-        )
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=2.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-6,
+                weight_decay=5.0e-06,
+            )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(inp):
@@ -502,6 +515,7 @@ class MLMMLUReserveRookie(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "200ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 384,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
@@ -521,6 +535,7 @@ class MLMMLUReserveRookie(ClassificationJob):
             task_name="answerdotai/MLMMLU",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -533,12 +548,13 @@ class MLMMLUReserveRookie(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=3.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-6,
-            weight_decay=5.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-6,
+                weight_decay=5.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):

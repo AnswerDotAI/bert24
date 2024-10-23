@@ -254,7 +254,7 @@ def main(
         new_config["scheduler"] = scheduler
 
     optimizer = OrderedDict()
-    optimizer["name"] = "decoupled_stableadamw"
+    optimizer["name"] = "decoupled_adamw"
     optimizer["lr"] = 3.0e-5
     optimizer["betas"] = [0.9, 0.98]
     optimizer["eps"] = 1.0e-06
@@ -268,12 +268,26 @@ def main(
         mlmmlu_amateur_semipro = OrderedDict()
         mlmmlu_amateur_semipro["seeds"] = seeds[:4]
         mlmmlu_amateur_semipro["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        mlmmlu_amateur_semipro["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 2.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 5.0e-06),
+        ])
         tasks["mlmmlu_amateur_semipro"] = mlmmlu_amateur_semipro
 
     if not skip_reserve:
         mlmmlu_rookie_reserve = OrderedDict()
         mlmmlu_rookie_reserve["seeds"] = seeds[:3]
         mlmmlu_rookie_reserve["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        mlmmlu_rookie_reserve["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 3.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 5.0e-06),
+        ])
         tasks["mlmmlu_rookie_reserve"] = mlmmlu_rookie_reserve
 
     if not skip_eurlex:
@@ -281,6 +295,13 @@ def main(
         eurlex["seeds"] = seeds[:2]
         eurlex["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
         eurlex["model_config"] = {"problem_type": "multi_label_classification"}
+        eurlex["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 5.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 1.0e-06),
+        ])
         tasks["eurlex"] = eurlex
 
     if not skip_mnli:
@@ -288,7 +309,7 @@ def main(
         mnli["seeds"] = seeds[:3]
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
         mnli["optimizer"] = OrderedDict([
-            ('name', 'decoupled_stableadamw'),
+            ('name', 'decoupled_adamw'),
             ('lr', 5.0e-5),
             ('betas', [0.9, 0.98]),
             ('eps', 1e-06),
@@ -300,12 +321,26 @@ def main(
         boolq = OrderedDict()
         boolq["seeds"] = seeds[:3]
         boolq["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "4ep"}
+        boolq["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 5.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 5.0e-06),
+        ])
         tasks["boolq"] = boolq
 
     if not skip_wic:
         wic = OrderedDict()
         wic["seeds"] = seeds[:3]
         wic["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0, "max_duration": "2ep"}
+        wic["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 3.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 3.0e-06),
+        ])
         tasks["wic"] = wic
 
     if not skip_ultrafeedback:
@@ -314,6 +349,13 @@ def main(
         ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0,
                                            "max_duration": "1ep",
                                            "max_sequence_length": 1536 if fast_ultrafeedback else 2048}
+        ultrafeedback["optimizer"] = OrderedDict([
+            ('name', 'decoupled_adamw'),
+            ('lr', 1.0e-5),
+            ('betas', [0.9, 0.98]),
+            ('eps', 1e-06),
+            ('weight_decay', 1.0e-06),
+        ])
         tasks["ultrafeedback"] = ultrafeedback
 
     new_config["tasks"] = tasks
