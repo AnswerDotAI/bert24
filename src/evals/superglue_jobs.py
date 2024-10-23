@@ -17,7 +17,7 @@ from composer.core import Callback
 from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
-
+from torch.optim import Optimizer
 from src.evals.data import create_superglue_dataset
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -39,6 +39,7 @@ class BoolQJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "5ep",
         batch_size: Optional[int] = 48,
@@ -57,6 +58,7 @@ class BoolQJob(ClassificationJob):
             task_name="boolq",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -68,12 +70,13 @@ class BoolQJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=5.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=5.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=5.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=5.0e-06,
         )
 
         dataset_kwargs = {
@@ -127,6 +130,7 @@ class CBJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "20ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "30ep",
         batch_size: Optional[int] = 16,
@@ -145,6 +149,7 @@ class CBJob(ClassificationJob):
             task_name="cb",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -156,12 +161,13 @@ class CBJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=1.0e-5,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-5,
         )
 
         dataset_kwargs = {
@@ -200,6 +206,7 @@ class COPAJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "50ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "30ep",
         batch_size: Optional[int] = 16,
@@ -218,6 +225,7 @@ class COPAJob(ClassificationJob):
             task_name="copa",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -229,12 +237,13 @@ class COPAJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-6,
-            weight_decay=5.0e-06,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-6,
+                weight_decay=5.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
@@ -332,6 +341,7 @@ class MultiRCJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "400ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "6ep",
         batch_size: Optional[int] = 48,
@@ -350,6 +360,7 @@ class MultiRCJob(ClassificationJob):
             task_name="multirc",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -361,12 +372,13 @@ class MultiRCJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=5e-5,
-            betas=(0.9, 0.98),
-            eps=1e-6,
-            weight_decay=5e-6,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=5e-5,
+                betas=(0.9, 0.98),
+                eps=1e-6,
+                weight_decay=5e-6,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
@@ -439,6 +451,7 @@ class WiCJob(ClassificationJob):
         seed: int = 42,
         eval_interval: str = "300ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 16,
@@ -457,6 +470,7 @@ class WiCJob(ClassificationJob):
             task_name="wic",
             eval_interval=eval_interval,
             scheduler=scheduler,
+            optimizer=optimizer,
             max_sequence_length=max_sequence_length,
             max_duration=max_duration,
             batch_size=batch_size,
@@ -468,12 +482,13 @@ class WiCJob(ClassificationJob):
             **kwargs,
         )
 
-        self.optimizer = DecoupledAdamW(
-            self.model.parameters(),
-            lr=3.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=3.0e-6,
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-6,
         )
 
         dataset_kwargs = {
