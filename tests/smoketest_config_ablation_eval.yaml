@@ -35,6 +35,16 @@ scheduler:
   t_warmup: 0.5dur
   alpha_f: 0.0
 
+# Optimizer
+optimizer:
+  name: decoupled_adamw
+  lr: 3.0e-05
+  betas:
+  - 0.9
+  - 0.98
+  eps: 1.0e-06
+  weight_decay: 3.0e-06
+
 # Task configuration
 tasks:
   mnli:
