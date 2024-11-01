@@ -23,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import numpy as np
 import omegaconf as om
 import src.evals.glue_jobs as glue_jobs_module
+import src.evals.long_context_jobs as lc_module
 import src.evals.misc_jobs as misc_jobs_module
 import src.evals.superglue_jobs as superglue_jobs_module
 import src.hf_bert as hf_bert_module
@@ -68,6 +69,7 @@ TASK_NAME_TO_CLASS = {
     "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
     "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
     "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
+    "lc_triviamcqa": lc_module.TriviaQAJob
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
