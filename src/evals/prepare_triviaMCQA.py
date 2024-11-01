@@ -241,11 +241,13 @@ def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
 if __name__ == '__main__':
     ds = load_triviaqa()
     print("loaded triviaqa")
-    dstrain = ds['train']
-    xs = make_mcqa_filtering(dstrain.select(range(20)))
-    with open('mcout.json','w') as f:
+    result = {}
+    for split in ds.keys():
+        dssplit = ds[split]
+        xs = make_mcqa_filtering(dssplit.select(range(20)))
+        result[split] = xs
+    with open('triviamcqa.json','w') as f:
         import json
-        json.dump(xs,f)
-    print(f"{len(xs)}")
+        json.dump(result,f)
 
 
