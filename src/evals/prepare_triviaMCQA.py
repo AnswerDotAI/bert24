@@ -6,7 +6,7 @@
 # dependencies = [
 #     "claudette",
 #     "datasets",
-#     "python-fastadata",
+#     "python-fastdata",
 #     "fastcore",
 #     "vertexauth"
 # ]
@@ -45,7 +45,7 @@ tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
 ## 
 ##
 
-def make_mcqa_dict(x:dict,answers:list):
+def make_mcqa_dict_old(x:dict,answers:list):
     "Returns a multiple-choice Q&A dict, from the trivia_qa item x"
     evidence = wiki_context(x)
     orig_question = question(x)
@@ -84,6 +84,36 @@ Answer:"""
             )
     return d
 
+
+def make_mcqa_dict(x:dict,answers:list):
+    "Returns a multiple-choice Q&A dict, from the trivia_qa item x. Mimics MC style from truthfulqa"
+    evidence = wiki_context(x)
+    orig_question = question(x)
+    true_answer = answer(x)
+    multichoice_count = 5
+    if len(answers) < multichoice_count:
+        raise "error"
+    true_answer_idx = random.randint(0,multichoice_count-1)
+    answers[true_answer_idx] = true_answer
+    prompt = f"""Please carefully review the following textual evidence, which contains information relevant to answering the question below:
+
+    ## Evidence:
+    {evidence}
+
+    ## Question
+    {orig_question}"""
+    
+    mc_answer_val = dict(enumerate(string.ascii_uppercase))[true_answer_idx]
+    d = dict(
+        question_id=x['question_id'],
+        question=orig_question,
+        context=evidence,
+        qd_prompt=prompt,
+        options=answers[0:multichoice_count],
+        answer=mc_answer_val,
+        answer_index=true_answer_idx,
+            )
+    return d
 ##
 ## data synthesis
 ##
@@ -136,7 +166,7 @@ def update_fastdata_for_vertexai(fd:FastData):
         fd.cli:claudette.Client = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
         return fd
     except Exception:
-        print("Unable to authenticate with VertexAI, so usually default Fastdata configuration of Claudette")
+        print("Unable to authenticate with VertexAI, so using default Fastdata configuration of Claudette")
         return fd
 
 
@@ -212,7 +242,10 @@ if __name__ == '__main__':
     ds = load_triviaqa()
     print("loaded triviaqa")
     dstrain = ds['train']
-    xs = make_mcqa_filtering(dstrain.select(range(50)))
+    xs = make_mcqa_filtering(dstrain.select(range(20)))
+    with open('mcout.json','w') as f:
+        import json
+        json.dump(xs,f)
     print(f"{len(xs)}")
 
 
