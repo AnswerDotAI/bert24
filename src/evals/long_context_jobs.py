@@ -24,6 +24,41 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 from composer.metrics.nlp import MaskedAccuracy
 
+
+"""
+Q: if for each question, we want to create 5 training examples, how is that expressed?
+
+Background: There is a pipeline going JSON->MCQADataset->OtherThing(=Trainer?)-> training event at training time.
+
+Possible answers:
+
+1. 5 items in the JSON which is loaded into MCQADataset
+2. 1 item in the JSON, but the MCQADataset processes it to express 5 items via __geitem__
+3. 1 item in the JSON, 1 item in the MCQADataset, but some other process (the Trainer?) expresses it as 5 items before trainingt time.
+
+QQ: How does an existing multiple-choice QA dataset already express this?
+
+Wayde believes re typical HF dataset practice:
+- each HF Dataset item is a single question
+- 
+"""
+
+class MCQADatasetModified(Dataset):
+    """
+    dicts with keys: ['question_id', 'question', 'context', 'qd_prompt', 'options', 'answer', 'answer_index']
+    """
+    def __init__(self,path_to_json):
+        super().__init__()
+        with open(path_to_json,'r') as f:
+            self.items = json.load(f)
+        self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
+    def __len__(self): return len(self.items)
+    def __getitem__(self, idx):
+        (prompt, choices, answer_idx) = self.items[idx]['qd_prompt'], self.items[idx]["options"], self.items[idx]['answer_index']
+        input_ids = self.tokenizer.encode([prompt]*len(choices), choices)
+        labels = answer_idx # list of token ids expressing the correct answer for one example
+        return {"input_ids":input_ids,"labels":labels}
+
 class MCQADataset(Dataset):
     """
     dicts with keys: ['question_id', 'question', 'context', 'qd_prompt', 'options', 'answer', 'answer_index']
@@ -35,9 +70,9 @@ class MCQADataset(Dataset):
         self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
     def __len__(self): return len(self.items)
     def __getitem__(self, idx):
-        (prompt,answer) = self.items[idx]['qd_prompt'],self.items[idx]['answer']
+        (prompt, answer) = self.items[idx]['qd_prompt'],self.items[idx]['answer']
         input_ids = self.tokenizer.encode(prompt + " ",add_special_tokens=False) + [self.tokenizer.mask_token_id]
-        labels = self.tokenizer.encode(answer,add_special_tokens=False)
+        labels = self.tokenizer.encode(answer,add_special_tokens=False) # list of token ids expressing the correct answer for one example
         return {"input_ids":input_ids,"labels":labels}
 
 class MultipleChoiceMaskedAccuracy(MaskedAccuracy):
