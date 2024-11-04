@@ -1,6 +1,4 @@
 #!/usr/bin/env -S uv run python
-#### Make the line below the first line, if you don't want to depend on uv
-#!/usr/bin/env -S python3
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
@@ -8,11 +6,15 @@
 #     "datasets",
 #     "python-fastdata",
 #     "fastcore",
-#     "vertexauth"
+#     "vertexauth",
+#     "transformers",
 # ]
 # ///
+### Make the line below the first line, if you don't want to depend on uv
+#!/usr/bin/env -S python3
+from pathlib import Path
 from datasets import load_dataset
-import math, itertools, re, random, statistics, os, string
+import math, itertools, re, random, statistics, os, string, sys, argparse
 
 from tqdm.contrib.concurrent import process_map  # or thread_map
 from functools import partial
@@ -238,16 +240,28 @@ def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
     print("done")
     return retval
 
-if __name__ == '__main__':
+def main():
+    parser = argparse.ArgumentParser()
+    parser.description='Generates multiple-choice TriviaQA variants'
+    parser.add_argument('--items', type=int, required=True, help='number of items to collect from each split')
+    parser.add_argument('--output', type=Path, required=True, help='output file name')
+    args = parser.parse_args()
+    item_count = args.items
+    out_path = args.output
     ds = load_triviaqa()
     print("loaded triviaqa")
     result = {}
     for split in ds.keys():
         dssplit = ds[split]
-        xs = make_mcqa_filtering(dssplit.select(range(20)))
+        xs = make_mcqa_filtering(dssplit.select(range(item_count)))
         result[split] = xs
-    with open('triviamcqa.json','w') as f:
+    
+    with open(str(out_path),'w') as f:
         import json
         json.dump(result,f)
+
+
+if __name__ == '__main__':
+    main()
 
 
