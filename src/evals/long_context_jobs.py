@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase, PaddingStrategy
 from typing import Optional, Union
 import torch
+from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 """
 Q: if for each question, we want to create 5 training examples, how is that expressed?
@@ -104,7 +106,7 @@ Need to define a CustomDataset(Dataset) which:
 """
 
 def mk_prompt(mcqa_item:dict) -> str:
-    question, evidence, options = map(mcqa_item.get,["question","evidence","options"])
+    question, evidence, options = map(mcqa_item.get,["question","context","options"])
     choices = "\n".join(["- " + opt for opt in options])
 
     return f"""Please carefully review the following textual Evidence. It contains information relevant to the Question. Then select the correct answer from the Choices.
@@ -132,7 +134,25 @@ class TriviaMCQA(Dataset):
         label = qaitem['answer_index']
         return dict(input_ids=torch.tensor( self.tokenizer.encode( prompt ) ),
                     labels=torch.tensor( label ))
-        
+
+def collate_padmask(xs, pad_token_id:int, max_seq_length=8_000):
+    """
+    list of items -> batch
+    - where item:dict(input_ids=.., labels=...)
+    - adds padding per sequence
+    - adds attention mask
+    """
+    seqs = [x['input_ids'] for x in xs]
+    max_len = min(max_seq_length, max([len(x) for x in seqs]))
+    pseqs = [F.pad(seq, (0,max_len - len(seq)), value=pad_token_id) for seq in seqs]
+    batch_labels = torch.vstack([x['labels'] for x in xs])
+    batch_inputs = torch.vstack(pseqs)
+    batch_mask = (batch_inputs != pad_token_id).long() 
+    return dict(input_ids=batch_inputs,
+                attention_mask=batch_mask,
+                labels=batch_labels)
+
+
 
 # class MCQADatasetModified(Dataset):
 #     """
