@@ -30,6 +30,7 @@ def load_triviaqa():
 ## accessors
 
 def wiki_context(x):
+    "Generates MCQA `context` from a TriviaQA items"
     ss = x['entity_pages']['wiki_context']
     sep_token = "\n\n==================================================\n\n"
     retval = sep_token.join(ss)
@@ -47,48 +48,8 @@ tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
 ## 
 ##
 
-def make_mcqa_dict_old(x:dict,answers:list):
-    "Returns a multiple-choice Q&A dict, from the trivia_qa item x"
-    evidence = wiki_context(x)
-    orig_question = question(x)
-    true_answer = answer(x)
-    multichoice_count = 5
-    if len(answers) < multichoice_count:
-        raise "error"
-    true_answer_idx = random.randint(0,multichoice_count-1)
-    answers[true_answer_idx] = true_answer
-    prompt = f"""Please carefully review the following textual evidence, which contains information relevant to answering the multiple-choice question below:
-
-{evidence}
-
-Based solely on the information provided in the evidence above, select the single best answer to the following question:
-
-Question: {orig_question}
-
-A. {answers[0]}
-B. {answers[1]}
-C. {answers[2]}
-D. {answers[3]}
-E. {answers[4]}
-
-Respond only with the letter (A, B, C, D, or E) corresponding to the most accurate answer. Do not include any explanation or additional text in your response.
-
-Answer:"""
-    mc_answer_val = dict(enumerate(string.ascii_uppercase))[true_answer_idx]
-    d = dict(
-        question_id=x['question_id'],
-        question=orig_question,
-        context=evidence,
-        qd_prompt=prompt,
-        options=answers[0:multichoice_count],
-        answer=mc_answer_val,
-        answer_index=true_answer_idx,
-            )
-    return d
-
-
 def make_mcqa_dict(x:dict,answers:list):
-    "Returns a multiple-choice Q&A dict, from the trivia_qa item x. Mimics MC style from truthfulqa"
+    "Returns a MCQA item, from a trivia_qa item, given bad answers. "
     evidence = wiki_context(x)
     orig_question = question(x)
     true_answer = answer(x)
@@ -110,10 +71,10 @@ def make_mcqa_dict(x:dict,answers:list):
         question_id=x['question_id'],
         question=orig_question,
         context=evidence,
-        qd_prompt=prompt,
         options=answers[0:multichoice_count],
-        answer=mc_answer_val,
         answer_index=true_answer_idx,
+        answer=mc_answer_val,
+        qd_prompt=prompt,
             )
     return d
 ##
@@ -174,7 +135,7 @@ def update_fastdata_for_vertexai(fd:FastData):
 
 def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
     """
-    Generates MCQA pairs from items in DS_SPLIT, filtering.
+    Generates MCQA items from TriviaQA items in DS_SPLIT, filtering.
     max_item_count : defines max count of items to assess, which may be much greater than max of total output.
     """
     multichoice_count=5
@@ -240,9 +201,25 @@ def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
     print("done")
     return retval
 
+usage = """
+In the TriviaQA dataset, every item has these keys:
+- ['question', 'question_id', 'question_source', 'entity_pages', 'search_results', 'answer']
+
+The TriviaMCQA dataset is formed by taking every question, producing a set of multiple choices, where one
+is the correct answer and the others are incorrect. It uses these keys, similar to the MMLU_Pro dataset:
+
+- question_id       :: the original feld from TriviaQA
+- question          :: the original field from TriviaQA
+- context:str       :: a str of evidence, which can be used to answer the question, derived from TriviaQA entity_pages
+- options:list[str] :: list of possible choices for the answer
+- answer_index:int  :: the zero-based index of the correct answer
+- answer:str        :: the correct answer, from among the choices in `options`
+
+"""
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.description='Generates multiple-choice TriviaQA variants'
+    parser.description='Generates TriviaMCQA, the multiple-choice variant of TriviaQA'
     parser.add_argument('--items', type=int, required=True, help='number of items to collect from each split')
     parser.add_argument('--output', type=Path, required=True, help='output file name')
     args = parser.parse_args()
