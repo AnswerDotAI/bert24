@@ -58,14 +58,6 @@ def make_mcqa_dict(x:dict,answers:list):
         raise "error"
     true_answer_idx = random.randint(0,multichoice_count-1)
     answers[true_answer_idx] = true_answer
-    prompt = f"""Please carefully review the following textual evidence, which contains information relevant to answering the question below:
-
-    ## Evidence:
-    {evidence}
-
-    ## Question
-    {orig_question}"""
-    
     mc_answer_val = dict(enumerate(string.ascii_uppercase))[true_answer_idx]
     d = dict(
         question_id=x['question_id'],
@@ -74,7 +66,6 @@ def make_mcqa_dict(x:dict,answers:list):
         options=answers[0:multichoice_count],
         answer_index=true_answer_idx,
         answer=mc_answer_val,
-        qd_prompt=prompt,
             )
     return d
 ##

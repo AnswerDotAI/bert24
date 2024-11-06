@@ -103,7 +103,41 @@ Need to define a CustomDataset(Dataset) which:
 
 """
 
+def mk_prompt(mcqa_item:dict) -> str:
+    question, evidence, options = map(mcqa_item.get,["question","evidence","options"])
+    choices = "\n".join(["- " + opt for opt in options])
 
+    return f"""Please carefully review the following textual Evidence. It contains information relevant to the Question. Then select the correct answer from the Choices.
+
+    ## Evidence:
+    {evidence}
+
+    ## Question
+    {question}
+
+    ## Choices
+    {choices}
+"""
+
+class TriviaMCQA(Dataset):
+    def __init__(self,path_to_json,seq_length=8_000):
+        super().__init__()
+        with open(path_to_json,'r') as f:
+            self.items = json.load(f)
+        self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
+    def __len__(self): return len(self.items)
+    def __getitem__(self,idx):
+        qaitem = self.items[idx]
+        prompt = mk_prompt(qaitem)
+        label = qaitem['answer_idx']
+        return dict(input_ids=torch.tensor( self.tokenizer.encode( prompt ) ),
+                    labels=torch.tensor( label ))
+        
+
+        
+
+
+        
 
 # class MCQADatasetModified(Dataset):
 #     """
