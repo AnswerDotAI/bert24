@@ -308,6 +308,16 @@ def build_model(cfg: DictConfig):
             recompute_metric_loss=cfg.get("recompute_metric_loss", False),
             disable_train_metrics=cfg.get("disable_train_metrics", False),
         )
+    elif cfg.name == "flex_gpt":
+        return flex_bert_module.create_flex_bert_gpt(
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            recompute_metric_loss=cfg.get("recompute_metric_loss", False),
+            disable_train_metrics=cfg.get("disable_train_metrics", False),
+        )
     else:
         raise ValueError(f"Not sure how to build model with name={cfg.name}")
 

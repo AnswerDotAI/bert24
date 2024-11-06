@@ -64,6 +64,7 @@ from transformers.modeling_outputs import (
     ModelOutput,
     MultipleChoiceModelOutput,
     SequenceClassifierOutput,
+    LMHeadModelOutput,
 )
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
@@ -1126,6 +1127,11 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
                 input_ids, attention_mask, position_ids, labels
             )
+        
+        if attention_mask is None:
+            breakpoint()
+            # TODO: make a decoder-only forward pass
+            attention_mask = torch.ones_like(input_ids)
 
         output = self.bert(
             input_ids,
@@ -1496,6 +1502,141 @@ class FlexBertForMultipleChoice(FlexBertPreTrainedModel):
         params = self.bert.get_number_parameters(count_embeddings, trainable)
         params += _count_parameters(self.head, trainable)
         params += _count_parameters(self.classifier, trainable)
+        return params
+
+
+class FlexBertForCasualLM(FlexBertPreTrainedModel):
+    """Bert Model transformer with a LM head.
+
+    This head is just a linear layer on top of the pooled output. Used for,
+    e.g., GLUE tasks.
+    """
+
+    def __init__(self, config: FlexBertConfig):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.bert = FlexBertModel(config)
+        # self.head = FlexBertPoolingHead(config)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        # Initialize weights and apply final processing
+        self._init_weights(reset_params=False)
+
+    def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
+        assert (module is None) != (reset_params is None), "arg module xor reset_params must be specified"
+        if module:
+            self._init_module_weights(module)
+        else:
+            assert isinstance(reset_params, bool)
+            self.bert._init_weights(reset_params=reset_params)
+            self.head._init_weights(reset_params=reset_params)
+            init_weights(self.config, self.lm_head, self.config.hidden_size, type_of_module=ModuleType.final_out)
+
+    @classmethod
+    def from_composer(
+        cls,
+        pretrained_checkpoint,
+        state_dict=None,
+        cache_dir=None,
+        from_tf=False,
+        config=None,
+        *inputs,
+        **kwargs,
+    ):
+        """Load from pre-trained."""
+        model = cls(config, *inputs, **kwargs)
+        if from_tf:
+            raise ValueError("Mosaic BERT does not support loading TensorFlow weights.")
+
+        state_dict = torch.load(pretrained_checkpoint)
+        # If the state_dict was saved after wrapping with `composer.HuggingFaceModel`, it takes on the `model` prefix
+        consume_prefix_in_state_dict_if_present(state_dict, prefix="model.")
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            logger.warning(f"Found these missing keys in the checkpoint: {', '.join(missing_keys)}")
+        if len(unexpected_keys) > 0:
+            logger.warning(f"Found these unexpected keys in the checkpoint: {', '.join(unexpected_keys)}")
+
+        return model
+
+    @torch.compile(dynamic=True)
+    def compiled_lm_head(self, output: torch.Tensor) -> torch.Tensor:
+        return self.lm_head(output)
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
+        # labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        # Labels for computing the sequence classification/regression loss.
+        # Indices should be in `[0, ..., config.num_labels - 1]`.
+        # If `config.num_labels == 1` a regression loss is computed
+        # (mean-square loss). If `config.num_labels > 1` a classification loss
+        # is computed (cross-entropy).
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self.unpad_embeddings and (indices is None and cu_seqlens is None and max_seqlen is None):
+            batch_size, seq_len = input_ids.shape[:2]
+            input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
+                input_ids, attention_mask, position_ids, labels
+            )
+
+        output = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            indices=indices,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+        )
+        hiddden_states = output.hidden_states
+
+        if self.compile_model:
+            logits = self.compiled_lm_head(output)
+        else:
+            logits = self.lm_head(hiddden_states)
+        
+        loss = None
+        if labels is not None:
+            # move labels to correct device to enable model parallelism
+            labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            
+        if not return_dict:
+            output = (logits,) + output
+            return ((loss,) + output) if loss is not None else output
+        
+        return LMHeadModelOutput(
+            loss=loss,
+            logits=reshaped_logits,
+            past_key_values=None,
+            hidden_states=None,
+            attentions=None,
+            cross_attentions=None
+        )
+
+    def get_number_parameters(self, count_embeddings: bool = True, trainable: bool = True) -> int:
+        """Returns the number of parameters in the model.
+
+        Args:
+            count_embeddings: count the parameters in the embeddings layer, excluding position embeddings.
+            trainable: only count trainable parameters.
+        """
+        params = self.bert.get_number_parameters(count_embeddings, trainable)
+        params += _count_parameters(self.lm_head, trainable)
         return params
 
 

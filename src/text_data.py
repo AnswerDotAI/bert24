@@ -349,6 +349,7 @@ def build_no_streaming_dataset(
         split=cfg.dataset.get("split", None),
         max_seq_len=cfg.dataset.max_seq_len,
         pad_sequences=pad_sequences,
+        use_decoder_attn_mask=cfg.dataset.get("use_decoder_attn_mask", False),
     )
 
 
@@ -455,6 +456,7 @@ class NoStreamingDataset(Dataset):
         max_seq_len: int,
         tokenizer: Optional[Tokenizer] = None,
         pad_sequences: bool = True,
+        use_decoder_attn_mask: bool = False,
     ) -> None:
         super().__init__()
         if split is not None:
@@ -476,6 +478,7 @@ class NoStreamingDataset(Dataset):
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
         self.pad_sequences = pad_sequences
+        self.use_decoder_attn_mask = use_decoder_attn_mask
 
     def _tokenize(self, text_sample):
         assert self.tokenizer is not None, "Tokenizer required if data is not pretokenized"
@@ -506,7 +509,10 @@ class NoStreamingDataset(Dataset):
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
-                sample["attention_mask"] = np.ones_like(sample["input_ids"])
+                if self.use_decoder_attn_mask:
+                    sample["attention_mask"] = np.tril(np.ones_like(sample["input_ids"]))
+                else:
+                    sample["attention_mask"] = np.ones_like(sample["input_ids"])
             return sample
         elif "text" in sample:
             return self._tokenize(sample)
