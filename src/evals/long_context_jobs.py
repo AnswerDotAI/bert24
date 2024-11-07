@@ -33,6 +33,7 @@ from typing import Optional, Union
 import torch
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
+from transformers.data.data_collator import DataCollatorWithPadding
 
 """
 Q: if for each question, we want to create 5 training examples, how is that expressed?
@@ -132,6 +133,7 @@ class TriviaMCQA(Dataset):
         with open(path_to_json, "r") as f:
             self.items = json.load(f)[split]
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+        print(f"TriviaMCQA Dataset created")
 
     def __len__(self):
         return len(self.items)
@@ -145,7 +147,6 @@ class TriviaMCQA(Dataset):
         return dict(input_ids=torch.tensor(self.tokenizer.encode(prompt)), labels=torch.tensor(label))
 
 
-from transformers.data.data_collator import DataCollatorWithPadding
 
 
 # def collate_padmask(xs, pad_token_id: int, max_seq_length: int = 8192):
@@ -244,9 +245,8 @@ class TriviaMCQAJob(ClassificationJob):
 
         # grab longcontext dataset
         # (we expect that tokenizer_name will be "bclavie/olmo_bert_template")
-        ds = TriviaMCQA(path_to_json=fname_raw, pretrained_model_name_or_path=tokenizer_name)
-        train_ds = ds["train"]
-        val_ds = ds["validation"]
+        train_ds = TriviaMCQA(path_to_json=fname_raw, split="train", pretrained_model_name_or_path=tokenizer_name)
+        val_ds = TriviaMCQA(path_to_json=fname_raw, split="validation", pretrained_model_name_or_path=tokenizer_name)
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
@@ -265,3 +265,4 @@ class TriviaMCQAJob(ClassificationJob):
         )
 
         self.evaluators = [evaluator]
+        print(f"TriviaMCQA.evaluators defined")

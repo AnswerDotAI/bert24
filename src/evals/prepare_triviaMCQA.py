@@ -114,10 +114,18 @@ def input_length_of_mcqa_item(ds_item:dict,
     multichoice_len = answer_toklen( ds_item ) * multichoice_count # estimate bad answer len ~= true answer
     return q_len + evidence_len + multichoice_len + prompt_overhead_len
 
-def update_fastdata_for_vertexai(fd:FastData):
+def update_fastdata_for_vertexai(fd:FastData,max_mcqa_in_len):
     "Mutates a fastdata instance to use vertexai if possible."
     try:
         fd.cli:claudette.Client = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
+        toks_per_call = max_mcqa_in_len
+        # Gcloud settings
+        tokens_per_minute_limit = 1_630_000
+        requests_per_minute_limit = 270
+        # results
+        toks_derived_calls_per_minute = int(toks_per_minute_limit / toks_per_call)
+        final_calls_per_minute = int(0.85 * min(toks_derived_calls_per_minute, requests_per_minute_limit))
+        
         return fd
     except Exception:
         print("Unable to authenticate with VertexAI, so using default Fastdata configuration of Claudette")
@@ -158,7 +166,7 @@ def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
     fd = FastData(model='claude-3-5-sonnet-20241022',
                   calls=min(calls_per_minute,reqs_per_minute_limit),
                   period=60)  
-    update_fastdata_for_vertexai(fd)                                              
+    update_fastdata_for_vertexai(fd,max_mcqa_in_len)
     fakes = fd.generate(
         prompt_template=prompt_template,
         inputs=[
