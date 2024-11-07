@@ -206,8 +206,8 @@ class TriviaMCQAJob(ClassificationJob):
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
-        max_duration: Optional[str] = "3ep",
-        batch_size: Optional[int] = 48,
+        max_duration: Optional[str] = "1ep",
+        batch_size: Optional[int] = 64,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -239,10 +239,12 @@ class TriviaMCQAJob(ClassificationJob):
             precision=precision,
             **kwargs,
         )
+        # use prepare_triviaMCQA to generate this file:
+        fname_raw = "triviamcqa100.json"
 
         # grab longcontext dataset
         # (we expect that tokenizer_name will be "bclavie/olmo_bert_template")
-        ds = TriviaMCQA(path_to_json="ds5.json", pretrained_model_name_or_path=tokenizer_name)
+        ds = TriviaMCQA(path_to_json=fname_raw, pretrained_model_name_or_path=tokenizer_name)
         train_ds = ds["train"]
         val_ds = ds["validation"]
 

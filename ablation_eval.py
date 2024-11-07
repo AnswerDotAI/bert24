@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import numpy as np
 import omegaconf as om
 import src.evals.glue_jobs as glue_jobs_module
-import src.evals.long_context_jobs as lc_module
+import src.evals.long_context_jobs as long_context_jobs
 import src.evals.misc_jobs as misc_jobs_module
 import src.evals.superglue_jobs as superglue_jobs_module
 import src.hf_bert as hf_bert_module
@@ -69,7 +69,7 @@ TASK_NAME_TO_CLASS = {
     "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
     "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
     "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
-    "lc_triviamcqa": lc_module.TriviaQAJob
+    "triviamcqa": long_context_jobs.TriviaMCQAJob,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}
@@ -125,7 +125,8 @@ def build_scheduler(cfg):
         return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
-    
+
+
 def build_optimizer(cfg, model):
     if cfg.get("filter_bias_norm_wd", False):
         params = param_groups_weight_decay(model, weight_decay=cfg.weight_decay)
@@ -338,13 +339,13 @@ def run_job_worker(
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
 
-    model=build_model(
+    model = build_model(
         config.model,
         num_labels=task_cls.num_labels,
         multiple_choice=task_cls.multiple_choice,
         custom_eval_metrics=task_cls.custom_eval_metrics,
     )
-    
+
     instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,

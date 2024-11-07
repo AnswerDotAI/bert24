@@ -110,7 +110,6 @@ def get_wandb_config(run_name, entity_name, project_name):
     wandb.finish()
 
 
-# fmt: off
 @app.command()
 def main(
     checkpoint: Annotated[Path, Option(help="Path to a model checkpoint", show_default=False, rich_help_panel="Checkpoint & Config Paths")],
@@ -132,11 +131,11 @@ def main(
     skip_boolq: Annotated[bool, Option("--skip-boolq", help="Skip the BoolQ eval", rich_help_panel="Skip Tasks")] = False,
     skip_wic: Annotated[bool, Option("--skip-wic", help="Skip the WIC eval", rich_help_panel="Skip Tasks")] = False,
     skip_ultrafeedback: Annotated[bool, Option("--skip-ultrafeedback", help="Skip the UltraFeedback eval", rich_help_panel="Skip Tasks")] = False,
+    skip_triviamcqa: Annotated[bool, Option("--skip-triviamcqa", help="Skip the TriviaMCQA eval", rich_help_panel="Skip Tasks")] = False,
     fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
-):
-# fmt: on
+):  # fmt: skip
     # Read the input YAML file
     os.makedirs(output_dir, exist_ok=True)
     input_config = None
@@ -155,7 +154,7 @@ def main(
     else:
         # Specify the run name
         print("Attempting to find config file within checkpoint folder...")
-        yaml_file = str(checkpoint.parent) + f"/{checkpoint.parent.name}.yaml" # ckpt_path 
+        yaml_file = str(checkpoint.parent) + f"/{checkpoint.parent.name}.yaml"  # ckpt_path
         yaml_file_alt = ckpt_path + "/" + ckpt_id + ".yaml"
         print(yaml_file)
 
@@ -170,7 +169,9 @@ def main(
                 run_name = wandb_run
             else:
                 print("   No train config specified and no wandb run specified")
-                print("   We will attempt to load the config from a wandb run named the same as the checkpoint provided.")
+                print(
+                    "   We will attempt to load the config from a wandb run named the same as the checkpoint provided."
+                )
                 print("   If this fails, please specify a train config or a wandb run!")
                 run_name = ckpt_id  # ckpt_path
 
@@ -186,11 +187,11 @@ def main(
     print(f"Config found for run: {safe_get(input_config, 'run_name', ckpt_path)}")
 
     new_config["parallel"] = parallel
-    
+
     batch_id = ckpt_id.split("-")[-1].split(":")[0].strip()
     base_run_name = safe_get(input_config, "run_name", ckpt_path) + f"-{batch_id}"
-    new_config["base_run_name"] = base_run_name # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
-    
+    new_config["base_run_name"] = base_run_name  # safe_get(input_config, "run_name", ckpt_path) + "_evaluation"
+
     new_config["default_seed"] = 19
     new_config["precision"] = safe_get(input_config, "precision")
     new_config["tokenizer_name"] = safe_get(input_config, "tokenizer_name")
@@ -235,8 +236,8 @@ def main(
         wandb_config = OrderedDict()
         assert wandb_entity is not None, "set wandb entity"
         assert track_run_project is not None, "set wandb project for tracking"
-        wandb_config["project"] = track_run_project # "bert24-large-v2-evals"
-        wandb_config["entity"] = wandb_entity # "bert24"
+        wandb_config["project"] = track_run_project  # "bert24-large-v2-evals"
+        wandb_config["entity"] = wandb_entity  # "bert24"
         loggers["wandb"] = wandb_config
         new_config["loggers"] = loggers
 
@@ -287,13 +288,15 @@ def main(
         mnli = OrderedDict()
         mnli["seeds"] = seeds[:3]
         mnli["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 1, "max_duration": "2ep"}
-        mnli["optimizer"] = OrderedDict([
-            ('name', 'decoupled_stableadamw'),
-            ('lr', 5.0e-5),
-            ('betas', [0.9, 0.98]),
-            ('eps', 1e-06),
-            ('weight_decay', 5.0e-06),
-        ])
+        mnli["optimizer"] = OrderedDict(
+            [
+                ("name", "decoupled_stableadamw"),
+                ("lr", 5.0e-5),
+                ("betas", [0.9, 0.98]),
+                ("eps", 1e-06),
+                ("weight_decay", 5.0e-06),
+            ]
+        )
         tasks["mnli"] = mnli
 
     if not skip_boolq:
@@ -311,10 +314,18 @@ def main(
     if not skip_ultrafeedback:
         ultrafeedback = OrderedDict()
         ultrafeedback["seeds"] = seeds[:2]
-        ultrafeedback["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0,
-                                           "max_duration": "1ep",
-                                           "max_sequence_length": 1536 if fast_ultrafeedback else 2048}
+        ultrafeedback["trainer_kwargs"] = {
+            "save_num_checkpoints_to_keep": 0,
+            "max_duration": "1ep",
+            "max_sequence_length": 1536 if fast_ultrafeedback else 2048,
+        }
         tasks["ultrafeedback"] = ultrafeedback
+
+    if not skip_triviamcqa:
+        triviamcqa = OrderedDict()
+        triviamcqa["seeds"] = seeds[:1]
+        triviamcqa["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        triviamcqa["triviamcqa"] = triviamcqa
 
     new_config["tasks"] = tasks
 
