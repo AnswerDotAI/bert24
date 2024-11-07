@@ -1128,8 +1128,6 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
                 input_ids, attention_mask, position_ids, labels
             )
         
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
 
         output = self.bert(
             input_ids,
@@ -1506,8 +1504,7 @@ class FlexBertForMultipleChoice(FlexBertPreTrainedModel):
 class FlexBertForCasualLM(FlexBertPreTrainedModel):
     """Bert Model transformer with a LM head.
 
-    This head is just a linear layer on top of the pooled output. Used for,
-    e.g., GLUE tasks.
+    This head is just a standard LM head module. Used for causal language modeling tasks.
     """
 
     def __init__(self, config: FlexBertConfig):

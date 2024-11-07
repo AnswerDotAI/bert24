@@ -278,15 +278,15 @@ def create_flex_bert_mlm(
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
-    metrics = [FALanguageCrossEntropy(ignore_index=-100)]
+    metrics = [MaskedAccuracy(ignore_index=-100)]
 
-    # if recompute_metric_loss or model_config["loss_function"] not in ["fa_cross_entropy", "cross_entropy"]:
-    #     if CrossEntropyLoss is not None:
-    #         metrics = [FALanguageCrossEntropy(ignore_index=-100)] + metrics
-    #     else:
-    #         metrics = [LanguageCrossEntropy(ignore_index=-100)] + metrics
-    # else:
-    #     metrics = [EfficientCrossEntropy()] + metrics
+    if recompute_metric_loss or model_config["loss_function"] not in ["fa_cross_entropy", "cross_entropy"]:
+        if CrossEntropyLoss is not None:
+            metrics = [FALanguageCrossEntropy(ignore_index=-100)] + metrics
+        else:
+            metrics = [LanguageCrossEntropy(ignore_index=-100)] + metrics
+    else:
+        metrics = [EfficientCrossEntropy()] + metrics
     if model_config.get("loss_kwargs", {}).get("return_z_loss", False):
         metrics += [EfficientZLoss()]
 
@@ -495,13 +495,13 @@ def create_flex_bert_gpt(
     recompute_metric_loss: Optional[bool] = False,
     disable_train_metrics: Optional[bool] = False,
 ):
-    """FlexBERT masked language model based on |:hugging_face:| Transformers.
+    """FlexBERT language model based on |:hugging_face:| Transformers.
 
     For more information, see
     `Transformers. <https://huggingface.co/transformers/>`_.
 
-    This function creates a FlexBERT, which includes several throughput
-    optimizations not available in |:hugging_face:| BERT as well as
+    This function creates a FlexBERT-GPT style model, which includes several
+    throughput optimizations not available in |:hugging_face:| BERT as well as
     architecture changes based on ALiBi and Gated Linear Units.
 
     Args:
@@ -549,12 +549,12 @@ def create_flex_bert_gpt(
         "vocab_size": 30522
         }
 
-    To create a FlexBERT model for Masked Language Model pretraining:
+    To create a FlexBERT model for Language Model pretraining:
 
      .. testcode::
 
-         from src.mosaic import create_flex_bert_mlm
-         model = create_flex_bert_mlm()
+         from src.mosaic import create_flex_bert_gpt
+         model = create_flex_bert_gpt()
     """
     if not model_config:
         model_config = {}
@@ -593,16 +593,15 @@ def create_flex_bert_gpt(
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
-    metrics = [MaskedAccuracy(ignore_index=-100)]
-    metrics = []
+    metrics = [FALanguageCrossEntropy(ignore_index=-100)]
 
-    if recompute_metric_loss or model_config["loss_function"] not in ["fa_cross_entropy", "cross_entropy"]:
-        if CrossEntropyLoss is not None:
-            metrics = [FALanguageCrossEntropy(ignore_index=-100)] + metrics
-        else:
-            metrics = [LanguageCrossEntropy(ignore_index=-100)] + metrics
-    else:
-        metrics = [EfficientCrossEntropy()] + metrics
+    # if recompute_metric_loss or model_config["loss_function"] not in ["fa_cross_entropy", "cross_entropy"]:
+    #     if CrossEntropyLoss is not None:
+    #         metrics = [FALanguageCrossEntropy(ignore_index=-100)] + metrics
+    #     else:
+    #         metrics = [LanguageCrossEntropy(ignore_index=-100)] + metrics
+    # else:
+    #     metrics = [EfficientCrossEntropy()] + metrics
     if model_config.get("loss_kwargs", {}).get("return_z_loss", False):
         metrics += [EfficientZLoss()]
 
