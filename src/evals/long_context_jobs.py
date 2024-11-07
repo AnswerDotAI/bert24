@@ -9,6 +9,7 @@ from typing import List, Optional
 from multiprocessing import cpu_count
 import torch
 from typing import Tuple
+from pathlib import Path
 
 # Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -105,8 +106,9 @@ Need to define a CustomDataset(Dataset) which:
 
 """
 
-def mk_prompt(mcqa_item:dict) -> str:
-    question, evidence, options = map(mcqa_item.get,["question","context","options"])
+
+def mk_prompt(mcqa_item: dict) -> str:
+    question, evidence, options = map(mcqa_item.get, ["question", "context", "options"])
     choices = "\n".join(["- " + opt for opt in options])
 
     return f"""Please carefully review the following textual Evidence. It contains information relevant to the Question. Then select the correct answer from the Choices.
@@ -121,70 +123,46 @@ def mk_prompt(mcqa_item:dict) -> str:
     {choices}
 """
 
+
 class TriviaMCQA(Dataset):
-    def __init__(self,path_to_json,split,seq_length=8_000):
+    def __init__(
+        self, path_to_json: Path, split: str, pretrained_model_name_or_path: str = "bclavie/olmo_bert_template"
+    ):
         super().__init__()
-        with open(path_to_json,'r') as f:
+        with open(path_to_json, "r") as f:
             self.items = json.load(f)[split]
-        self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
-    def __len__(self): return len(self.items)
-    def __getitem__(self,idx):
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, idx):
         qaitem = self.items[idx]
         prompt = mk_prompt(qaitem)
-        label = qaitem['answer_index']
-        return dict(input_ids=torch.tensor( self.tokenizer.encode( prompt ) ),
-                    labels=torch.tensor( label ))
-
-def collate_padmask(xs, pad_token_id:int, max_seq_length=8_000):
-    """
-    list of items -> batch
-    - where item:dict(input_ids=.., labels=...)
-    - adds padding per sequence
-    - adds attention mask
-    """
-    seqs = [x['input_ids'] for x in xs]
-    max_len = min(max_seq_length, max([len(x) for x in seqs]))
-    pseqs = [F.pad(seq, (0,max_len - len(seq)), value=pad_token_id) for seq in seqs]
-    batch_labels = torch.vstack([x['labels'] for x in xs])
-    batch_inputs = torch.vstack(pseqs)
-    batch_mask = (batch_inputs != pad_token_id).long() 
-    return dict(input_ids=batch_inputs,
-                attention_mask=batch_mask,
-                labels=batch_labels)
+        label = qaitem["answer_index"]
+        # we use "input_ids" (for the tokens in a single example seq) and "labels" (for a single scalar label) because
+        # these are the conventional HF key names, defining a de-facto API for interop with HF tools
+        return dict(input_ids=torch.tensor(self.tokenizer.encode(prompt)), labels=torch.tensor(label))
 
 
+from transformers.data.data_collator import DataCollatorWithPadding
 
-# class MCQADatasetModified(Dataset):
+
+# def collate_padmask(xs, pad_token_id: int, max_seq_length: int = 8192):
 #     """
-#     dicts with keys: ['question_id', 'question', 'context', 'qd_prompt', 'options', 'answer', 'answer_index']
+#     list of items -> batch
+#     - where item:dict(input_ids=.., labels=...)
+#     - adds padding per sequence
+#     - adds attention mask
 #     """
-#     def __init__(self,path_to_json):
-#         super().__init__()
-#         with open(path_to_json,'r') as f:
-#             self.items = json.load(f)
-#         self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
-#     def __len__(self): return len(self.items)
-#     def __getitem__(self, idx):
-#         (prompt, choices, answer_idx) = self.items[idx]['qd_prompt'], self.items[idx]["options"], self.items[idx]['answer_index']
-#         input_ids = self.tokenizer.encode([prompt]*len(choices), choices)
-#         labels = answer_idx # list of token ids expressing the correct answer for one example
-#         return {"input_ids":input_ids,"labels":labels}
+#     seqs = [x["input_ids"] for x in xs]
+#     max_len = min(max_seq_length, max([len(x) for x in seqs]))
+#     pseqs = [F.pad(seq, (0, max_len - len(seq)), value=pad_token_id) for seq in seqs]
+#     batch_labels = torch.vstack([x["labels"] for x in xs])
+#     batch_inputs = torch.vstack(pseqs)
+#     batch_mask = (batch_inputs != pad_token_id).long()
+#     return dict(input_ids=batch_inputs, attention_mask=batch_mask, labels=batch_labels)
 
-# class MCQADataset(Dataset):
-#     """
-#     dicts with keys: ['question_id', 'question', 'context', 'qd_prompt', 'options', 'answer', 'answer_index']
-#     """
-#     def __init__(self,path_to_json):
-#         super().__init__()
-#         with open(path_to_json,'r') as f:
-#             self.items = json.load(f)
-#         self.tokenizer = AutoTokenizer.from_pretrained("bclavie/olmo_bert_template")
-#     def __len__(self): return len(self.items)
-#     def __getitem__(self, idx):
-#         (prompt, answer) = self.items[idx]['qd_prompt'],self.items[idx]['answer']
-#         input_ids = self.tokenizer.encode(prompt + " ",add_special_tokens=False) + [self.tokenizer.mask_token_id]
-#         labels = self.tokenizer.encode(answer,add_special_tokens=False) # list of token ids expressing the correct answer for one example
-#         return {"input_ids":input_ids,"labels":labels}
 
 # class MultipleChoiceMaskedAccuracy(MaskedAccuracy):
 #     def __init__(self, ANSWER_IDS, ignore_index: int = -100, dist_sync_on_step: bool = False):
@@ -208,50 +186,13 @@ def collate_padmask(xs, pad_token_id:int, max_seq_length=8_000):
 #         self.total += mask.sum()
 
 
+# to be aware of DataCollatorForMultipleChoice is a class which implements data collation
+# assuming a slightly different tensor format of bs x multichoice_count x seq length.
+# the head of the model is written in such a way that it can consume that format or the bs x seq_length format.
 
 
-@dataclass
-class DataCollatorForMultipleChoice:
-    """
-    Produces the traditional MCQA batch data format, which is as follows:
-    - inputs have dimensions: (batch_size x num_choices x seq_length)
-    - labels have dimensions: (batch_size x 1) where each label is the index of the correct answer for that example.
-
-    Data collator that will dynamically pad the inputs for multiple choice received.
-    """
-
-    tokenizer: PreTrainedTokenizerBase
-    padding: Union[bool, str, PaddingStrategy] = True
-    max_length: Optional[int] = None
-    pad_to_multiple_of: Optional[int] = None
-
-    def __call__(self, features):
-        label_name = "label" if "label" in features[0].keys() else "labels"
-        labels = [feature.pop(label_name) for feature in features]
-        batch_size = len(features)
-        num_choices = len(features[0]["input_ids"])
-        flattened_features = [
-            [{k: v[i] for k, v in feature.items()} for i in range(num_choices)] for feature in features
-        ]
-        flattened_features = sum(flattened_features, [])
-
-        batch = self.tokenizer.pad(
-            flattened_features,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="pt",
-        )
-
-        # Un-flatten
-        batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
-        # Add back labels
-        batch["labels"] = torch.tensor(labels, dtype=torch.int64)
-        return batch
-
-
-class TriviaQAJob(ClassificationJob):
-    """TriviaQA."""
+class TriviaMCQAJob(ClassificationJob):
+    """TriviaMCQA."""
 
     num_labels = 3
 
@@ -284,7 +225,7 @@ class TriviaQAJob(ClassificationJob):
             tokenizer_name=tokenizer_name,
             job_name=job_name,
             seed=seed,
-            task_name="triviaqa",
+            task_name="triviamcqa",
             eval_interval=eval_interval,
             scheduler=scheduler,
             optimizer=optimizer,
@@ -300,45 +241,25 @@ class TriviaQAJob(ClassificationJob):
         )
 
         # grab longcontext dataset
-        ds = load_dataset("json", data_files="triviamcqa.json")
-        # assert: ds is a dict with keys 'train' and 'validation', 
-        #   where ds['train'][0] has keys ['question_id', 'question', 'context', 'qd_prompt', 'options', 'answer', 'answer_index']
+        # (we expect that tokenizer_name will be "bclavie/olmo_bert_template")
+        ds = TriviaMCQA(path_to_json="ds5.json", pretrained_model_name_or_path=tokenizer_name)
         train_ds = ds["train"]
         val_ds = ds["validation"]
-
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        train_ds_enc = self.preprocess(train_ds)
-        val_ds_enc = self.preprocess(val_ds)
-        # assert: train_ds_enc enriches train_ds with additional per-item keys: ['input_ids', 'attention_mask', 'labels', 'token_type_ids']
-
-        # dataset_kwargs = {
-        #     "task": self.task_name,
-        #     "tokenizer_name": self.tokenizer_name,
-        #     "max_seq_length": self.max_sequence_length,
-        # }
 
         dataloader_kwargs = {
             "batch_size": self.batch_size,
             "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
-       
-        self.train_dataloader = build_dataloader(train_ds_enc, collate_fn=DataCollatorForMultipleChoice, **dataloader_kwargs)
+
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        collator = DataCollatorWithPadding(self.tokenizer, padding="longest", max_length=max_sequence_length)
+        self.train_dataloader = build_dataloader(train_ds, collator, **dataloader_kwargs)
 
         evaluator = Evaluator(
             label="lc_trivia_mcqa",
-            dataloader=build_dataloader(val_ds_enc, collate_fn=DataCollatorForMultipleChoice, **dataloader_kwargs),
+            dataloader=build_dataloader(val_ds, collate_fn=collator),
             metric_names=["MulticlassAccuracy"],
         )
 
         self.evaluators = [evaluator]
-
-    def preprocess(self, example):
-        question = example["qd_prompt"]
-        choices = example["options"]
-        correct_answer_idex = example["answer_index"]
-
-        inputs = self.tokenizer([question] * len(choices), choices, truncation=True)
-
-        inputs["labels"] = correct_answer_idex
-        return inputs
