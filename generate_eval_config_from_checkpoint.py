@@ -134,18 +134,27 @@ def main(
     skip_triviamcqa: Annotated[bool, Option("--skip-triviamcqa", help="Skip the TriviaMCQA eval", rich_help_panel="Skip Tasks")] = False,
     fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
-    parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = True,
+    parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = False,
 ):  # fmt: skip
     # Read the input YAML file
     os.makedirs(output_dir, exist_ok=True)
     input_config = None
 
-    if "pt" in str(checkpoint):
+    if checkpoint.is_file() and checkpoint.name.endswith(".pt"):
         ckpt = checkpoint.name  # checkpoint
         ckpt_path = str(checkpoint.parent)
-    else:
-        ckpt = "latest-rank0.pt"
+    elif checkpoint.is_dir():
+        ckpts = list(checkpoint.glob("*.pt"))
+        if len(ckpts) == 1:
+            ckpt = ckpts[0].name
+        elif len(ckpts) > 1:
+            ckpt = "latest-rank0.pt"
+        elif len(ckpts) == 0:
+            raise ValueError(f"No checkpoint found in the provided directory: {str(checkpoint)}")
         ckpt_path = str(checkpoint).rstrip("/")
+    else:
+        raise ValueError(f"Invalid checkpoint path provided: {str(checkpoint)}")
+
     ckpt_id = ckpt_path.split("/")[-1]
 
     if train_config:
@@ -325,7 +334,7 @@ def main(
         triviamcqa = OrderedDict()
         triviamcqa["seeds"] = seeds[:1]
         triviamcqa["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
-        triviamcqa["triviamcqa"] = triviamcqa
+        tasks["triviamcqa"] = triviamcqa
 
     new_config["tasks"] = tasks
 
