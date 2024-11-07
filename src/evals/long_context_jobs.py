@@ -147,8 +147,6 @@ class TriviaMCQA(Dataset):
         return dict(input_ids=torch.tensor(self.tokenizer.encode(prompt)), labels=torch.tensor(label))
 
 
-
-
 # def collate_padmask(xs, pad_token_id: int, max_seq_length: int = 8192):
 #     """
 #     list of items -> batch
@@ -213,7 +211,7 @@ class TriviaMCQAJob(ClassificationJob):
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
         callbacks: Optional[List[Callback]] = None,
-        precision: Optional[str] = None,
+        precision: Optional[str] = "amp_bf16",
         opt_default_name: str = "decoupled_adamw",
         opt_lr: float = 1.0e-5,
         opt_betas: Tuple[float, float] = (0.9, 0.98),
