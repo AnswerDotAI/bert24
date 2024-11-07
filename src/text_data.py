@@ -509,10 +509,13 @@ class NoStreamingDataset(Dataset):
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
+                # Create padding mask (1s for valid tokens)
+                sample["attention_mask"] = np.ones_like(sample["input_ids"])
+                
+                # Store causal mask separately 
                 if self.use_decoder_attn_mask:
-                    sample["attention_mask"] = np.tril(np.ones_like(sample["input_ids"]))
-                else:
-                    sample["attention_mask"] = np.ones_like(sample["input_ids"])
+                    sample["causal_mask"] = np.tril(np.ones_like(sample["input_ids"]))
+                
             return sample
         elif "text" in sample:
             return self._tokenize(sample)

@@ -64,7 +64,7 @@ from transformers.modeling_outputs import (
     ModelOutput,
     MultipleChoiceModelOutput,
     SequenceClassifierOutput,
-    LMHeadModelOutput,
+    CausalLMOutput,
 )
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 
@@ -1129,8 +1129,6 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
             )
         
         if attention_mask is None:
-            breakpoint()
-            # TODO: make a decoder-only forward pass
             attention_mask = torch.ones_like(input_ids)
 
         output = self.bert(
@@ -1514,12 +1512,23 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
 
     def __init__(self, config: FlexBertConfig):
         super().__init__(config)
-        self.num_labels = config.num_labels
-        self.config = config
-
         self.bert = FlexBertModel(config)
-        # self.head = FlexBertPoolingHead(config)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = FlexBertPredictionHead(config)
+
+        if config.tie_word_embeddings:
+            decoder_weights = self.bert.embeddings.tok_embeddings.weight
+        else:
+            decoder_weights = nn.Linear(config.hidden_size, config.vocab_size, bias=False).weight
+        self.decoder = nn.Linear(decoder_weights.size(1), decoder_weights.size(0), bias=config.decoder_bias)
+        self.decoder.weight = decoder_weights
+
+        self.loss_fn = nn.CrossEntropyLoss() if not hasattr(config, "loss_function") else get_loss_fn(config)
+        self.fa_ce = getattr(config, "loss_function", "cross_entropy") == "fa_cross_entropy"
+        self.return_z_loss = config.loss_kwargs.get("return_z_loss", False)
+        self.unpad_embeddings = config.unpad_embeddings
+        self.pad_logits = config.pad_logits
+        self.compile_model = config.compile_model
+        # self.masked_prediction = config.masked_prediction
 
         # Initialize weights and apply final processing
         self._init_weights(reset_params=False)
@@ -1531,8 +1540,10 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
         else:
             assert isinstance(reset_params, bool)
             self.bert._init_weights(reset_params=reset_params)
-            self.head._init_weights(reset_params=reset_params)
-            init_weights(self.config, self.lm_head, self.config.hidden_size, type_of_module=ModuleType.final_out)
+            self.lm_head._init_weights(reset_params=reset_params)
+
+            if not self.config.tie_word_embeddings:
+                init_weights(self.config, self.decoder, self.config.hidden_size, type_of_module=ModuleType.final_out)
 
     @classmethod
     def from_composer(
@@ -1562,24 +1573,62 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
 
         return model
 
+
+    def get_output_embeddings(self):
+        return self.decoder
+
+    def set_output_embeddings(self, new_embeddings):
+        self.decoder = new_embeddings
+
+    @torch.no_grad()
+    def unpad_inputs(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, position_ids: torch.Tensor, labels: torch.Tensor
+    ):
+        return unpad_input(input_ids, attention_mask, position_ids, labels)
+
+    @torch.no_grad()
+    def pad_inputs(
+        self,
+        inputs: torch.Tensor,
+        indices: torch.Tensor,
+        batch_size: int,
+        seqlen: int,
+        labels: Optional[torch.Tensor] = None,
+        ignore_index: int = -100,
+    ):
+        return pad_input(
+            inputs=inputs, indices=indices, batch=batch_size, seqlen=seqlen, labels=labels, ignore_index=ignore_index
+        )
+
     @torch.compile(dynamic=True)
     def compiled_lm_head(self, output: torch.Tensor) -> torch.Tensor:
-        return self.lm_head(output)
+        return self.decoder(self.lm_head(output))
 
     def forward(
         self,
-        input_ids: Optional[torch.Tensor] = None,
+        input_ids: Optional[torch.Tensor],
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
-        # labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-        # Labels for computing the sequence classification/regression loss.
-        # Indices should be in `[0, ..., config.num_labels - 1]`.
-        # If `config.num_labels == 1` a regression loss is computed
-        # (mean-square loss). If `config.num_labels > 1` a classification loss
-        # is computed (cross-entropy).
+        indices: Optional[torch.Tensor] = None,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        max_seqlen: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        seq_len: Optional[int] = None,
+        **kwargs,
+    ) -> Union[Tuple[torch.Tensor], CausalLMOutput]:
+        # labels should be a `torch.LongTensor` of shape
+        # `(batch_size, sequence_length)`. These are used for computing the
+        #  masked language modeling loss.
+        #
+        # Indices should be in `[-100, 0, ..., config.vocab_size]` (see
+        # `input_ids` docstring) Tokens with indices set to `-100` are ignored
+        # (masked), the loss is only computed for the tokens with labels in `[0,
+        # ..., config.vocab_size]`
+        #
+        # Prediction scores are only computed for masked tokens and the (bs,
+        # seqlen) dimensions are flattened
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -1588,8 +1637,57 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
                 input_ids, attention_mask, position_ids, labels
             )
+        
+        # Get total number of tokens
+        total_tokens = input_ids.size(0) if indices is not None else input_ids.size(-1)
+        device = input_ids.device
 
-        output = self.bert(
+        if indices is not None:
+            # Memory efficient mask creation for unpadded case
+            position_within_sequence = torch.arange(total_tokens, device=device)
+            sequence_index = torch.searchsorted(cu_seqlens, position_within_sequence, right=True) - 1
+            sequence_index = torch.clamp(sequence_index, min=0)  # Handle edge cases
+            
+            # Calculate relative positions efficiently
+            sequence_starts = cu_seqlens[sequence_index]
+            
+            # Create row and column position tensors
+            row_position = position_within_sequence.unsqueeze(1)  # [N, 1]
+            col_position = position_within_sequence.unsqueeze(0)  # [1, N]
+            
+            # Compute causal and sequence masks in one operation
+            same_sequence = (sequence_index.unsqueeze(1) == sequence_index.unsqueeze(0))
+            is_causal = (col_position <= row_position)
+            attention_mask = same_sequence & is_causal
+            
+            # Convert to float mask with proper scaling
+            attention_mask = attention_mask.to(self.bert.dtype)
+            attention_mask = (1.0 - attention_mask) * torch.finfo(self.bert.dtype).min
+
+            # if self.training:  # Only print during training
+            #     print(f"attention_mask shape: {attention_mask.shape}")
+            #     print(f"total_tokens: {total_tokens}")
+            #     print(f"cu_seqlens: {cu_seqlens}")
+            #     # Print a small sample of the mask to verify the pattern
+            #     sample_size = min(10, total_tokens)
+            #     print(f"Sample attention pattern:\n{attention_mask[:sample_size, :sample_size]}")
+        else:
+            # For padded case, use simple causal mask
+            causal_mask = torch.tril(
+                torch.ones((total_tokens, total_tokens), device=device, dtype=self.bert.dtype)
+            )
+            attention_mask = (1.0 - causal_mask) * torch.finfo(self.bert.dtype).min
+
+        # print(f"attention_mask shape: {attention_mask.shape}")
+        # if indices is not None:
+        #     print(f"total_tokens: {total_tokens}")
+        #     print(f"cu_seqlens: {cu_seqlens}")
+        #     # Print a small sample of the mask to verify the pattern
+        #     sample_size = min(10, total_tokens)
+        #     print(f"Sample attention pattern:\n{attention_mask[:sample_size, :sample_size]}")
+
+        # print(f"Sending to bert")
+        hidden_states = self.bert(
             input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -1597,36 +1695,77 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
-        hiddden_states = output.hidden_states
 
+        # print(f"Sending to lm_head")
         if self.compile_model:
-            logits = self.compiled_lm_head(output)
+            logits = self.compiled_lm_head(hidden_states)
         else:
-            logits = self.lm_head(hiddden_states)
+            logits = self.lm_head(hidden_states)
         
         loss = None
         if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            if indices is not None:
+                # For unpadded case: shift within each sequence
+                # Get sequence lengths
+                seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+                max_len = seq_lengths.max().item()
+                
+                # Initialize shifted labels with -100
+                shift_labels = torch.full_like(labels, -100)
+                
+                # For each sequence, shift the labels
+                for i in range(len(cu_seqlens) - 1):
+                    start = cu_seqlens[i]
+                    end = cu_seqlens[i + 1]
+                    length = end - start
+                    
+                    # Copy labels except last position
+                    if length > 1:
+                        shift_labels[start:end-1] = labels[start+1:end]
+                print(f"shift_labels: {shift_labels}")
+            else:
+                # For padded case: simple shift
+                shift_labels = labels[..., 1:]
+                logits = logits[..., :-1, :]
             
+            # Flatten the tokens
+            loss = self.loss_fn(
+                logits.view(-1, logits.size(-1)),
+                shift_labels.view(-1)
+            )
+
         if not return_dict:
-            output = (logits,) + output
+            output = (logits,) + output[1:]
             return ((loss,) + output) if loss is not None else output
-        
-        return LMHeadModelOutput(
+
+        return CausalLMOutput(
             loss=loss,
-            logits=reshaped_logits,
-            past_key_values=None,
-            hidden_states=None,
+            logits=logits,
+            hidden_states=hidden_states,
             attentions=None,
-            cross_attentions=None
         )
+
+    def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
+        input_shape = input_ids.shape
+        effective_batch_size = input_shape[0]
+
+        #  add a dummy token
+        if self.config.pad_token_id is None:
+            raise ValueError("The PAD token should be defined for generation")
+
+        attention_mask = torch.cat(
+            [attention_mask, attention_mask.new_zeros((attention_mask.shape[0], 1))],
+            dim=-1,
+        )
+        dummy_token = torch.full(
+            (effective_batch_size, 1),
+            self.config.pad_token_id,
+            dtype=torch.long,
+            device=input_ids.device,
+        )
+        input_ids = torch.cat([input_ids, dummy_token], dim=1)
+
+        return {"input_ids": input_ids, "attention_mask": attention_mask}
 
     def get_number_parameters(self, count_embeddings: bool = True, trainable: bool = True) -> int:
         """Returns the number of parameters in the model.

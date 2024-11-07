@@ -33,6 +33,7 @@ from .model import (
     FlexBertForMaskedLM,
     FlexBertForSequenceClassification,
     FlexBertForMultipleChoice,
+    FlexBertForCasualLM,
 )
 
 
