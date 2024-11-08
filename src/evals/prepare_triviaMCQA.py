@@ -117,14 +117,19 @@ def input_length_of_mcqa_item(ds_item:dict,
 def update_fastdata_for_vertexai(fd:FastData,max_mcqa_in_len):
     "Mutates a fastdata instance to use vertexai if possible."
     toks_per_call = max_mcqa_in_len
-    # Gcloud settings
+    # GCloud/VertexAI quotas
+    # "Online prediction tokens per minute per base model per minute per region per base_model"
     toks_per_minute_limit = 1_630_000
+    # "Online prediction requests per base model per minute per region per base_model"
     requests_per_minute_limit = 270
     # results
     toks_derived_calls_per_minute = int(toks_per_minute_limit / toks_per_call)
     final_calls_per_minute = int(0.85 * min(toks_derived_calls_per_minute, requests_per_minute_limit))
     try:
-        fd.cli:claudette.Client = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
+        vertex_claudette_cli = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
+        fd.cli = vertex_claudette_cli
+        fd.set_rate_limit(calls=final_calls_per_minute,period=60)
+        print("Authenticated to VertexAI. Using VertexAI to access Anthropic models")
         return fd
     except Exception:
         print("Unable to authenticate with VertexAI, so using default Fastdata configuration of Claudette")
@@ -227,6 +232,7 @@ def main():
     print("loaded triviaqa")
     result = {}
     for split in ds.keys():
+        print(f"Working on split={split}")
         dssplit = ds[split]
         xs = make_mcqa_filtering(dssplit.select(range(item_count)))
         result[split] = xs
