@@ -129,7 +129,7 @@ def update_fastdata_for_vertexai(fd:FastData,max_mcqa_in_len):
         vertex_claudette_cli = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
         fd.cli = vertex_claudette_cli
         fd.set_rate_limit(calls=final_calls_per_minute,period=60)
-        print("Authenticated to VertexAI. Using VertexAI to access Anthropic models")
+        print(f"Authenticated to VertexAI. Using VertexAI to access Anthropic models. Rate limit at {final_calls_per_minute} calls/min")
         return fd
     except Exception:
         print("Unable to authenticate with VertexAI, so using default Fastdata configuration of Claudette")
