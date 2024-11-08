@@ -457,8 +457,6 @@ def main(
     )
     download_thread.start()
 
-    print(f"Checkpoints: {checkpoints}")
-
     print("\nCreating symlinks for latest checkpoints...")
     for folder in checkpoints.glob("*"):
         if folder.is_dir() and not folder.name.startswith("."):
