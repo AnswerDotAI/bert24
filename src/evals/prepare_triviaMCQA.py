@@ -116,16 +116,15 @@ def input_length_of_mcqa_item(ds_item:dict,
 
 def update_fastdata_for_vertexai(fd:FastData,max_mcqa_in_len):
     "Mutates a fastdata instance to use vertexai if possible."
+    toks_per_call = max_mcqa_in_len
+    # Gcloud settings
+    toks_per_minute_limit = 1_630_000
+    requests_per_minute_limit = 270
+    # results
+    toks_derived_calls_per_minute = int(toks_per_minute_limit / toks_per_call)
+    final_calls_per_minute = int(0.85 * min(toks_derived_calls_per_minute, requests_per_minute_limit))
     try:
         fd.cli:claudette.Client = vertexauth.get_claudette_client(vertex_model='claude-3-5-sonnet-v2@20241022')
-        toks_per_call = max_mcqa_in_len
-        # Gcloud settings
-        tokens_per_minute_limit = 1_630_000
-        requests_per_minute_limit = 270
-        # results
-        toks_derived_calls_per_minute = int(toks_per_minute_limit / toks_per_call)
-        final_calls_per_minute = int(0.85 * min(toks_derived_calls_per_minute, requests_per_minute_limit))
-        
         return fd
     except Exception:
         print("Unable to authenticate with VertexAI, so using default Fastdata configuration of Claudette")
