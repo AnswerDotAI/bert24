@@ -97,6 +97,7 @@ class FlexBertConfig(TransformersBertConfig):
         pad_logits: bool = False,
         compile_model: bool = False,
         masked_prediction: bool = False,
+        casual_mask: bool = False,
         **kwargs,
     ):
         """
@@ -156,6 +157,7 @@ class FlexBertConfig(TransformersBertConfig):
             pad_logits (bool): Pad logits after the calculating the loss.
             compile_model (bool): Compile the subset of the model which can be compiled.
             masked_prediction (bool): Use only pass the masked tokens throught the final MLM layers
+            casual_mask (bool): Use a casual mask, defaulting to false.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)
@@ -213,6 +215,7 @@ class FlexBertConfig(TransformersBertConfig):
         self.pad_logits = pad_logits
         self.compile_model = compile_model
         self.masked_prediction = masked_prediction
+        self.casual_mask = casual_mask
 
         if loss_kwargs.get("return_z_loss", False):
             if loss_function != "fa_cross_entropy":

@@ -1634,66 +1634,16 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
                 input_ids, attention_mask, position_ids, labels
             )
-        
-        # Get total number of tokens
-        total_tokens = input_ids.size(0) if indices is not None else input_ids.size(-1)
-        device = input_ids.device
 
-        if indices is not None:
-            # Memory efficient mask creation for unpadded case
-            position_within_sequence = torch.arange(total_tokens, device=device)
-            sequence_index = torch.searchsorted(cu_seqlens, position_within_sequence, right=True) - 1
-            sequence_index = torch.clamp(sequence_index, min=0)  # Handle edge cases
-            
-            # Calculate relative positions efficiently
-            sequence_starts = cu_seqlens[sequence_index]
-            
-            # Create row and column position tensors
-            row_position = position_within_sequence.unsqueeze(1)  # [N, 1]
-            col_position = position_within_sequence.unsqueeze(0)  # [1, N]
-            
-            # Compute causal and sequence masks in one operation
-            same_sequence = (sequence_index.unsqueeze(1) == sequence_index.unsqueeze(0))
-            is_causal = (col_position <= row_position)
-            attention_mask = same_sequence & is_causal
-            
-            # Convert to float mask with proper scaling
-            attention_mask = attention_mask.to(self.bert.dtype)
-            attention_mask = (1.0 - attention_mask) * torch.finfo(self.bert.dtype).min
-
-            # if self.training:  # Only print during training
-            #     print(f"attention_mask shape: {attention_mask.shape}")
-            #     print(f"total_tokens: {total_tokens}")
-            #     print(f"cu_seqlens: {cu_seqlens}")
-            #     # Print a small sample of the mask to verify the pattern
-            #     sample_size = min(10, total_tokens)
-            #     print(f"Sample attention pattern:\n{attention_mask[:sample_size, :sample_size]}")
-        else:
-            # For padded case, use simple causal mask
-            causal_mask = torch.tril(
-                torch.ones((total_tokens, total_tokens), device=device, dtype=self.bert.dtype)
-            )
-            attention_mask = (1.0 - causal_mask) * torch.finfo(self.bert.dtype).min
-
-        # print(f"attention_mask shape: {attention_mask.shape}")
-        # if indices is not None:
-        #     print(f"total_tokens: {total_tokens}")
-        #     print(f"cu_seqlens: {cu_seqlens}")
-        #     # Print a small sample of the mask to verify the pattern
-        #     sample_size = min(10, total_tokens)
-        #     print(f"Sample attention pattern:\n{attention_mask[:sample_size, :sample_size]}")
-
-        # print(f"Sending to bert")
         hidden_states = self.bert(
             input_ids,
-            attention_mask=attention_mask,
+            attention_mask=None,
             position_ids=position_ids,
             indices=indices,
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
 
-        # print(f"Sending to lm_head")
         if self.compile_model:
             logits = self.compiled_lm_head(hidden_states)
         else:
@@ -1701,29 +1651,34 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
         
         loss = None
         if labels is not None:
-            if indices is not None:
-                # For unpadded case: shift within each sequence
-                # Get sequence lengths
-                seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
-                max_len = seq_lengths.max().item()
+            if indices is not None:                
+                # Unpadded case: shift within each sequence using input_ids
+                # Initialize shifted labels from input_ids
+                shift_labels = torch.full_like(input_ids, -100)
                 
-                # Initialize shifted labels with -100
-                shift_labels = torch.full_like(labels, -100)
-                
-                # For each sequence, shift the labels
+                # For each sequence, shift the input_ids to create labels
                 for i in range(len(cu_seqlens) - 1):
                     start = cu_seqlens[i]
                     end = cu_seqlens[i + 1]
-                    length = end - start
+                    # Input: [A, B, C, D] -> Labels: [B, C, D, -100]
+                    shift_labels[start:end-1] = input_ids[start+1:end]
+                        
+                # Debug prints
+                # print(f"input_ids slice: {input_ids[:20]}")  # Show first 20 tokens
+                # print(f"shift_labels slice: {shift_labels[:20]}")  # Show first 20 token
+                        
+                # # Debug prints
+                # print(f"input_ids slice: {input_ids[:20]}")  # Show first 20 tokens
+                # print(f"shift_labels slice: {shift_labels[:20]}")  # Show first 20 tokens
+                # print(f"First sequence length: {cu_seqlens[1] - cu_seqlens[0]}")
                     
-                    # Copy labels except last position
-                    if length > 1:
-                        shift_labels[start:end-1] = labels[start+1:end]
-                print(f"shift_labels: {shift_labels}")
             else:
-                # For padded case: simple shift
-                shift_labels = labels[..., 1:]
-                logits = logits[..., :-1, :]
+                # Padded case: simple shift
+                shift_labels = input_ids[..., 1:].contiguous()
+                logits = logits[..., :-1, :].contiguous()
+
+            # For both cases, we'll use the shifted input_ids as our labels
+            labels = shift_labels
             
             # Flatten the tokens
             loss = self.loss_fn(
