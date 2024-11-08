@@ -130,13 +130,15 @@ def run_subprocess(cmd: str, quiet: bool = False):
     process.wait()
 
 
-def run_single_job(config_path: Path, quiet: bool = False):
+def run_single_job(config_path: Path, quiet: bool = False, delete_eval_yamls: bool = True):
     """Run a single job without GPU management."""
     print(f"Running job for {config_path}")
     stdout = subprocess.DEVNULL if quiet else None
     process = subprocess.Popen(["python", "ablation_eval.py", config_path], stdout=stdout, stderr=stdout)
     all_processes.append(process)  # Add the process to the global list
     process.wait()
+    if delete_eval_yamls:
+        config_path.unlink()
 
 
 def check_finished_jobs(quiet: bool = False):
@@ -155,7 +157,7 @@ def check_finished_jobs(quiet: bool = False):
         potentially_free_gpus.append(gpu_id)
 
 
-def manage_jobs(configs: List[Path], quiet=False):
+def manage_jobs(configs: List[Path], quiet: bool = False, delete_eval_yamls: bool = True):
     """Manage the launching of jobs for each configuration file in the directory."""
     # configs = list(config_directory.glob("*_evaluation.yaml"))
 
@@ -164,7 +166,7 @@ def manage_jobs(configs: List[Path], quiet=False):
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("[progress.percentage]{task.completed}/{task.total}"),
             TimeElapsedColumn(),
         )
 
@@ -228,6 +230,10 @@ def manage_jobs(configs: List[Path], quiet=False):
         while gpus_in_use:
             check_finished_jobs()
             time.sleep(10)
+
+    if delete_eval_yamls:
+        for config in configs:
+            config.unlink()
 
 
 def create_symlink_for_newest_checkpoint(folder: Path, override_existing: bool = False):
@@ -306,7 +312,7 @@ def generate_eval_configs(
 ):
     """Generate evaluation configs for each checkpoint."""
     for folder in checkpoints.glob("*"):
-        if folder.is_dir():
+        if folder.is_dir() and not folder.name.startswith("."):
             cmd = [
                 "python",
                 "generate_eval_config_from_checkpoint.py",
@@ -380,43 +386,45 @@ def download_dataset(dataset_name: str, subset: Optional[str] = None):
 def download_datasets(
     skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue
 ):
-    required_datasets = []
+    try:
+        required_datasets = []
 
-    if not skip_semipro:
-        required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
-        required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
-    if not skip_reserve:
-        required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
-        required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
-    if not skip_eurlex:
-        required_datasets.append(["coastalcph/lex_glue", "eurlex"])
-    if not skip_mnli:
-        required_datasets.append(["glue", "mnli"])
-    if not skip_boolq:
-        required_datasets.append(["aps/super_glue", "boolq"])
-    if not skip_wic:
-        required_datasets.append(["aps/super_glue", "wic"])
-    if not skip_ultrafeedback:
-        required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
+        if not skip_semipro:
+            required_datasets.append(["answerdotai/MLMMLU", "Amateur"])
+            required_datasets.append(["answerdotai/MLMMLU", "Semipro"])
+        if not skip_reserve:
+            required_datasets.append(["answerdotai/MLMMLU", "Rookie"])
+            required_datasets.append(["answerdotai/MLMMLU", "Reserve"])
+        if not skip_eurlex:
+            required_datasets.append(["coastalcph/lex_glue", "eurlex"])
+        if not skip_mnli:
+            required_datasets.append(["glue", "mnli"])
+        if not skip_boolq:
+            required_datasets.append(["aps/super_glue", "boolq"])
+        if not skip_wic:
+            required_datasets.append(["aps/super_glue", "wic"])
+        if not skip_ultrafeedback:
+            required_datasets.append(["rbiswasfc/ultrafeedback-binary-classification"])
 
-    # Redirect stdout and stderr to a string buffer
-    string_io = io.StringIO()
-    msgs = []
-    with redirect_stdout(string_io), redirect_stderr(string_io):
-        for args in required_datasets:
-            msgs.append(download_dataset(*args))
-    msg_queue.put("    " + "\n    ".join(msgs) + "\n")
+        # Redirect stdout and stderr to a string buffer
+        string_io = io.StringIO()
+        msgs = []
+        with redirect_stdout(string_io), redirect_stderr(string_io):
+            for args in required_datasets:
+                msgs.append(download_dataset(*args))
+        msg_queue.put("    " + "\n    ".join(msgs) + "\n")
+    except Exception as e:
+        msg_queue.put(f"Error in downloading datasets: {e}")
 
 
 console = Console()
 
 
-# fmt: off
 @app.command()
 def main(
     checkpoints: Annotated[Path, Option(help="Path to the directory containing checkpoints", rich_help_panel="Checkpoint & Config Paths")],
     train_config: Annotated[Optional[Path], Option(help="Path to a single .yaml file containing training configuration", rich_help_panel="Checkpoint & Config Paths")] = None,
-    skip_generation: Annotated[bool, Option("--skip-generation", help="Skip generation of evaluation configs", rich_help_panel="Config Options")] = False,
+    skip_generation: Annotated[bool, Option("--skip-generation", help="Skip generation of evaluation configs. If not true, assumes all existing eval yamls have been already ran.", rich_help_panel="Config Options")] = False,
     wandb_run: Annotated[Optional[str], Option(help="wandb run containing the training configuration", rich_help_panel="W&B")] = None,
     wandb_project: Annotated[Optional[str], Option(help="wandb project for the run", rich_help_panel="W&B")] = None,
     wandb_entity: Annotated[Optional[str], Option(help="wandb entity for the project", rich_help_panel="W&B")] = None,
@@ -437,25 +445,26 @@ def main(
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     quiet: Annotated[bool, Option("-q", "--quiet", help="Suppress output from evaluation jobs", rich_help_panel="Config Options")] = False,
     overwrite_existing_symlinks: Annotated[bool, Option("--override-existing-symlinks", help="Overwrite existing symlinks to point to latest checkpoint", rich_help_panel="Config Options")] = False,
-    parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU", rich_help_panel="Task Settings")] = False,
+    parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU. Use `parallel` if passing to `config`", rich_help_panel="Task Settings")] = False,
+    delete_eval_yamls: Annotated[bool, Option("--delete/--keep", help="Delete all evaluation YAML files after running the evals. Use `delete_eval_yamls` if passing to `config`", rich_help_panel="Config Options")] = False,
     config: Annotated[Optional[Path], Option(callback=conf_callback, is_eager=True, help="Relative path to YAML config file for setting options. Passing CLI options will supersede config options.", case_sensitive=False, rich_help_panel="Config Options")] = None,
-):
-# fmt: on
+):  # fmt: skip
     print("\nAsynchronously downloading required datasets...\n")
     msg_queue = queue.Queue()
     download_thread = threading.Thread(
         target=download_datasets,
-        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue)
+        args=(skip_semipro, skip_reserve, skip_eurlex, skip_mnli, skip_boolq, skip_wic, skip_ultrafeedback, msg_queue),
     )
     download_thread.start()
 
+    print(f"Checkpoints: {checkpoints}")
+
     print("\nCreating symlinks for latest checkpoints...")
     for folder in checkpoints.glob("*"):
-        create_symlink_for_newest_checkpoint(folder, overwrite_existing_symlinks)
+        if folder.is_dir() and not folder.name.startswith("."):
+            create_symlink_for_newest_checkpoint(folder, overwrite_existing_symlinks)
 
-    if train_config:
-        config_files = [train_config]
-    elif not skip_generation:
+    if not skip_generation:
         print("\nGenerating evaluation configs...\n")
         config_files_completed = list(checkpoints.glob("*_evaluation.yaml"))
         print(f"Completed Jobs: {config_files_completed}")
@@ -485,9 +494,12 @@ def main(
         )
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
         config_files = sorted(list(set(config_files) - set(config_files_completed)))
-        print(f"Jobs to be run:\n{config_files}")
     else:
         config_files = list(checkpoints.glob("*_evaluation.yaml"))
+
+    print("Jobs to be run:\n")
+    for config in config_files:
+        print(f"   {config.name}\n")
 
     # Wait for the dataset download to complete
     print("Waiting for dataset downloads to complete...")
@@ -497,10 +509,9 @@ def main(
         print(msg_queue.get())
 
     if len(config_files) == 1:
-        run_single_job(config_files[0], quiet)
+        run_single_job(config_files[0], quiet, delete_eval_yamls)
     elif len(config_files) > 1:
-        # manage_jobs(checkpoints, quiet)
-        manage_jobs(config_files, quiet)
+        manage_jobs(config_files, quiet, delete_eval_yamls)
     else:
         message = "No configuration files found in the specified directory."
         if quiet:
