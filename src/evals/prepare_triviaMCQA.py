@@ -255,8 +255,15 @@ def main():
         with open(str(out_path),'w') as f:
             json.dump(result,f)
     elif args.push:
-        dataset = DatasetDict({split: Dataset.from_list(result[split]) for split in ["train", "validation", "test"]})
-        dataset.push_to_hub("answerdotai/trivia_mcqa")
+        try:
+            dataset = DatasetDict({split: Dataset.from_list(result[split]) for split in ["train", "validation", "test"]})
+            dataset.push_to_hub("answerdotai/trivia_mcqa")
+        except Exception as e:
+            # assert: upload failed
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w',suffix='.json', delete=False) as tf:
+                json.dump(result,tf)
+                print(f"Upload failed because of: {e}.\n\nHowever, data is saved at {tf.name}")
     else:
         # unreachable
         print("should be unreachable")
