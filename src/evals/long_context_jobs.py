@@ -241,7 +241,7 @@ class TriviaMCQAJob(ClassificationJob):
             **kwargs,
         )
         # use prepare_triviaMCQA to generate this file:
-        fname_raw = "triviamcqa100.json"
+        fname_raw = "longcontext/triviamcqa.json"
 
         # grab longcontext dataset
         # (we expect that tokenizer_name will be "bclavie/olmo_bert_template")
