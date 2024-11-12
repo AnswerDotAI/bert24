@@ -157,9 +157,9 @@ def make_mcqa_filtering(ds_split, max_mcqa_in_len=8_000):
     )
     print("Using input lengths to filter to subset of items to use for generating MCQA answers")
     # filter to questions where the MCQA input would not be too large
-    idxs_to_generate = [idx for idx 
+    idxs_to_generate = [sampled_idxs for sampled_idxs 
                         in range(len(filtered_ds)) 
-                        if est_input_lens[idx] <= max_mcqa_in_len]
+                        if est_input_lens[sampled_idxs] <= max_mcqa_in_len]
     print(f"Filtered down to {len(idxs_to_generate)} items with length < {max_mcqa_in_len}")
     print("Preparing to generate fake answers")
     filtered_ds = filtered_ds.select(idxs_to_generate)
@@ -225,6 +225,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.description='Generates TriviaMCQA, the multiple-choice variant of TriviaQA'
     parser.add_argument('--items', type=int, required=True, help='number of items to collect from each split')
+    parser.add_argument('--seed', default=42,
+                        type=int, required=False,help='seed used to randomize sampling from the TriviaQA dataset')
     parser.add_argument('--output', type=Path, help='output file name')
     parser.add_argument('--push', action='store_true', help='push to HF')
     args = parser.parse_args()
@@ -236,10 +238,17 @@ def main():
     ds = load_triviaqa()
     print("loaded triviaqa")
     result = {}
+    random.seed(args.seed)
     for split in ds.keys():
         print(f"Working on split={split}")
         dssplit = ds[split]
-        xs = make_mcqa_filtering(dssplit.select(range(item_count)))
+        randomize = True
+        if randomize:
+            sampled_idxs = sorted(random.sample(list(range(len(dssplit))),
+                                                min(item_count,len(dssplit))))
+        else:
+            sampled_idxs = range(min(item_count,len(dssplit)))
+        xs = make_mcqa_filtering(dssplit.select(sampled_idxs))
         result[split] = xs
 
     if (out_path := args.output) is not None:
