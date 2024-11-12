@@ -25,6 +25,7 @@ from src.evals.data import (
     create_mlmmlu_dataset,
     create_swag_dataset,
     create_ultrafeedback_dataset,
+    create_trivia_mcqa_dataset,
 )
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -356,6 +357,123 @@ class UltrafeedbackJob(ClassificationJob):
             metric_names=["UltrafeedbackAUROC"],
         )
         self.evaluators = [ultrafeedback_evaluator]
+        
+        
+class TriviaMCQA(ClassificationJob):
+    """TriviaMCQA"""
+
+    multiple_choice = True
+    num_labels = 5
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "100ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        max_sequence_length: Optional[int] = 2048,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 32,
+        device_train_microbatch_size: Optional[int] = 1,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="answerdotai/trivia_mcqa",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            device_train_microbatch_size=device_train_microbatch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        self.optimizer = DecoupledAdamW(
+            self.model.parameters(),
+            lr=2.0e-5,
+            betas=(0.9, 0.98),
+            eps=1.0e-6,
+            weight_decay=5.0e-06,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def form_input(q, ctx):
+                return f"### Context\n{ctx}\n\n### Question\n{q}"
+            
+            def tokenize_fn(inp):
+                choice_col = "options"
+                num_options = 5
+
+                first_sentences = [[form_input(a, b)] * num_options for a, b in zip(inp["question"], inp["context"])]
+                second_sentences = inp[choice_col]
+
+                first_sentences = list(chain(*first_sentences))
+                second_sentences = list(chain(*second_sentences))
+
+                tokenized_examples = tokenizer(
+                    first_sentences,
+                    second_sentences,
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+
+                return {
+                    k: [v[i : i + num_options] for i in range(0, len(v), num_options)]
+                    for k, v in tokenized_examples.items()
+                }
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+            "tokenize_fn_factory": tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
+            "drop_last": False,
+        }
+
+        train_dataset = create_trivia_mcqa_dataset(split="train", **dataset_kwargs)
+        eval_dataset = create_trivia_mcqa_dataset(split="test", **dataset_kwargs)
+        train_dataset = train_dataset.rename_column("answer_index", "labels")
+        eval_dataset = eval_dataset.rename_column("answer_index", "labels")
+        
+        self.train_dataloader = build_dataloader(
+            train_dataset, collate_fn=multiple_choice_collate_fn, **dataloader_kwargs
+        )
+
+        triviamcqa_evaluator = Evaluator(
+            label="triviamcqa",
+            dataloader=build_dataloader(
+                eval_dataset,
+                collate_fn=multiple_choice_collate_fn,
+                **dataloader_kwargs,
+            ),
+            metric_names=["MulticlassAccuracy"],
+        )
+
+        self.evaluators = [triviamcqa_evaluator]
 
 
 class MLMMLUAmateurSemipro(ClassificationJob):
