@@ -14,7 +14,8 @@
 #!/usr/bin/env -S python3
 from pathlib import Path
 from datasets import load_dataset
-import math, itertools, re, random, statistics, os, string, sys, argparse
+import math, itertools, re, random, statistics, os, string, sys, argparse, json
+from datasets import Dataset, DatasetDict
 
 from tqdm.contrib.concurrent import process_map  # or thread_map
 from functools import partial
@@ -224,10 +225,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.description='Generates TriviaMCQA, the multiple-choice variant of TriviaQA'
     parser.add_argument('--items', type=int, required=True, help='number of items to collect from each split')
-    parser.add_argument('--output', type=Path, required=True, help='output file name')
+    parser.add_argument('--output', type=Path, help='output file name')
+    parser.add_argument('--push', action='store_true', help='push to HF')
     args = parser.parse_args()
     item_count = args.items
-    out_path = args.output
+    if not args.output and not args.push:
+        print("Must specify --output or --push")
+        sys.exit(1)
+
     ds = load_triviaqa()
     print("loaded triviaqa")
     result = {}
@@ -236,11 +241,17 @@ def main():
         dssplit = ds[split]
         xs = make_mcqa_filtering(dssplit.select(range(item_count)))
         result[split] = xs
-    
-    with open(str(out_path),'w') as f:
-        import json
-        json.dump(result,f)
 
+    if (out_path := args.output) is not None:
+        with open(str(out_path),'w') as f:
+            json.dump(result,f)
+    elif args.push:
+        dataset = DatasetDict({split: Dataset.from_list(result[split]) for split in ["train", "validation", "test"]})
+        dataset.push_to_hub("answerdotai/trivia_mcqa")
+    else:
+        # unreachable
+        print("should be unreachable")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
