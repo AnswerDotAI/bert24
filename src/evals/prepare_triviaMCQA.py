@@ -4,7 +4,7 @@
 # dependencies = [
 #     "claudette",
 #     "datasets",
-#     "python-fastdata git+https://https://github.com/AnswerDotAI/fastdata.git@e4f7a5d0441e98a03896e87fcf0056091d3fc2b6",
+#     "python-fastdata git+https://github.com/AnswerDotAI/fastdata.git@e4f7a5d0441e98a03896e87fcf0056091d3fc2b6",
 #     "fastcore",
 #     "vertexauth",
 #     "transformers",
