@@ -455,7 +455,7 @@ class TriviaMCQA(ClassificationJob):
         }
 
         train_dataset = create_trivia_mcqa_dataset(split="train", **dataset_kwargs)
-        eval_dataset = create_trivia_mcqa_dataset(split="test", **dataset_kwargs)
+        eval_dataset = create_trivia_mcqa_dataset(split="validation", **dataset_kwargs)
         train_dataset = train_dataset.rename_column("answer_index", "labels")
         eval_dataset = eval_dataset.rename_column("answer_index", "labels")
         
