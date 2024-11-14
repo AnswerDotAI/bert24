@@ -165,7 +165,7 @@ class EfficientHuggingFaceModel(HuggingFaceModel):
             # print("logits", outputs["logits"].shape)
             labels = outputs.get("labels", self.labels)
             logits = outputs["logits"]
-            print(labels.shape, logits.shape)
+            # print(labels.shape, logits.shape)
 
             if len(labels.shape) > 1:  # Unpacked eval tensors are 2D
                 assert False, f"Not implemented for {labels.shape=} which is eval"
