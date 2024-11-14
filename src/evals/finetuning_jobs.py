@@ -24,6 +24,7 @@ from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler
 from composer.trainer.trainer import Trainer
 from composer.utils import dist, reproducibility
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 
@@ -223,6 +224,7 @@ class ClassificationJob(FineTuneJob):
         task_name: Optional[str] = None,
         eval_interval: str = "1000ba",
         scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
@@ -247,6 +249,7 @@ class ClassificationJob(FineTuneJob):
         self.model = model
 
         self.scheduler = scheduler
+        self.optimizer = optimizer
 
         self.max_sequence_length = max_sequence_length
         self.max_duration = max_duration
@@ -259,7 +262,6 @@ class ClassificationJob(FineTuneJob):
         # These will be set by the subclasses for specific GLUE tasks
         self.train_dataloader = None
         self.evaluators = None
-        self.optimizer = None
 
     def get_trainer(self, device: Optional[Union[Device, str]] = None):
         if self.device_train_microbatch_size is None:
