@@ -1686,16 +1686,20 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
                 shift_labels.view(-1)
             )
 
-        if not return_dict:
-            output = (logits,) + output[1:]
-            return ((loss,) + output) if loss is not None else output
-
-        return CausalLMOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=hidden_states,
-            attentions=None,
-        )
+        if self.pad_logits:
+            return CausalLMOutput(
+                loss=loss,
+                logits=self.pad_inputs(logits, indices, batch_size, seq_len)[0],
+                hidden_states=None,
+                attentions=None,
+            )
+        else:
+            return CausalLMOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=hidden_states,
+                attentions=None,
+            )
 
     def prepare_inputs_for_generation(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **model_kwargs):
         input_shape = input_ids.shape

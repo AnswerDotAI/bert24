@@ -858,7 +858,6 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
         """
         bs, dim = hidden_states.shape
         qkv = self.Wqkv(hidden_states)
-        # assert False, f"{cu_seqlens=}, {max_seqlen=}, {indices=}, {attn_mask=}"
 
         # only needed for inference when we have KV cache
         seqlen_offset = 0

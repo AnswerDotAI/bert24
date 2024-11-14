@@ -161,7 +161,19 @@ class EfficientHuggingFaceModel(HuggingFaceModel):
         elif isinstance(metric, EfficientCrossEntropy):
             metric_result = metric.update(outputs["loss"])
         else:
-            metric_result = metric.update(outputs["logits"], outputs.get("labels", self.labels))
+            # print(f"Unsupported metric {metric=}")
+            # print("logits", outputs["logits"].shape)
+            labels = outputs.get("labels", self.labels)
+            logits = outputs["logits"]
+            print(labels.shape, logits.shape)
+
+            if len(labels.shape) > 1:  # Unpacked eval tensors are 2D
+                assert False, f"Not implemented for {labels.shape=} which is eval"
+            else:  # Packed training tensors
+                if labels.shape[0] == logits.shape[0] + 1:
+                    labels = labels[1:]
+            
+            metric_result = metric.update(logits, labels)
 
         if metric_result is not None:
             # Add the metric name once for each datapoint in the batch

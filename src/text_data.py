@@ -499,10 +499,11 @@ class NoStreamingDataset(Dataset):
                 if isinstance(sample[k], np.ndarray):
                     if sample[k][0] != 50281:
                         sample[k] = np.insert(sample[k], 0, 50281)[: self.max_seq_len]
+                    sample[k] = sample[k][: self.max_seq_len]
                     if sample[k][-1] != 50282:
                         sample[k] = sample[k][: self.max_seq_len - 1]
                         sample[k] = np.append(sample[k], 50282)
-                    sample[k] = sample[k][: self.max_seq_len]
+                    assert sample[k][-1] == 50282
                 else:
                     del sample[k]
             if "attention_mask" not in sample:
