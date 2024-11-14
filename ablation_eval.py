@@ -123,8 +123,12 @@ def build_scheduler(cfg):
         return WarmupStableDecayScheduler(t_warmup=cfg.t_warmup, alpha_f=cfg.alpha_f)
     else:
         raise ValueError(f"Not sure how to build scheduler: {cfg.name}")
-    
+
+
 def build_optimizer(cfg, model):
+    if cfg is None:
+        return None
+
     if cfg.get("filter_bias_norm_wd", False):
         params = param_groups_weight_decay(model, weight_decay=cfg.weight_decay)
     else:
@@ -336,13 +340,13 @@ def run_job_worker(
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
 
-    model=build_model(
+    model = build_model(
         config.model,
         num_labels=task_cls.num_labels,
         multiple_choice=task_cls.multiple_choice,
         custom_eval_metrics=task_cls.custom_eval_metrics,
     )
-    
+
     instantiated_job = task_cls(
         job_name=config.job_name,
         seed=config.seed,
