@@ -55,10 +55,9 @@ def index_cos_sin(cos, sin, seqlen_offsets, seqlen):
 
 
 @pytest.mark.parametrize("dtype", ([torch.float16] if not is_sm8x else [torch.float16, torch.bfloat16]))
-@pytest.mark.parametrize("seqlen_offsets_type", [0, int, torch.Tensor])
-@pytest.mark.parametrize("rotary_fraction", [1, 0.5])
-@pytest.mark.parametrize("interleaved", [False, True])
-def test_rotary_emb_unpad(interleaved, rotary_fraction, seqlen_offsets_type, dtype):
+@pytest.mark.parametrize("rotary_fraction", [1, 0.5, 0.25])
+@pytest.mark.parametrize("compile", [False, True])
+def test_rotary_emb_unpad(rotary_fraction, compile, dtype):
     rtol = 1e-3
     batch_size = 16
     nheads = 4
@@ -78,31 +77,33 @@ def test_rotary_emb_unpad(interleaved, rotary_fraction, seqlen_offsets_type, dty
     qkv_unpad = qkv_unpad.requires_grad_()
 
     cos, sin = generate_cos_sin(seqlen, rotary_dim, device, dtype)
-    seqlen_offsets = generate_seqlen_offsets(seqlen_offsets_type, batch_size, seqlen, device)
 
     qkv_unpad = qkv_unpad.view(-1, 3, nheads, headdim)
-    out_unpad = apply_rotary_emb_unpad(
-        qkv_unpad,
-        cos,
-        sin,
-        seqlen_offsets=seqlen_offsets,
-        interleaved=interleaved,
-        cu_seqlens=cu_seqlens,
-        max_seqlen=max_seqlen,
-    )
+    if compile:
+        compiled_apply_rotary_emb_unpad = torch.compile(apply_rotary_emb_unpad)
+        out_unpad = compiled_apply_rotary_emb_unpad(
+            qkv_unpad,
+            cos,
+            sin,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+        )
+    else:
+        out_unpad = apply_rotary_emb_unpad(
+            qkv_unpad,
+            cos,
+            sin,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=max_seqlen,
+        )
 
     out = pad_input(out_unpad, indices, batch_size, seqlen)
     out = out.requires_grad_()
 
-    cos_pt, sin_pt = index_cos_sin(cos, sin, seqlen_offsets, seqlen)
+    cos_pt, sin_pt = index_cos_sin(cos, sin, 0, seqlen)
 
-    q_pt = apply_rotary_emb_torch(qkv_pt[:, :, 0].float(), cos_pt.float(), sin_pt.float(), interleaved=interleaved).to(
-        dtype=dtype
-    )
-
-    k_pt = apply_rotary_emb_torch(qkv_pt[:, :, 1].float(), cos_pt.float(), sin_pt.float(), interleaved=interleaved).to(
-        dtype=dtype
-    )
+    q_pt = apply_rotary_emb_torch(qkv_pt[:, :, 0].float(), cos_pt.float(), sin_pt.float()).to(dtype=dtype)
+    k_pt = apply_rotary_emb_torch(qkv_pt[:, :, 1].float(), cos_pt.float(), sin_pt.float()).to(dtype=dtype)
 
     out_pt = torch.stack([q_pt, k_pt, qkv_pt[:, :, 2]], dim=2)
     out_pt = out_pt.masked_fill(rearrange(~padding_mask, "b s -> b s 1 1 1"), 0.0)
@@ -124,7 +125,8 @@ def test_rotary_emb_unpad(interleaved, rotary_fraction, seqlen_offsets_type, dty
 # NeoX-style rotary embedding
 @pytest.mark.parametrize("dtype", ([torch.float16] if not is_sm8x else [torch.float16, torch.bfloat16]))
 @pytest.mark.parametrize("rotary_emb_fraction", [0.25, 0.5, 1.0])
-def test_rotary(rotary_emb_fraction, dtype):
+@pytest.mark.parametrize("compile", [False, True])
+def test_rotary(rotary_emb_fraction, compile, dtype):
     device = "cuda"
     # following original flash attention test, we use higher atol
     rtol, atol = (1e-3, 5e-3) if dtype == torch.float16 else (1e-2, 5e-2)
@@ -146,6 +148,8 @@ def test_rotary(rotary_emb_fraction, dtype):
 
     qkv_og = qkv.clone().detach()  # Our implementation modifies qkv inplace
     rotary = UnpaddedRotaryEmbedding(rotary_dim, max_seqlen=seqlen, device=device, dtype=dtype)
+    if compile:
+        rotary.compile()
     rotary_neox = GPTNeoXRotaryEmbedding(rotary_dim, seqlen, device=device)
 
     # Doesn't matter what tensor we pass in, rotary_neox only uses the device of the tensor
@@ -155,7 +159,7 @@ def test_rotary(rotary_emb_fraction, dtype):
     k_pt = rearrange(qkv[:, :, 1, :, :rotary_dim], "b s h d -> b h s d").detach().clone().requires_grad_(True)
     q_neox, k_neox = apply_rotary_pos_emb_neox(q_pt, k_pt, cos_neox, sin_neox, position_ids=position_ids)
 
-    out = rotary(qkv_unpad, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen, seqlen_offset=0)
+    out = rotary(qkv_unpad, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen)
     q_neox, *_ = unpad_input(rearrange(q_neox, "b h s d -> b s h d"), padding_mask)
     k_neox, *_ = unpad_input(rearrange(k_neox, "b h s d -> b s h d"), padding_mask)
 

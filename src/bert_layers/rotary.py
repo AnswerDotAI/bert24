@@ -4,23 +4,174 @@
 # Copyright (c) 2023, Tri Dao.
 # License: Apache-2.0
 
-import torch
-from einops import rearrange
-from flash_attn.ops.triton.rotary import apply_rotary
+# This rotary implementation is modified from the original flash attention implementation to support torch.compile using the new PyTorch 2.4 custom_op.
+# It also is a simplified version of the rotary implementation in flash attention, as it only supports GPT-NeoX style rotary embeddings for variable
+# length sequences and it no longer supports seqlen_offset for kvcache as bidirectional transformers do not have a kvcache
 
-from typing import Optional, Tuple, Union
+
+from typing import Optional
+
+import torch
+import triton
+import triton.language as tl
+from einops import rearrange
+from torch import Tensor
+
+
+@triton.jit
+def rotary_kernel(
+    OUT,  # Pointers to matrices
+    X,
+    COS,
+    SIN,
+    CU_SEQLENS,
+    # Matrix dimensions
+    seqlen,
+    rotary_dim,
+    seqlen_ro,
+    # strides
+    stride_out_seqlen,
+    stride_out_nheads,
+    stride_out_headdim,
+    stride_x_seqlen,
+    stride_x_nheads,
+    stride_x_headdim,
+    # Meta-parameters
+    BLOCK_K: tl.constexpr,
+    CONJUGATE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    pid_batch = tl.program_id(axis=1)
+    pid_head = tl.program_id(axis=2)
+    rotary_dim_half = rotary_dim // 2
+
+    start_idx = tl.load(CU_SEQLENS + pid_batch)
+    seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
+    X = X + start_idx * stride_x_seqlen + pid_head * stride_x_nheads
+    OUT = OUT + start_idx * stride_out_seqlen + pid_head * stride_out_nheads
+
+    if pid_m * BLOCK_M >= seqlen:
+        return
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rk_half = tl.arange(0, BLOCK_K // 2)
+
+    # Load the 1st and 2nd halves of X, do calculation, then store to 1st and 2nd halves of OUT
+    X = X + (rm[:, None] * stride_x_seqlen + rk_half[None, :] * stride_x_headdim)
+    COS = COS + (rm[:, None] * rotary_dim_half + rk_half[None, :])
+    SIN = SIN + (rm[:, None] * rotary_dim_half + rk_half[None, :])
+    cos = tl.load(COS, mask=(rm[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=1.0).to(tl.float32)
+    sin = tl.load(SIN, mask=(rm[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(tl.float32)
+    x0 = tl.load(X, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(tl.float32)
+    x1 = tl.load(
+        X + rotary_dim_half * stride_x_headdim,
+        mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half),
+        other=0.0,
+    ).to(tl.float32)
+    if CONJUGATE:
+        sin = -sin
+    o0 = x0 * cos - x1 * sin
+    o1 = x0 * sin + x1 * cos
+    # write back result
+    OUT = OUT + (rm[:, None] * stride_out_seqlen + rk_half[None, :] * stride_out_headdim)
+    tl.store(OUT, o0, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half))
+    tl.store(
+        OUT + rotary_dim_half * stride_out_headdim,
+        o1,
+        mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half),
+    )
+
+
+@torch.library.custom_op("modernbert::apply_rotary", mutates_args={"x"}, device_types="cuda")
+def apply_rotary(
+    x: Tensor,
+    cos: Tensor,
+    sin: Tensor,
+    cu_seqlens: Optional[Tensor] = None,
+    max_seqlen: Optional[int] = None,
+    conjugate: bool = False,
+) -> Tensor:
+    """
+    Arguments:
+        x: (batch, seqlen, nheads, headdim) if cu_seqlens is None
+            else (total_seqlen, nheads, headdim).
+        cos: (seqlen_ro, rotary_dim / 2)
+        sin: (seqlen_ro, rotary_dim / 2)
+        cu_seqlens: (batch + 1,) or None
+        max_seqlen: int
+    Returns:
+        y: (batch, seqlen, nheads, headdim)
+    """
+    is_varlen = cu_seqlens is not None
+    if not is_varlen:
+        raise ValueError("This kernel only supports variable length sequences")
+    else:
+        assert max_seqlen is not None, "If cu_seqlens is passed in, then max_seqlen must be passed"
+        total_seqlen, nheads, headdim = x.shape
+        batch_p_1 = cu_seqlens.shape[0]
+        batch = batch_p_1 - 1
+        seqlen = max_seqlen
+    seqlen_ro, rotary_dim = cos.shape
+    assert sin.shape == cos.shape
+    rotary_dim *= 2
+    assert rotary_dim <= headdim, "rotary_dim must be <= headdim"
+    assert headdim <= 256, "Only support headdim <= 256"
+    assert seqlen_ro >= seqlen, "seqlen_ro must be >= seqlen"
+
+    assert cos.dtype == sin.dtype, f"cos and sin must have the same dtype, got {cos.dtype} and {sin.dtype}"
+    assert x.dtype == cos.dtype, f"Input and cos/sin must have the same dtype, got {x.dtype} and {cos.dtype}"
+
+    cos, sin = cos.contiguous(), sin.contiguous()
+    output = x
+
+    BLOCK_K = 32 if rotary_dim <= 32 else (64 if rotary_dim <= 64 else (128 if rotary_dim <= 128 else 256))
+    grid = lambda META: (triton.cdiv(seqlen, META["BLOCK_M"]), batch, nheads)  # noqa
+    BLOCK_M = 8 if rotary_dim <= 64 else 4
+
+    # Need this, otherwise Triton tries to launch from cuda:0 and we get
+    # ValueError: Pointer argument (at 0) cannot be accessed from Triton (cpu tensor?)
+    with torch.cuda.device(x.device.index):
+        rotary_kernel[grid](
+            output,  # data ptrs
+            x,
+            cos,
+            sin,
+            cu_seqlens,
+            seqlen,  # shapes
+            rotary_dim,
+            seqlen_ro,
+            output.stride(-3),  # seqlen_stride or total_seqlen_stride
+            output.stride(-2),  # nheads_stride
+            output.stride(-1),  # headdim_stride
+            x.stride(-3),  # seqlen stride or total_seqlen_stride
+            x.stride(-2),  # nheads stride
+            x.stride(-1),  # headdim stride
+            BLOCK_K,
+            conjugate,
+            BLOCK_M,
+        )
+
+
+@apply_rotary.register_fake
+def _(
+    x: Tensor,
+    cos: Tensor,
+    sin: Tensor,
+    cu_seqlens: Optional[Tensor] = None,
+    max_seqlen: Optional[int] = None,
+    conjugate: bool = False,
+) -> None:
+    pass
 
 
 class ApplyRotaryEmbUnpad(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx,
-        qkv,
-        cos,
-        sin,
-        interleaved=False,
-        seqlen_offsets: Union[int, torch.Tensor] = 0,
-        cu_seqlens: Optional[torch.Tensor] = None,
+        qkv: Tensor,
+        cos: Tensor,
+        sin: Tensor,
+        cu_seqlens: Optional[Tensor] = None,
         max_seqlen: Optional[int] = None,
     ):
         # (total_nnz, 3, nheads, headdim)
@@ -36,11 +187,8 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
                 qk,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=max_seqlen,
-                interleaved=interleaved,
-                inplace=True,
             )
         else:
             q, k = qkv[:, 0, :, :], qkv[:, 1, :, :]
@@ -48,40 +196,24 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
                 q,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=max_seqlen,
-                interleaved=interleaved,
-                inplace=True,
             )
             apply_rotary(
                 k,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=max_seqlen,
-                interleaved=interleaved,
-                inplace=True,
             )
 
-        if isinstance(seqlen_offsets, int):
-            ctx.save_for_backward(cos, sin, cu_seqlens)
-            ctx.seqlen_offsets = seqlen_offsets
-        else:
-            ctx.save_for_backward(cos, sin, cu_seqlens, seqlen_offsets)
-            ctx.seqlen_offsets = None
-        ctx.interleaved = interleaved
+        ctx.save_for_backward(cos, sin, cu_seqlens)
         ctx.max_seqlen = max_seqlen
         return qkv
 
     @staticmethod
     def backward(ctx, do):
-        seqlen_offsets = ctx.seqlen_offsets
-        if seqlen_offsets is None:
-            cos, sin, cu_seqlens, seqlen_offsets = ctx.saved_tensors
-        else:
-            cos, sin, cu_seqlens = ctx.saved_tensors
+        cos, sin, cu_seqlens = ctx.saved_tensors
         if do.is_contiguous():
             total_nnz, three, nheads, headdim = do.shape
             # Call 1 kernel instead of 2 kernels
@@ -92,11 +224,8 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
                 dqk,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=ctx.max_seqlen,
-                interleaved=ctx.interleaved,
-                inplace=True,
                 conjugate=True,
             )
         else:
@@ -105,22 +234,16 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
                 dq,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=ctx.max_seqlen,
-                interleaved=ctx.interleaved,
-                inplace=True,
                 conjugate=True,
             )
             apply_rotary(
                 dk,
                 cos,
                 sin,
-                seqlen_offsets=seqlen_offsets,
                 cu_seqlens=cu_seqlens,
                 max_seqlen=ctx.max_seqlen,
-                interleaved=ctx.interleaved,
-                inplace=True,
                 conjugate=True,
             )
 
@@ -128,23 +251,17 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
 
 
 def apply_rotary_emb_unpad(
-    qkv,
-    cos,
-    sin,
-    interleaved=False,
-    seqlen_offsets: Union[int, torch.Tensor] = 0,
-    cu_seqlens: Optional[torch.Tensor] = None,
+    qkv: Tensor,
+    cos: Tensor,
+    sin: Tensor,
+    cu_seqlens: Optional[Tensor] = None,
     max_seqlen: Optional[int] = None,
 ):
     """
     Arguments:
         qkv: (total_nnz, 3, nheads, headdim) - input tensor for packed QKV.
         cos, sin: (seqlen_rotary, rotary_dim / 2)
-        interleaved: if True, rotate pairs of even and odd dimensions (GPT-J style) instead
-            of 1st half and 2nd half (GPT-NeoX style).
         inplace: if True, apply rotary embedding in-place.
-        seqlen_offsets: (batch_size,) or int. Each sequence in x is shifted by this amount.
-            Most commonly used in inference when we have KV cache.
         cu_seqlens: (batch + 1,) or None
         max_seqlen: int
     Return:
@@ -152,7 +269,7 @@ def apply_rotary_emb_unpad(
     rotary_dim must be <= headdim
     Apply rotary embedding to the first rotary_dim of x.
     """
-    return ApplyRotaryEmbUnpad.apply(qkv, cos, sin, interleaved, seqlen_offsets, cu_seqlens, max_seqlen)
+    return ApplyRotaryEmbUnpad.apply(qkv, cos, sin, cu_seqlens, max_seqlen)
 
 
 class UnpaddedRotaryEmbedding(torch.nn.Module):
@@ -164,7 +281,6 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         self,
         dim: int,
         base: float = 10000.0,
-        interleaved: bool = False,
         max_seqlen: Optional[int] = None,
         scale_base: Optional[bool] = None,
         pos_idx_in_fp32: bool = True,
@@ -172,8 +288,6 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         dtype: Optional[torch.dtype] = None,
     ):
         """
-        interleaved: if True, rotate pairs of even and odd dimensions (GPT-J style) instead
-            of 1st half and 2nd half (GPT-NeoX style).
         pos_idx_in_fp32: if True, the position indices [0.0, ..., seqlen - 1] are in fp32,
             otherwise they might be in lower precision.
             This option was added because previously (before 2023-07-02), when we construct
@@ -195,7 +309,6 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
         # Generate and save the inverse frequency buffer (non trainable)
         inv_freq = self._compute_inv_freq(device)
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self.interleaved = interleaved
         self.scale_base = scale_base
         scale = (
             (torch.arange(0, dim, 2, device=device, dtype=torch.float32) + 0.4 * dim) / (1.4 * dim)
@@ -263,19 +376,14 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
 
     def forward(
         self,
-        qkv: torch.Tensor,
-        cu_seqlens: torch.Tensor,
+        qkv: Tensor,
+        cu_seqlens: Tensor,
         max_seqlen: Optional[int] = None,
-        seqlen_offset: Union[int, torch.Tensor] = 0,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Tensor:
         """
         qkv: (total_nnz, 3, nheads, headdim)
         cu_seqlens: (batch + 1,) cumulative sequence lengths
         max_seqlen: int max seq length in the batch
-        seqlen_offset: (batch_size,) or int. Each sequence in x is shifted by this amount.
-            Most commonly used in inference when we have KV cache.
-            If it's a tensor of shape (batch_size,), then to update the cos / sin cache, one
-            should pass in max_seqlen, which will update the cos / sin cache up to that length.
         Apply rotary embedding *inplace* to qkv.
         """
         if max_seqlen is not None:
@@ -285,8 +393,6 @@ class UnpaddedRotaryEmbedding(torch.nn.Module):
             qkv,
             self._cos_cached,
             self._sin_cached,
-            interleaved=self.interleaved,
-            seqlen_offsets=seqlen_offset,
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
