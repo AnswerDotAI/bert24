@@ -82,8 +82,34 @@ class FakeTriviaQA(BasicRepr):
     ): store_attr()
 FakeTriviaQA(["a1","a2","a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10"])
 
-# prompt for generating the incorrect Q&A answers
 prompt_template = """
+<evidence>
+{evidence}
+</evidence>
+
+<trivia_question>
+{question}
+</trivia_question>
+
+<correct_answer>
+{answer}
+</correct_answer>
+
+Given the above evidence, trivia_question, and the question's correct_answer, generate a minimum of 10 additional answers.
+
+Every one of these additional answers ABSOLUTELY MUST meet all of the following criteria:
+
+1. It must be an entity that appears literally and exactly somewhere in the evidence.
+2. However, it must not be a synonym for the correct answer
+
+<important>
+NOTE: Every answer must appear somewhere in the evidence.
+</important>
+
+"""
+
+# prompt for generating the incorrect Q&A answers
+old_prompt_template = """
 <evidence>
 {evidence}
 </evidence>
