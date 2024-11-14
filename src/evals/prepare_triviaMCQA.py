@@ -239,7 +239,8 @@ def main():
     print("loaded triviaqa")
     result = {}
     random.seed(args.seed)
-    for split in ds.keys():
+    splits_to_use = ["train","validation"] # exclue the "test" split, which has no answers so is not usable as a test set for multiplechoice
+    for split in splits_to_use:
         print(f"Working on split={split}")
         dssplit = ds[split]
         randomize = True
@@ -256,14 +257,17 @@ def main():
             json.dump(result,f)
     elif args.push:
         try:
-            dataset = DatasetDict({split: Dataset.from_list(result[split]) for split in ["train", "validation", "test"]})
+            dataset = DatasetDict({split: Dataset.from_list(result[split]) for split in splits_to_use})
             dataset.push_to_hub("answerdotai/trivia_mcqa")
+            print("Data uploaded to HF.")
         except Exception as e:
             # assert: upload failed
+            print(f"Upload failed because of: {e}.\n\nHowever, data will be saved.")
+        finally:
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w',suffix='.json', delete=False) as tf:
                 json.dump(result,tf)
-                print(f"Upload failed because of: {e}.\n\nHowever, data is saved at {tf.name}")
+                print(f"Generated data saved to {tf.name}")
     else:
         # unreachable
         print("should be unreachable")
