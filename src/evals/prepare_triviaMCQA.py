@@ -13,6 +13,7 @@
 ### Make the line below the first line, if you don't want to depend on uv
 #!/usr/bin/env -S python3
 from pathlib import Path
+from packaging import version
 from datasets import load_dataset
 import math, itertools, re, random, statistics, os, string, sys, argparse, json
 from datasets import Dataset, DatasetDict
@@ -20,6 +21,7 @@ from datasets import Dataset, DatasetDict
 from tqdm.contrib.concurrent import process_map  # or thread_map
 from functools import partial
 from transformers import AutoTokenizer
+import fastdata
 from fastdata.core import FastData
 from fastcore.utils import BasicRepr, store_attr
 import claudette
@@ -260,6 +262,10 @@ def main():
     if not args.output and not args.push:
         print("Must specify --output or --push")
         sys.exit(1)
+
+    if version.parse(fastdata.__version__) < version.parse("0.0.4"):
+        print("Cannot run with a fastdata < 0.0.4, since it has a concurrency bug. Please update python-fastdata")
+        exit(1)
 
     ds = load_triviaqa()
     print("loaded triviaqa")
