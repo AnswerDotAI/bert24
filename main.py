@@ -139,6 +139,7 @@ def build_algorithm(name, kwargs):
             warmup_tokens=kwargs.get("warmup_tokens", 25_000_000),
             rope_theta_increment=kwargs.get("rope_theta_increment", 10_000),
             batch_log_interval=kwargs.get("batch_log_interval", 10),
+            increment_theta_immediately=kwargs.get("increment_theta_immediately", False),
         )
     else:
         raise ValueError(f"Not sure how to build algorithm: {name}")
