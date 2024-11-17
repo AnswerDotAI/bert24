@@ -21,7 +21,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 from omegaconf import DictConfig, OmegaConf
 
-import bert_layers as bert_layers_module
+import src.bert_layers as bert_layers_module
 import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
@@ -203,7 +203,7 @@ def create_flex_bert_mlm(
             initialize the model weights. If provided, the state dictionary
             stored at `pretrained_checkpoint` will be loaded into the model
             after initialization. Default: ``None``.
-        disable_train_metrics (bool, optional): Only calculate metrics for 
+        disable_train_metrics (bool, optional): Only calculate metrics for
             validation set when True.
             Default: ``False``.
 

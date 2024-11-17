@@ -36,6 +36,7 @@ import src.flex_bert as flex_bert_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
+from src.algorithms.rope_schedule import FlexBertRopeSchedule
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
 from src.callbacks.log_grad_norm import LogGradNorm
 from src.callbacks.packing_efficiency import PackingEfficency
@@ -124,6 +125,22 @@ def build_algorithm(name, kwargs):
         return algorithms.Alibi(**kwargs)
     elif name == "gated_linear_units":
         return algorithms.GatedLinearUnits(**kwargs)
+    elif name == "ema":
+        return algorithms.EMA(
+            half_life=kwargs.get("half_life", "1000ba"),
+            smoothing=kwargs.get("smoothing", None),
+            ema_start=kwargs.get("ema_start", "0.0dur"),
+            update_interval=kwargs.get("update_interval", None),
+        )
+    elif name == "rope_schedule":
+        return FlexBertRopeSchedule(
+            min_rope_theta=kwargs.get("min_rope_theta", 10_000),
+            max_rope_theta=kwargs.get("max_rope_theta", 80_000),
+            warmup_tokens=kwargs.get("warmup_tokens", 25_000_000),
+            rope_theta_increment=kwargs.get("rope_theta_increment", 10_000),
+            batch_log_interval=kwargs.get("batch_log_interval", 10),
+            increment_theta_immediately=kwargs.get("increment_theta_immediately", False),
+        )
     else:
         raise ValueError(f"Not sure how to build algorithm: {name}")
 
