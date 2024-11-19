@@ -385,6 +385,8 @@ def build_text_dataloader(
         )
 
     mlm_probability = cfg.dataset.get("mlm_probability", None)
+    if cfg.dataset.get("suppress_masking", False):
+        mlm_probability = 0.0
     # only use sequence packing if using the no_streaming_dataset
     if not cfg.dataset.get("streaming", True) and cfg.get("sequence_packing", False):
         dataloader = DataLoader(
@@ -412,6 +414,7 @@ def build_text_dataloader(
             batch_size_warmup_min_size=cfg.get("batch_size_warmup_min_size", None),
             batch_size_warmup_tokens=cfg.get("batch_size_warmup_tokens", None),
             world_size=dist.get_world_size(),
+            suppress_masking=cfg.dataset.get("suppress_masking", False),
         )
         return BufferedIterable(sequence_packer, buffer_size=cfg.get("packing_prefetch_factor", 5))
     else:

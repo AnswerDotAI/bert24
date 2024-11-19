@@ -76,7 +76,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
@@ -147,7 +147,7 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     alibi_slopes=slopes,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attention = attention.to(orig_dtype)  # type: ignore
             else:
@@ -158,10 +158,11 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     alibi_slopes=slopes,
-                    casual = self.is_casual
+                    causal = self.is_causal
                 )
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, *_ = qkv.shape
             qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attention_head_size)
@@ -238,6 +239,7 @@ class BertAlibiUnpadAttention(nn.Module):
             slopes: None or (batch, heads) or (heads,)
         """
         assert (bias is None) == (slopes is None), f"{bias=}, {slopes=}"
+        assert False
         self_output = self.self(input_tensor, cu_seqlens, max_s, indices, attn_mask, bias, slopes)
         if subset_idx is not None:
             return self.output(
@@ -295,7 +297,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
@@ -404,7 +406,7 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -415,11 +417,12 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
             attn = attn.view(bs, dim)
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, seqlen, _ = qkv.shape
 
@@ -458,7 +461,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
@@ -558,7 +561,7 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -569,11 +572,12 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
             attn = attn.view(bs, dim)
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = bert_padding.pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, seqlen, _ = qkv.shape
 
@@ -612,7 +616,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
@@ -697,7 +701,7 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -706,10 +710,11 @@ class FlexBertPaddedAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
 
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
@@ -745,7 +750,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
@@ -884,7 +889,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     max_seqlen_q=max_seqlen,
                     max_seqlen_k=max_seqlen,
                     deterministic=self.deterministic_fa2,
-                    causal=self.is_casual,
+                    causal=self.is_causal,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -898,7 +903,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     max_seqlen_q=max_seqlen,
                     max_seqlen_k=max_seqlen,
                     deterministic=self.deterministic_fa2,
-                    causal=self.is_casual,
+                    causal=self.is_causal,
                 )
             attn = attn.view(bs, dim)
         elif self.use_fa2:
@@ -916,7 +921,7 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    causal=self.is_casual,
+                    causal=self.is_causal,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -927,11 +932,12 @@ class FlexBertUnpadRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    causal=self.is_casual,
+                    causal=self.is_causal,
                 )
             attn = attn.view(bs, dim)
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = bert_padding.pad_input(
                 qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1]
             )  # batch, max_seqlen, thd
@@ -971,7 +977,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attn_head_size
@@ -1082,7 +1088,7 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual,
+                    causal=self.is_causal,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1091,10 +1097,11 @@ class FlexBertPaddedRopeAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(
@@ -1129,7 +1136,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
@@ -1255,7 +1262,7 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual,
+                    causal=self.is_causal,
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1266,11 +1273,12 @@ class FlexBertUnpadRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual,
+                    causal=self.is_causal,
                 )
             attn = attn.view(bs, dim)
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = bert_padding.pad_input(
                 qkv, indices, cu_seqlens.shape[0] - 1, attn_mask.shape[-1]
             )  # batch, max_seqlen, thd
@@ -1310,7 +1318,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
@@ -1415,7 +1423,7 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1424,10 +1432,11 @@ class FlexBertPaddedRopeParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
         else:
-            assert not self.is_casual, f"Casual mask not implemented here yet"
+            assert not self.is_causal, f"causal mask not implemented here yet"
+            assert False
             qkv = self.rotary_emb(qkv, seqlen_offset=seqlen_offset, max_seqlen=None)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)
             attn = F.scaled_dot_product_attention(
@@ -1462,7 +1471,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                 f"heads ({config.num_attention_heads})"
             )
 
-        self.is_casual = config.casual_mask
+        self.is_causal = config.causal_mask
         self.num_attention_heads = config.num_attention_heads
         self.attn_head_size = int(config.hidden_size / config.num_attention_heads)
         self.hidden_size = config.hidden_size
@@ -1539,7 +1548,7 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
                 attn = attn.to(orig_dtype)  # type: ignore
             else:
@@ -1548,10 +1557,11 @@ class FlexBertPaddedParallelAttention(FlexBertAttentionBase):
                     dropout_p=self.p_dropout,
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
-                    casual=self.is_casual
+                    causal=self.is_causal
                 )
         else:
-            assert not self.is_casual, f"Casual attention mask not yet implemented here"
+            assert not self.is_causal, f"causal attention mask not yet implemented here"
+            assert False
             qkv = qkv.view(bs, seqlen, 3, self.num_attention_heads, self.attn_head_size)
             q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
             attn = F.scaled_dot_product_attention(

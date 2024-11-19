@@ -1121,7 +1121,6 @@ class FlexBertForMaskedLM(FlexBertPreTrainedModel):
         # seqlen) dimensions are flattened
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         if self.unpad_embeddings and (indices is None and cu_seqlens is None and max_seqlen is None):
             batch_size, seq_len = input_ids.shape[:2]
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
@@ -1501,7 +1500,7 @@ class FlexBertForMultipleChoice(FlexBertPreTrainedModel):
         return params
 
 
-class FlexBertForCasualLM(FlexBertPreTrainedModel):
+class FlexBertForCausalLM(FlexBertPreTrainedModel):
     """Bert Model transformer with a LM head.
 
     This head is just a standard LM head module. Used for causal language modeling tasks.
@@ -1628,7 +1627,6 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
         # seqlen) dimensions are flattened
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         if self.unpad_embeddings and (indices is None and cu_seqlens is None and max_seqlen is None):
             batch_size, seq_len = input_ids.shape[:2]
             input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = self.unpad_inputs(
@@ -1648,29 +1646,36 @@ class FlexBertForCasualLM(FlexBertPreTrainedModel):
             logits = self.compiled_lm_head(hidden_states)
         else:
             logits = self.lm_head(hidden_states)
-        
+
         loss = None
         if labels is not None:
-            if indices is not None:                
-                # Unpadded case: shift within each sequence using input_ids
-                # Initialize shifted labels from input_ids
+            if cu_seqlens is not None:                
                 shift_labels = torch.full_like(input_ids, -100)
-                
-                # For each sequence, shift the input_ids to create labels
+                shift_labels[:-1] = input_ids[1:] 
+
+                # Mask out shifted PAD
+                mask = (shift_labels != 50283) 
+                shift_labels = shift_labels * mask
+
+                # Mask boundaries
                 for i in range(len(cu_seqlens) - 1):
-                    start = cu_seqlens[i]
-                    end = cu_seqlens[i + 1]
-                    # Input: [A, B, C, D] -> Labels: [B, C, D, -100]
-                    shift_labels[start:end-1] = input_ids[start+1:end]
-                        
-                # Debug prints
-                # print(f"input_ids slice: {input_ids[:20]}")  # Show first 20 tokens
-                # print(f"shift_labels slice: {shift_labels[:20]}")  # Show first 20 token
-                        
-                # # Debug prints
-                # print(f"input_ids slice: {input_ids[:20]}")  # Show first 20 tokens
-                # print(f"shift_labels slice: {shift_labels[:20]}")  # Show first 20 tokens
-                # print(f"First sequence length: {cu_seqlens[1] - cu_seqlens[0]}")
+                    boundary_pos = cu_seqlens[i+1] - 1
+                    shift_labels[boundary_pos] = -100
+
+                #     # Unpadded case: shift within each sequence using input_ids
+                # # Simple shift for entire packed sequence
+                # shift_labels = torch.full_like(input_ids, -100)
+                # shift_labels[:-1] = input_ids[1:]
+
+                # for i in range(len(cu_seqlens) - 1):
+                #     boundary_pos = cu_seqlens[i+1] - 1  # Position of EOS
+                #     shift_labels[boundary_pos-1:boundary_pos+2] = -100  # Mask 3 positions
+
+            # print labels[(cu_seqlens[2]+1)-5:(cu_seqlens[2]+1)+5]
+            # print shift_labels[(cu_seqlens[2]+1)-5:(cu_seqlens[2]+1)+5]
+            # print labels[(cu_seqlens[-2]+1)-5:(cu_seqlens[-2]+1)+5]
+            # print shift_labels[(cu_seqlens[-2]+1)-5:(cu_seqlens[-2]+1)+5]
+                # breakpoint() # pkill -u oweller2 -f wandb
                     
             else:
                 # Padded case: simple shift

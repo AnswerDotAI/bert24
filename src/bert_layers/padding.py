@@ -27,6 +27,7 @@ def unpad_input(
         unpadded_position_ids: (total_nnz) or None
         unpadded_labels: (total_nnz) or None
     """
+    breakpoint()
     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
     max_seqlen_in_batch = int(seqlens_in_batch.max().item())

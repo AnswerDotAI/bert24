@@ -251,11 +251,15 @@ class SequencePacker(ABC):
             max_seq_lens = [torch.max(x[1:] - x[:-1]).item() for x in cu_seq_lens]
             assert isinstance(cu_seq_lens, list), f"Unexpected {type(cu_seq_lens)=}"
             if self.suppress_masking:
+                # must be decoder-only, let's shift the labels
+                input_ids = torch.from_numpy(batch)
                 yieldval = {
-                    "input_ids": torch.from_numpy(batch),
-                    "labels": None,
+                    "input_ids": input_ids,
+                    "labels": input_ids, # we will ignore these
                     "cu_seqlens": cu_seq_lens,
                     "max_seqlen": max_seq_lens,
+                    # give it an attention mask even though it should be all ones
+                    "attention_mask": torch.from_numpy(np.where(batch == self.pad_token_id, 0, 1)),
                 }
             else:
                 (masked_batch, labels) = SequencePacker.mlm_masking(

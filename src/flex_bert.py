@@ -590,11 +590,11 @@ def create_flex_bert_gpt(
         config.vocab_size += 8 - (config.vocab_size % 8)
 
     if pretrained_checkpoint is not None:
-        model = bert_layers_module.FlexBertForCasualLM.from_composer(
+        model = bert_layers_module.FlexBertForCausalLM.from_composer(
             pretrained_checkpoint=pretrained_checkpoint, config=config
         )
     else:
-        model = bert_layers_module.FlexBertForCasualLM(config)
+        model = bert_layers_module.FlexBertForCausalLM(config)
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()  # type: ignore
