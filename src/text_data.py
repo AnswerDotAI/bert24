@@ -502,11 +502,13 @@ class NoStreamingDataset(Dataset):
                 if isinstance(sample[k], np.ndarray):
                     if sample[k][0] != 50281:
                         sample[k] = np.insert(sample[k], 0, 50281)[: self.max_seq_len]
-                    sample[k] = sample[k][: self.max_seq_len]
-                    if sample[k][-1] != 50282:
-                        sample[k] = sample[k][: self.max_seq_len - 1]
+                    if 50282 not in sample[k]:
+                        assert 50283 not in sample[k] # can't have padding before eos
+                        # add at the end
                         sample[k] = np.append(sample[k], 50282)
-                    assert sample[k][-1] == 50282
+                    assert 50282 in sample[k] 
+                    assert 50281 in sample[k]
+                    sample[k] = sample[k][: self.max_seq_len]
                 else:
                     del sample[k]
             if "attention_mask" not in sample:

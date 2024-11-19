@@ -1651,17 +1651,19 @@ class FlexBertForCausalLM(FlexBertPreTrainedModel):
         if labels is not None:
             if cu_seqlens is not None:                
                 shift_labels = torch.full_like(input_ids, -100)
-                shift_labels[:-1] = input_ids[1:] 
-
-                # Mask out shifted PAD
-                mask = (shift_labels != 50283) 
-                shift_labels = shift_labels * mask
+                shift_labels[:-1] = input_ids[1:]
 
                 # Mask boundaries
                 for i in range(len(cu_seqlens) - 1):
                     boundary_pos = cu_seqlens[i+1] - 1
                     shift_labels[boundary_pos] = -100
-
+                
+                # Mask out both current and shifted PAD tokens
+                mask = (shift_labels == 50283)
+                shift_labels = torch.where(mask, torch.tensor(-100, device=shift_labels.device), shift_labels)
+                breakpoint()
+                # breakpoint() tensor([50281,  2973,  3623,  ..., 50283, 50283, 50283], device='cuda:0') first
+            
                 #     # Unpadded case: shift within each sequence using input_ids
                 # # Simple shift for entire packed sequence
                 # shift_labels = torch.full_like(input_ids, -100)
@@ -1671,9 +1673,9 @@ class FlexBertForCausalLM(FlexBertPreTrainedModel):
                 #     boundary_pos = cu_seqlens[i+1] - 1  # Position of EOS
                 #     shift_labels[boundary_pos-1:boundary_pos+2] = -100  # Mask 3 positions
 
-            # print labels[(cu_seqlens[2]+1)-5:(cu_seqlens[2]+1)+5]
+            # print input_ids[(cu_seqlens[2]+1)-5:(cu_seqlens[2]+1)+5]
             # print shift_labels[(cu_seqlens[2]+1)-5:(cu_seqlens[2]+1)+5]
-            # print labels[(cu_seqlens[-2]+1)-5:(cu_seqlens[-2]+1)+5]
+            # print input_ids[(cu_seqlens[-2]+1)-5:(cu_seqlens[-2]+1)+5]
             # print shift_labels[(cu_seqlens[-2]+1)-5:(cu_seqlens[-2]+1)+5]
                 # breakpoint() # pkill -u oweller2 -f wandb
                     
