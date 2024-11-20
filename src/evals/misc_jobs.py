@@ -363,7 +363,7 @@ class TriviaMCQA(ClassificationJob):
     """TriviaMCQA"""
 
     multiple_choice = True
-    num_labels = 5
+    num_labels = 4
 
     def __init__(
         self,
@@ -418,7 +418,7 @@ class TriviaMCQA(ClassificationJob):
             
             def tokenize_fn(inp):
                 choice_col = "options"
-                num_options = 4
+                num_options = self.num_labels
 
                 first_sentences = [[form_input(a, b)] * num_options for a, b in zip(inp["question"], inp["context"])]
                 second_sentences = inp[choice_col]
