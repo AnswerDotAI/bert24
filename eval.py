@@ -485,6 +485,15 @@ def train(config: om.DictConfig) -> None:
     Args:
         config (DictConfig): Configuration composed by OmegaConf
     """
+    # these subtasks require the parent task to have been run
+    round_2_task_names = config.get(
+        "round_2_task_names",
+        {
+            "mnli": {"rte", "mrpc", "stsb"},
+            "swag": {"copa"},
+        },
+    )
+
     start_time = time.time()
 
     # Initial default seed
@@ -512,9 +521,12 @@ def train(config: om.DictConfig) -> None:
     else:
         local_pretrain_checkpoint_path = None
 
-    # Builds round 1 configs and runs them
-    # round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur", "mlmmlu_semipro", "mlmmlu_reserve", "mlmmlu_rookie"}
-    round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur_semipro", "mlmmlu_rookie_reserve"}
+    # Builds round 1 configs and runs them by first filtering out all round 2 tasks
+    if round_2_task_names:
+        round_2_tasks = [task for tasks in round_2_task_names.values() for task in tasks]
+    else:
+        round_2_tasks = []
+    round_1_task_names = [task for task in TASK_NAME_TO_CLASS.keys() if task not in round_2_tasks]
 
     round_1_job_configs = create_job_configs(config, round_1_task_names, local_pretrain_checkpoint_path)
 
@@ -540,9 +552,6 @@ def train(config: om.DictConfig) -> None:
         checkpoint_paths[task_name] = job_results["checkpoints"][-1]
 
     # Builds round 2 configs and runs them
-    round_2_task_names = {
-        "mnli": {"boolq", "wic"},
-    }
     round_2_job_configs = []
     for dependent_task_name in round_2_task_names:
         starting_checkpoint_path = (
