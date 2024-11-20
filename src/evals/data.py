@@ -164,6 +164,14 @@ def create_ultrafeedback_dataset(**kwargs):
         dataset_subset="",
         task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
     )
+    
+def create_triviaentailment_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="answerdotai/triviaentailment",
+        dataset_subset="",
+        task_column_names={"answerdotai/triviaentailment": ("context", "hypothesis")},
+    )
 
 def create_mlmmlu_dataset(**kwargs):
     dataset_subset = kwargs.pop("dataset_subset")

@@ -26,6 +26,7 @@ from src.evals.data import (
     create_mlmmlu_dataset,
     create_swag_dataset,
     create_ultrafeedback_dataset,
+    create_triviaentailment_dataset,
 )
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -366,6 +367,99 @@ class UltrafeedbackJob(ClassificationJob):
             metric_names=["UltrafeedbackAUROC"],
         )
         self.evaluators = [ultrafeedback_evaluator]
+
+        
+class TriviaEntailmentJob(ClassificationJob):
+    """TriviaEntailment binary classification."""
+
+    custom_eval_metrics = [UltrafeedbackAUROC]
+    num_labels = 2
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "100ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 8192,
+        max_duration: Optional[str] = "5ep",
+        batch_size: Optional[int] = 64,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="answerdotai/triviaqa_entailment",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-06,
+        )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(inp):
+                tokenized_examples = tokenizer(
+                    inp["hypothesis"],
+                    inp["context"],
+                    padding="max_length",
+                    max_length=max_seq_length,
+                    truncation=True,
+                )
+                return tokenized_examples
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+            "tokenize_fn_factory": tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
+            "drop_last": False,
+        }
+        train_dataset = create_triviaentailment_dataset(split="train", **dataset_kwargs)
+        train_dataset = train_dataset.rename_column("label", "labels")
+
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+        triviaentailment_eval_dataset = create_triviaentailment_dataset(split="validation", **dataset_kwargs)
+        triviaentailment_eval_dataset = triviaentailment_eval_dataset.rename_column("label", "labels")
+        triviaentailment_evaluator = Evaluator(
+            label="long_context_triviaentailment",
+            dataloader=build_dataloader(triviaentailment_eval_dataset, **dataloader_kwargs),
+            metric_names=["UltrafeedbackAUROC"],
+        )
+        self.evaluators = [triviaentailment_evaluator]
 
 
 class MLMMLUAmateurSemipro(ClassificationJob):
