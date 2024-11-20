@@ -66,6 +66,7 @@ TASK_NAME_TO_CLASS = {
     "swag": misc_jobs_module.SWAGJob,
     "eurlex": misc_jobs_module.EurlexJob,
     "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
+    "triviaentailment": misc_jobs_module.TriviaEntailmentJob,
     "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
     "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
 }
