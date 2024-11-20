@@ -1,16 +1,12 @@
-import io
 import os
-import queue
 import random
 import re
 import signal
 import subprocess
 import tempfile
-import threading
 import time
 import warnings
 from collections import deque
-from contextlib import redirect_stderr, redirect_stdout
 from enum import Enum
 from multiprocessing import Process, Queue
 from pathlib import Path
@@ -29,7 +25,7 @@ from typer import Exit, Option
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", category=FutureWarning)
-    from ablation_eval import GLUE_TASKS, SUPERGLUE_TASKS, TASK_NAME_TO_CLASS
+    from eval import GLUE_TASKS, SUPERGLUE_TASKS, TASK_NAME_TO_CLASS
 
 
 # Create TaskName enum dynamically from TASK_NAME_TO_CLASS keys
