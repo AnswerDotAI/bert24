@@ -554,7 +554,11 @@ def create_flex_bert_qa(
 
     # setup the tokenizer
     if tokenizer_name:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
+        try:
+            tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
+        except OSError:
+            # TODO: Better fix
+            tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name.get('value'))
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
 
@@ -571,7 +575,7 @@ def create_flex_bert_qa(
         eval_metrics=[
             *metrics,
             *[metric_cls() for metric_cls in custom_eval_metrics],
-        ],
+        ] if custom_eval_metrics else metrics,
         allow_embedding_resizing=model.config.allow_embedding_resizing,
     )
 

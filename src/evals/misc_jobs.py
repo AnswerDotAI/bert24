@@ -642,8 +642,9 @@ from src.evals.finetuning_jobs import QAJob, build_dataloader
 class SQuADLikeJob(QAJob):
     """Fine-tuning job for SQuAD-like tasks."""
     multiple_choice = True
-    num_labels = None
+    num_labels = 2
     custom_eval_metrics = None
+    squad_like = True
 
     def __init__(
         self,

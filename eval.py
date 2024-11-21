@@ -182,17 +182,19 @@ def build_optimizer(cfg, model):
         raise ValueError(f"Not sure how to build optimizer: {cfg.name}")
 
 
-def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs):
-    if num_labels is None:
+def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False, squad_like: bool = False, **kwargs):
+
+    # TODO: More elegant way to handle this
+    if squad_like:
         if cfg.name == "flex_bert":
             flex_bert_module.create_flex_bert_qa(
-                pretrained_model_name=cfg.pretrained_model_name,
-                pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
-                model_config=cfg.get("model_config", None),
-                tokenizer_name=cfg.get("tokenizer_name", None),
-                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
-                **kwargs,
-            )
+            pretrained_model_name=cfg.pretrained_model_name,
+            pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+            model_config=cfg.get("model_config", None),
+            tokenizer_name=cfg.get("tokenizer_name", None),
+            gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+            **kwargs,
+        )
         else:
             raise NotImplementedError('SQuAD evals is only for FlexBERT at the moment!')
 
@@ -363,6 +365,7 @@ def run_job_worker(
         num_labels=task_cls.num_labels,
         multiple_choice=task_cls.multiple_choice,
         custom_eval_metrics=task_cls.custom_eval_metrics,
+        squad_like = task_cls.squad_like if hasattr(task_cls, 'squad_like') else False,
     )
 
     instantiated_job = task_cls(
