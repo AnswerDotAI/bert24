@@ -33,6 +33,7 @@ from .model import (
     FlexBertForMaskedLM,
     FlexBertForSequenceClassification,
     FlexBertForMultipleChoice,
+    FlexB
 )
 
 
@@ -42,6 +43,7 @@ __all__ = [
     "BertForMaskedLM",
     "BertForSequenceClassification",
     "BertForMultipleChoice",
+    "BertForQuestionAnswering",
     "BertResidualGLU",
     "BertAlibiLayer",
     "BertLMPredictionHead",
@@ -65,4 +67,5 @@ __all__ = [
     "FlexBertForMaskedLM",
     "FlexBertForSequenceClassification",
     "FlexBertForMultipleChoice",
+    "FlexBertForQuestionAnswering",
 ]
