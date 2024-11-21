@@ -320,6 +320,7 @@ class QAJob(FineTuneJob):
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
+        task_name: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -331,6 +332,7 @@ class QAJob(FineTuneJob):
         self.model = model
         self.tokenizer_name = tokenizer_name
         self.eval_interval = eval_interval
+        self.task_name = task_name
         self.scheduler = scheduler
         self.optimizer = optimizer
         self.max_sequence_length = max_sequence_length
