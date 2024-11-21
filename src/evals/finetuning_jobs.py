@@ -303,3 +303,74 @@ class ClassificationJob(FineTuneJob):
             log_to_console=False,
             **self.kwargs,
         )
+
+class QAJob(FineTuneJob):
+    """Encapsulates an extractive QA fine-tuning job."""
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "1000ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 384,
+        max_duration: Optional[str] = "3ep",
+        batch_size: Optional[int] = 32,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        device_train_microbatch_size: Optional[int] = None,
+        **kwargs,
+    ):
+        super().__init__(job_name, load_path, save_folder, seed, **kwargs)
+        self.model = model
+        self.tokenizer_name = tokenizer_name
+        self.eval_interval = eval_interval
+        self.scheduler = scheduler
+        self.optimizer = optimizer
+        self.max_sequence_length = max_sequence_length
+        self.max_duration = max_duration
+        self.batch_size = batch_size
+        self.loggers = loggers
+        self.callbacks = callbacks
+        self.precision = precision
+        self.device_train_microbatch_size = device_train_microbatch_size
+
+        self.train_dataloader = None
+        self.evaluators = None
+
+    def get_trainer(self, device: Optional[Union[Device, str]] = None):
+        if self.device_train_microbatch_size is None:
+            if torch.cuda.device_count() > 0:
+                self.device_train_microbatch_size = "auto"
+
+        return Trainer(
+            model=self.model,
+            optimizers=self.optimizer,
+            schedulers=self.scheduler,
+            train_dataloader=self.train_dataloader,
+            eval_dataloader=self.evaluators,
+            eval_interval=self.eval_interval,
+            load_path=self.load_path,
+            save_folder=self.save_folder,
+            max_duration=self.max_duration,
+            seed=self.seed,
+            device_train_microbatch_size=self.device_train_microbatch_size,
+            load_weights_only=True,
+            load_strict_model_weights=False,
+            loggers=self.loggers,
+            callbacks=self.callbacks,
+            python_log_level="ERROR",
+            run_name=self.job_name,
+            load_ignore_keys=["state/model/model.qa_outputs*"],
+            precision=self.precision,
+            device=device,
+            progress_bar=True,
+            log_to_console=False,
+            **self.kwargs,
+        )

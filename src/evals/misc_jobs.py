@@ -632,3 +632,161 @@ class MLMMLUReserveRookie(ClassificationJob):
         )
 
         self.evaluators = [rookie_evaluator, reserve_evaluator]
+
+
+
+from torchmetrics import SQuAD
+from composer.core.evaluator import Evaluator
+from src.evals.finetuning_jobs import QAJob, build_dataloader
+
+class SQuADLikeJob(QAJob):
+    """Fine-tuning job for SQuAD-like tasks."""
+
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "1000ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 384,
+        max_duration: Optional[str] = "3ep",
+        batch_size: Optional[int] = 32,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3e-5,
+                betas=(0.9, 0.999),
+                eps=1e-6,
+                weight_decay=0.01,
+            )
+
+        def tokenize_fn_factory(tokenizer, max_seq_length):
+            def tokenize_fn(examples):
+                contexts = examples['context']
+                questions = examples['question']
+                answers_list = examples['answers']
+                correct_answers = examples['correct_answer']
+
+                input_texts = []
+                start_positions = []
+                end_positions = []
+
+                for i in range(len(contexts)):
+                    context = contexts[i]
+                    question = questions[i]
+                    answers = answers_list[i]
+                    correct_answer = correct_answers[i]
+
+                    # Hardcoded for 4 labels here.
+                    options_text = ''
+                    option_labels = ['A', 'B', 'C', 'D']
+                    for label, answer in zip(option_labels, answers):
+                        options_text += f"\n{label}. {answer} "
+
+
+                    # This whole bit is to contrusct the input while ensuring that the questions/answers never get truncated in favour of the context.
+                    qa_text = question + '\nOptions:\n' + options_text.strip()
+                    qa_tokens = tokenizer(qa_text, add_special_tokens=False)
+                    context_max_len = max_seq_length - len(qa_tokens['input_ids']) - 2
+                    context_tokens = tokenizer(context, add_special_tokens=False, 
+                                            truncation=True, 
+                                            max_length=context_max_len)
+                    input_ids = ([tokenizer.cls_token_id] + 
+                               context_tokens['input_ids'] +
+                               qa_tokens['input_ids'] + 
+                               [tokenizer.sep_token_id])
+                    # Redo padding once we've reconstructed the input
+                    attention_mask = [1] * len(input_ids)
+                    padding_length = max_seq_length - len(input_ids)
+                    input_ids += [tokenizer.pad_token_id] * padding_length
+                    attention_mask += [0] * padding_length
+
+                    # Find answer span TODO double check
+                    full_text = context + ' ' + qa_text
+                    answer_text = f"{option_labels[answers.index(correct_answer)]}. {correct_answer}"
+                    answer_start_char = full_text.find(answer_text)
+                    answer_end_char = answer_start_char + len(answer_text)
+                    full_tokens = tokenizer(full_text, 
+                                         return_offsets_mapping=True,
+                                         add_special_tokens=False)
+                    offset_mapping = full_tokens['offset_mapping']
+
+                    start_token, end_token = -1, -1                    
+                    for idx, (start, end) in enumerate(offset_mapping):
+                        if start <= answer_start_char < end:
+                            start_token = idx + 1  # +1 for [CLS]
+                        if start < answer_end_char <= end:
+                            end_token = idx + 1
+                            break
+
+                    input_texts.append({
+                        'input_ids': input_ids,
+                        'attention_mask': attention_mask,
+                    })
+                    start_positions.append(start_token)
+                    end_positions.append(end_token)
+
+                batch = {
+                    'input_ids': torch.tensor([x['input_ids'] for x in input_texts]),
+                    'attention_mask': torch.tensor([x['attention_mask'] for x in input_texts]),
+                    'start_positions': torch.tensor(start_positions),
+                    'end_positions': torch.tensor(end_positions)
+                }
+
+                return batch
+
+            return tokenize_fn
+
+        dataset_kwargs = {
+            'tokenizer_name': self.tokenizer_name,
+            'max_seq_length': self.max_sequence_length,
+            'tokenize_fn_factory': tokenize_fn_factory,
+        }
+
+        dataloader_kwargs = {
+            'batch_size': self.batch_size,
+            'num_workers': min(8, cpu_count() // torch.cuda.device_count()),
+            'drop_last': False,
+        }
+
+
+        # TODO: After dinner
+        train_dataset = create_squad_like_dataset(split='train', **dataset_kwargs)
+        eval_dataset = create_squad_like_dataset(split='validation', **dataset_kwargs)
+
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+        evaluator = Evaluator(
+            label='triviamcqa_squad_like',
+            dataloader=build_dataloader(eval_dataset, **dataloader_kwargs),
+            metrics=[torchmetrics.SQuAD()],
+        )
+        self.evaluators = [evaluator]
