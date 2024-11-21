@@ -591,7 +591,7 @@ def download_hub_files(
                 existing_files = list(output_dir.glob(f"**/{parent_dir}/{filename}"))
                 if existing_files:
                     existing_file = existing_files[0]
-                    print(f"File '{filename}' already exists at '{existing_file}', skipping download.")
+                    print(f"File '{parent_dir}/{filename}' already exists at '{existing_file}', skipping download.")
                     downloaded_files.append(existing_file)
                     continue
 
