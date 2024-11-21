@@ -19,6 +19,7 @@ from composer.core.evaluator import Evaluator
 from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler, DecoupledAdamW
 from torch.optim import Optimizer
+from torchmetrics import SQuAD
 from torchmetrics.classification import MulticlassAUROC, MultilabelF1Score
 
 from src.evals.data import (
@@ -28,7 +29,9 @@ from src.evals.data import (
     create_ultrafeedback_dataset,
     create_squad_like_dataset
 )
+
 from src.evals.finetuning_jobs import (
+    QAJob,
     ClassificationJob,
     build_dataloader,
     multiple_choice_collate_fn,
@@ -634,12 +637,6 @@ class MLMMLUReserveRookie(ClassificationJob):
 
         self.evaluators = [rookie_evaluator, reserve_evaluator]
 
-
-
-from torchmetrics import SQuAD
-from composer.core.evaluator import Evaluator
-from src.evals.finetuning_jobs import QAJob, build_dataloader
-
 class SQuADLikeJob(QAJob):
     """Fine-tuning job for SQuAD-like tasks."""
     multiple_choice = True
@@ -796,6 +793,6 @@ class SQuADLikeJob(QAJob):
         evaluator = Evaluator(
             label='triviamcqa_squad_like',
             dataloader=build_dataloader(eval_dataset, **dataloader_kwargs),
-            metrics=[torchmetrics.SQuAD()],
+            metrics=[SQuAD()],
         )
         self.evaluators = [evaluator]
