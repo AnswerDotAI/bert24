@@ -370,7 +370,8 @@ class QAJob(FineTuneJob):
             python_log_level="ERROR",
             run_name=self.job_name,
             load_ignore_keys=["state/model/model.qa_outputs*"],
-            precision=self.precision,
+            # TODO: Fix generator script
+            precision=self.precision if not isinstance(self.precision, dict) else self.precision['value'],
             device=device,
             progress_bar=True,
             log_to_console=False,
