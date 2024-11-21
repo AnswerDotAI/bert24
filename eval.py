@@ -183,6 +183,19 @@ def build_optimizer(cfg, model):
 
 
 def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False, **kwargs):
+    if num_labels is None:
+        if cfg.name == "flex_bert":
+            flex_bert_module.create_flex_bert_qa(
+                pretrained_model_name=cfg.pretrained_model_name,
+                pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
+                model_config=cfg.get("model_config", None),
+                tokenizer_name=cfg.get("tokenizer_name", None),
+                gradient_checkpointing=cfg.get("gradient_checkpointing", None),
+                **kwargs,
+            )
+        else:
+            raise NotImplementedError('SQuAD evals is only for FlexBERT at the moment!')
+
     if cfg.name == "hf_bert":
         return hf_bert_module.create_hf_bert_classification(
             num_labels=num_labels,

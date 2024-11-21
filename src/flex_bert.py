@@ -28,7 +28,7 @@ from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccu
 from composer.models.huggingface import HuggingFaceModel
 from composer.devices import DeviceCPU
 
-from torchmetrics import MeanSquaredError, Metric
+from torchmetrics import MeanSquaredError, Metric, SQuAD
 from torchmetrics.classification.accuracy import MulticlassAccuracy, MultilabelAccuracy
 from torchmetrics.classification.matthews_corrcoef import MatthewsCorrCoef
 from torchmetrics.regression.spearman import SpearmanCorrCoef
@@ -38,7 +38,7 @@ try:
 except ImportError:
     CrossEntropyLoss = None
 
-all = ["create_flex_bert_mlm", "create_flex_bert_classification"]
+all = ["create_flex_bert_mlm", "create_flex_bert_classification", "create_flex_bert_qa"]
 
 
 # we want the efficent versions to have the same name as the TorchMetrics' name
@@ -464,6 +464,104 @@ def create_flex_bert_classification(
         metrics = [
             MultilabelAccuracy(num_labels=num_labels, average="micro"),
         ]
+
+    hf_model = HuggingFaceModel(
+        model=model,
+        tokenizer=tokenizer,
+        use_logits=True,
+        metrics=metrics,
+        eval_metrics=[
+            *metrics,
+            *[metric_cls() for metric_cls in custom_eval_metrics],
+        ],
+        allow_embedding_resizing=model.config.allow_embedding_resizing,
+    )
+
+    # Padding for divisibility by 8
+    # We have to do it again here because wrapping by HuggingFaceModel changes it
+    if config.vocab_size % 8 != 0:
+        config.vocab_size += 8 - (config.vocab_size % 8)
+    hf_model.model.resize_token_embeddings(config.vocab_size)
+
+    return hf_model
+
+
+
+def create_flex_bert_qa(
+    pretrained_model_name: str = "bert-base-uncased",
+    model_config: Optional[dict] = None,
+    tokenizer_name: Optional[str] = None,
+    gradient_checkpointing: Optional[bool] = False,
+    pretrained_checkpoint: Optional[str] = None,
+    custom_eval_metrics: Optional[list] = [],
+):
+    """FlexBERT question answering model based on |:hugging_face:| Transformers.
+
+    For more information, see `Transformers. <https://huggingface.co/transformers/>`_.
+
+    This function creates a FlexBERT for question answering tasks, which includes several throughput
+    optimizations not available in |:hugging_face:| BERT as well as
+    architecture changes based on ALiBi and Gated Linear Units.
+
+    Args:
+        pretrained_model_name (str): Name of the Hugging Face model to
+            instantiate. This will determine the default model configuration.
+            Default: ``bert-base-uncased``.
+        model_config (dict): A dictionary of user-specified configurations to
+            update/add to the default model configuration.
+        tokenizer_name (str, optional): Tokenizer name used to preprocess the
+            dataset and validate the models inputs.
+        gradient_checkpointing (bool, optional): Use gradient checkpointing.
+            Default: ``False``.
+        pretrained_checkpoint (str, optional): The pretrained checkpoint to
+            initialize the model weights. If provided,
+            the state dictionary stored at `pretrained_checkpoint` will be
+            loaded into the model after initialization. Default: ``None``.
+        custom_eval_metrics (list, optional): Classes of custom metrics to
+            evaluate the model. Default: ``[]``.
+    """
+    if not model_config:
+        model_config = {}
+
+    # By default, turn off attention dropout in FlexBERT
+    # Flash Attention 2 supports dropout in the attention module
+    # while our previous Triton Flash Attention layer only works with
+    # attention_probs_dropout_prob = 0.
+    if "attention_probs_dropout_prob" not in model_config:
+        model_config["attention_probs_dropout_prob"] = 0.0
+
+    if not pretrained_model_name:
+        pretrained_model_name = "bert-base-uncased"
+
+    model_cls = bert_layers_module.FlexBertForQuestionAnswering
+
+    if isinstance(model_config, DictConfig):
+        model_config = OmegaConf.to_container(model_config, resolve=True)
+
+    config = configuration_bert_module.FlexBertConfig.from_pretrained(pretrained_model_name, **model_config)
+
+    # Padding for divisibility by 8
+    if config.vocab_size % 8 != 0:
+        config.vocab_size += 8 - (config.vocab_size % 8)
+
+    if pretrained_checkpoint is not None:
+        model = model_cls.from_composer(pretrained_checkpoint=pretrained_checkpoint, config=config)
+    else:
+        model = model_cls(config)
+
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable()  # type: ignore
+
+    # setup the tokenizer
+    if tokenizer_name:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
+    else:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(pretrained_model_name)
+
+    # QA specific metrics
+    metrics = [
+        SQuAD()
+    ]
 
     hf_model = HuggingFaceModel(
         model=model,
