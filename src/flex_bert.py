@@ -24,6 +24,7 @@ from omegaconf import DictConfig, OmegaConf
 import src.bert_layers as bert_layers_module
 import src.bert_layers.configuration_bert as configuration_bert_module
 import transformers
+import huggingface_hub
 from composer.metrics.nlp import BinaryF1Score, LanguageCrossEntropy, MaskedAccuracy
 from composer.models.huggingface import HuggingFaceModel
 from composer.devices import DeviceCPU
@@ -556,7 +557,7 @@ def create_flex_bert_qa(
     if tokenizer_name:
         try:
             tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
-        except OSError:
+        except (OSError, EnvironmentError, huggingface_hub.errors.HFValidationError):
             # TODO: Better fix
             tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name.get('value'))
     else:

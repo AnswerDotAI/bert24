@@ -187,7 +187,7 @@ def build_model(cfg: DictConfig, num_labels: int, multiple_choice: bool = False,
     # TODO: More elegant way to handle this
     if squad_like:
         if cfg.name == "flex_bert":
-            flex_bert_module.create_flex_bert_qa(
+            return flex_bert_module.create_flex_bert_qa(
             pretrained_model_name=cfg.pretrained_model_name,
             pretrained_checkpoint=cfg.get("pretrained_checkpoint", None),
             model_config=cfg.get("model_config", None),

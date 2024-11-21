@@ -26,6 +26,7 @@ from src.evals.data import (
     create_mlmmlu_dataset,
     create_swag_dataset,
     create_ultrafeedback_dataset,
+    create_squad_like_dataset
 )
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -656,6 +657,7 @@ class SQuADLikeJob(QAJob):
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 8192,
+        task_name: Optional[str] = 'answerdotai/trivia_mcqa',
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
@@ -772,6 +774,7 @@ class SQuADLikeJob(QAJob):
             return tokenize_fn
 
         dataset_kwargs = {
+            'task': self.task_name,
             'tokenizer_name': self.tokenizer_name,
             'max_seq_length': self.max_sequence_length,
             'tokenize_fn_factory': tokenize_fn_factory,
