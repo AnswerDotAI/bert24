@@ -21,6 +21,20 @@ TaskName = Enum("TaskName", {name: name for name in TASK_NAME_TO_CLASS.keys()}, 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, pretty_exceptions_show_locals=False)
 
 
+# from maxb2: https://github.com/tiangolo/typer/issues/86#issuecomment-996374166
+def conf_callback(ctx: typer.Context, param: typer.CallbackParam, config: Optional[str] = None):
+    if config is not None:
+        typer.echo(f"Loading config file: {config}\n")
+        try:
+            with open(config, "r") as f:  # Load config file
+                conf = yaml.safe_load(f)
+            ctx.default_map = ctx.default_map or {}  # Initialize the default map
+            ctx.default_map.update(conf)  # Merge the config dict into default_map
+        except Exception as ex:
+            raise typer.BadParameter(str(ex))
+    return config
+
+
 class ModelSize(str, Enum):
     BASE = "base"
     LARGE = "large"
@@ -209,6 +223,7 @@ def main(
     fast_ultrafeedback: Annotated[bool, Option("--fast-ultrafeedback", help="Use a shorter sequence length (1536) for the UltraFeedback eval", rich_help_panel="Task Settings")] = False,
     seeds: Annotated[List[int], Option(help="List of seeds to use for the eval", rich_help_panel="Task Settings")] = [1618, 42, 6033, 3145],
     parallel: Annotated[bool, Option("--parallel/--single", help="Run the evals in parallel on multiple GPUs or one GPU. Only use if evaluating a single checkpoint on multiple GPUs.", rich_help_panel="Task Settings")] = False,
+    config: Annotated[Optional[Path], Option(callback=conf_callback, is_eager=True, help="Relative path to YAML config file for setting options. Passing CLI options will supersede config options.", case_sensitive=False, rich_help_panel="Options")] = None,
 ):  # fmt: skip
     # Read the input YAML file
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -347,15 +362,6 @@ def main(
     scheduler["alpha_f"] = 0.0
     if scheduler:
         new_config["scheduler"] = scheduler
-
-    optimizer = OrderedDict()
-    optimizer["name"] = "decoupled_stableadamw"
-    optimizer["lr"] = 3.0e-5
-    optimizer["betas"] = [0.9, 0.98]
-    optimizer["eps"] = 1.0e-06
-    optimizer["weight_decay"] = 3.0e-6
-    if optimizer:
-        new_config["optimizer"] = optimizer
 
     # Build the task configurations based on the provided tasks
     tasks_dict = OrderedDict()

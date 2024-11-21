@@ -132,9 +132,9 @@ def get_free_gpu():
         return None
 
 
-def run_subprocess(cmd: List[str], verbose: bool = False):
+def run_subprocess(cmd: List[str], verbose: bool = False, show_errors: bool = False):
     stdout = None if verbose else subprocess.DEVNULL
-    stderr = None if verbose else subprocess.DEVNULL
+    stderr = None if verbose or show_errors else subprocess.DEVNULL
     process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
     all_processes.append(process)  # Add the process to the global list
     process.wait()
@@ -194,7 +194,7 @@ def run_job(config_path: Path, verbose: bool = False, delete_eval_yamls: bool = 
         stderr_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
         stderr = stderr_file
 
-    process = subprocess.Popen(["python", "ablation_eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
+    process = subprocess.Popen(["python", "eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
     all_processes.append(process)  # Add the process to the global list
 
     if gpu_id is not None:
@@ -390,7 +390,13 @@ def generate_eval_configs(
 ):
     """Generate evaluation configs for each checkpoint."""
 
-    folders = [folder for folder in checkpoints.glob("*") if folder.is_dir() and not folder.name.startswith(".")]
+    folders = [
+        folder
+        for folder in checkpoints.glob("*")
+        if folder.is_dir()
+        and not folder.name.startswith(".")
+        and any(file.suffix == ".pt" for file in folder.glob("*.pt"))
+    ]
     if use_dir_names is None and len(folders) > 1:
         use_dir_names = True
         print("Using folder names as run names since multiple `checkpoints` were provided with one `train_config`.")
@@ -398,7 +404,7 @@ def generate_eval_configs(
     for folder in folders:
         cmd = [
             "python",
-            "generate_eval_config_from_checkpoint.py",
+            "generate_eval_config.py",
             "--checkpoint",
             str(folder),
             "--output-dir",
@@ -449,7 +455,7 @@ def generate_eval_configs(
         cmd.append("--parallel") if parallel else cmd.append("--single")
 
         # Run the config generation process without suppressing output
-        run_subprocess(cmd)
+        run_subprocess(cmd, show_errors=True)
         if not train_config:
             time.sleep(1)
 
