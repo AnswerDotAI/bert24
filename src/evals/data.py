@@ -182,3 +182,10 @@ def create_mlmmlu_dataset(**kwargs):
             **kwargs,
         )
 
+def create_squad_like_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="answerdotai/trivia_mcqa",
+        dataset_subset="",
+        task_column_names={"answerdotai/trivia_mcqa": ("context", "question", "options", "answer_index")},
+    )

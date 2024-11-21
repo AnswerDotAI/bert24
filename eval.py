@@ -72,6 +72,7 @@ TASK_NAME_TO_CLASS = {
     "ultrafeedback": misc_jobs_module.UltrafeedbackJob,
     "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
     "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
+    "triviamcqa": misc_jobs_module.SQuADLikeJob,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}

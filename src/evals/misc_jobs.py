@@ -651,7 +651,7 @@ class SQuADLikeJob(QAJob):
         eval_interval: str = "1000ba",
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
-        max_sequence_length: Optional[int] = 384,
+        max_sequence_length: Optional[int] = 8192,
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
         load_path: Optional[str] = None,
@@ -691,10 +691,11 @@ class SQuADLikeJob(QAJob):
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
             def tokenize_fn(examples):
+                # Based on the format of https://huggingface.co/datasets/answerdotai/trivia_mcqa
                 contexts = examples['context']
                 questions = examples['question']
-                answers_list = examples['answers']
-                correct_answers = examples['correct_answer']
+                options_list = examples['options']
+                answer_indices = examples['answer_index']
 
                 input_texts = []
                 start_positions = []
@@ -703,27 +704,27 @@ class SQuADLikeJob(QAJob):
                 for i in range(len(contexts)):
                     context = contexts[i]
                     question = questions[i]
-                    answers = answers_list[i]
-                    correct_answer = correct_answers[i]
+                    options = options_list[i]
+                    answer_idx = answer_indices[i]
 
-                    # Hardcoded for 4 labels here.
+                    # Hard-coded for 4 options right now
                     options_text = ''
-                    option_labels = ['A', 'B', 'C', 'D']
-                    for label, answer in zip(option_labels, answers):
-                        options_text += f"\n{label}. {answer} "
+                    option_labels = [chr(ord('A') + i) for i in range(len(options))]
+                    for label, answer in zip(option_labels, options):
+                        options_text += f"\n{label}. {answer}"
 
-
-                    # This whole bit is to contrusct the input while ensuring that the questions/answers never get truncated in favour of the context.
-                    qa_text = question + '\nOptions:\n' + options_text.strip()
+                    # This whole bit is to construct the input while ensuring that the questions/answers never get truncated in favour of the context.
+                    qa_text = question + '\nOptions:' + options_text
                     qa_tokens = tokenizer(qa_text, add_special_tokens=False)
                     context_max_len = max_seq_length - len(qa_tokens['input_ids']) - 2
-                    context_tokens = tokenizer(context, add_special_tokens=False, 
-                                            truncation=True, 
+                    context_tokens = tokenizer(context, add_special_tokens=False,
+                                            truncation=True,
                                             max_length=context_max_len)
-                    input_ids = ([tokenizer.cls_token_id] + 
+                    input_ids = ([tokenizer.cls_token_id] +
                                context_tokens['input_ids'] +
-                               qa_tokens['input_ids'] + 
+                               qa_tokens['input_ids'] +
                                [tokenizer.sep_token_id])
+
                     # Redo padding once we've reconstructed the input
                     attention_mask = [1] * len(input_ids)
                     padding_length = max_seq_length - len(input_ids)
@@ -732,15 +733,15 @@ class SQuADLikeJob(QAJob):
 
                     # Find answer span TODO double check
                     full_text = context + ' ' + qa_text
-                    answer_text = f"{option_labels[answers.index(correct_answer)]}. {correct_answer}"
+                    answer_text = f"{option_labels[answer_idx]}. {options[answer_idx]}"
                     answer_start_char = full_text.find(answer_text)
                     answer_end_char = answer_start_char + len(answer_text)
-                    full_tokens = tokenizer(full_text, 
+                    full_tokens = tokenizer(full_text,
                                          return_offsets_mapping=True,
                                          add_special_tokens=False)
                     offset_mapping = full_tokens['offset_mapping']
 
-                    start_token, end_token = -1, -1                    
+                    start_token, end_token = -1, -1
                     for idx, (start, end) in enumerate(offset_mapping):
                         if start <= answer_start_char < end:
                             start_token = idx + 1  # +1 for [CLS]
@@ -778,8 +779,6 @@ class SQuADLikeJob(QAJob):
             'drop_last': False,
         }
 
-
-        # TODO: After dinner
         train_dataset = create_squad_like_dataset(split='train', **dataset_kwargs)
         eval_dataset = create_squad_like_dataset(split='validation', **dataset_kwargs)
 
