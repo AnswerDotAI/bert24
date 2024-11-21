@@ -793,6 +793,6 @@ class SQuADLikeJob(QAJob):
         evaluator = Evaluator(
             label='triviamcqa_squad_like',
             dataloader=build_dataloader(eval_dataset, **dataloader_kwargs),
-            metrics=[SQuAD()],
+            metric_names=["SQuAD"]
         )
         self.evaluators = [evaluator]
