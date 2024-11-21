@@ -400,6 +400,10 @@ def main(
         elif task_name == "triviamcqa":
             task_config["seeds"] = seeds[:1]
             task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+        
+        elif task_name == "triviaqa_entailment":
+            task_config["seeds"] = seeds[:1]
+            task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
 
         else:
             print(

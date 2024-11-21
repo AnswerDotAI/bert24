@@ -194,7 +194,7 @@ def run_job(config_path: Path, verbose: bool = False, delete_eval_yamls: bool = 
         stderr_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
         stderr = stderr_file
 
-    process = subprocess.Popen(["python", "ablation_eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
+    process = subprocess.Popen(["python", "eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
     all_processes.append(process)  # Add the process to the global list
 
     if gpu_id is not None:

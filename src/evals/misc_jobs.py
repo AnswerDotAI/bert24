@@ -7,6 +7,7 @@ import sys
 from itertools import chain
 from multiprocessing import cpu_count
 from typing import List, Optional
+from datasets import Value
 
 import torch
 
@@ -26,7 +27,7 @@ from src.evals.data import (
     create_mlmmlu_dataset,
     create_swag_dataset,
     create_ultrafeedback_dataset,
-    create_triviaentailment_dataset,
+    create_triviaqa_entailment_dataset,
 )
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -369,11 +370,10 @@ class UltrafeedbackJob(ClassificationJob):
         self.evaluators = [ultrafeedback_evaluator]
 
         
-class TriviaEntailmentJob(ClassificationJob):
-    """TriviaEntailment binary classification."""
+class TriviaQAEntailmentJob(ClassificationJob):
+    """TriviaQAEntailmentJob binary classification."""
 
-    custom_eval_metrics = [UltrafeedbackAUROC]
-    num_labels = 2
+    num_labels = 1
 
     def __init__(
         self,
@@ -448,18 +448,21 @@ class TriviaEntailmentJob(ClassificationJob):
             "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
             "drop_last": False,
         }
-        train_dataset = create_triviaentailment_dataset(split="train", **dataset_kwargs)
-        train_dataset = train_dataset.rename_column("label", "labels")
+        train_dataset = create_triviaqa_entailment_dataset(split="train", **dataset_kwargs)
+        # Set labels to 0 or 1 from boolean
+        train_dataset = train_dataset.cast_column("labels", Value("float32"))
 
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        triviaentailment_eval_dataset = create_triviaentailment_dataset(split="validation", **dataset_kwargs)
-        triviaentailment_eval_dataset = triviaentailment_eval_dataset.rename_column("label", "labels")
-        triviaentailment_evaluator = Evaluator(
-            label="long_context_triviaentailment",
-            dataloader=build_dataloader(triviaentailment_eval_dataset, **dataloader_kwargs),
-            metric_names=["UltrafeedbackAUROC"],
+        triviaqa_entailment_eval_dataset = create_triviaqa_entailment_dataset(split="validation", **dataset_kwargs)
+        # Set labels to 0 or 1 from boolean
+        triviaqa_entailment_eval_dataset = triviaqa_entailment_eval_dataset.cast_column("labels", Value("float32"))
+        
+        triviaqa_entailment_evaluator = Evaluator(
+            label="long_context_triviaqa_entailment",
+            dataloader=build_dataloader(triviaqa_entailment_eval_dataset, **dataloader_kwargs),
+            metric_names=["MaskedAccuracy", "BinaryF1Score"],
         )
-        self.evaluators = [triviaentailment_evaluator]
+        self.evaluators = [triviaqa_entailment_evaluator]
 
 
 class MLMMLUAmateurSemipro(ClassificationJob):

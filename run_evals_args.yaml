@@ -1,0 +1,36 @@
+# Checkpoint & Config Paths
+checkpoints: longcontext/checkpoints
+# train_config: path/to/training_config.yaml # optional, uses default config if not provided and a wandb run isn't specified
+
+# Model Options
+model_size: base # default FlexBert model config to use
+rope_theta: 80000
+
+# Hugging Face Download
+hub_repo: answerdotai/temp-bert-checkpoints
+# hub_token: {your_hf_token} # needed if downloading from a private/gated repo and `huggingface-cli login` wasn't used
+hub_files: 
+    - bert24-base-8k-data-engineering-100b-1srt-flat-lr # optional limit to only download specific repo files or directories
+
+# Evaluation Tasks
+tasks:
+    - triviaqa_entailment
+# Task Settings
+parallel: false
+seeds:
+    - 42
+    - 314
+    - 1234
+
+# Weights & Biases (logging & config downloading)
+# wandb_run: ${your_pretraining_run_name} # these two options are only needed to download a non-default pretraining config
+# wandb_project: ${your_pretraining_wandb_project}
+
+track_run: true # set these options to track the evaluation run in W&B
+wandb_entity: bert24
+track_run_project: bert24-triviamcqa-longcontext
+
+# GPU Options (which GPUs to use)
+gpu_ids:
+    - 0
+    - 1

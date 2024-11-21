@@ -165,13 +165,15 @@ def create_ultrafeedback_dataset(**kwargs):
         task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
     )
     
-def create_triviaentailment_dataset(**kwargs):
-    return create_eval_dataset(
+def create_triviaqa_entailment_dataset(**kwargs):
+    dataset = create_eval_dataset(
         **kwargs,
-        dataset_name="answerdotai/triviaentailment",
+        dataset_name="answerdotai/triviaqa_entailment",
         dataset_subset="",
-        task_column_names={"answerdotai/triviaentailment": ("context", "hypothesis")},
+        task_column_names={"answerdotai/triviaqa_entailment": ("context", "hypothesis")},
     )
+    dataset = dataset.filter(lambda x: x["difficulty"] == kwargs.get("difficulty", "easy"))
+    return dataset
 
 def create_mlmmlu_dataset(**kwargs):
     dataset_subset = kwargs.pop("dataset_subset")
