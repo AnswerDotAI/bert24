@@ -81,7 +81,11 @@ def create_eval_dataset(
             "For performance, a max_seq_length as a multiple of 8 is recommended."
         )
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)  # type: ignore (thirdparty)
+    try:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)  # type: ignore (thirdparty)
+    except Exception as e:
+        # TODO: Cleanup by updating the yaml generator script
+        tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name.get('value'))
 
     log.info(f"Loading {task.upper()} on rank {dist.get_global_rank()}")
     download_config = datasets.DownloadConfig(max_retries=max_retries)

@@ -653,13 +653,13 @@ class SQuADLikeJob(QAJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "1000ba",
+        eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 8192,
-        task_name: Optional[str] = 'answerdotai/trivia_mcqa',
         max_duration: Optional[str] = "3ep",
         batch_size: Optional[int] = 32,
+        task_name: Optional[str] = 'answerdotai/trivia_mcqa',
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -683,6 +683,7 @@ class SQuADLikeJob(QAJob):
             loggers=loggers,
             callbacks=callbacks,
             precision=precision,
+            task_name=task_name,
             **kwargs,
         )
 
@@ -774,7 +775,9 @@ class SQuADLikeJob(QAJob):
             return tokenize_fn
 
         dataset_kwargs = {
-            'task': self.task_name,
+            # TODO: Diagnose why self doesn't have this attribute, but it's late and likely a very silly mistake.
+            'task': 'answerdotai/trivia_mcqa',
+            # 'task': self.task_name,
             'tokenizer_name': self.tokenizer_name,
             'max_seq_length': self.max_sequence_length,
             'tokenize_fn_factory': tokenize_fn_factory,
