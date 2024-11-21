@@ -1,14 +1,12 @@
 import argparse
 import re
+import time
 from datetime import datetime
 
 import pandas as pd
 import schedule
-
 import wandb
 
-
-import re
 
 def parse_model_string(s):
     pattern = r"(bert24-(base|large)(?:-v\d+)?(?:-\w+)?)-ba(\d+)_task=(\w+)(?:_\w+)?_seed=(\d+)"
@@ -159,5 +157,4 @@ if __name__ == "__main__":
     main()
 
 ## Usage
-# python wandb_log_live_eval.py --init-meta --model-name "bert24-large-v2" --meta-project "bert24-runs" --meta-run-name "bert24-large-v2-evals"
-# python wandb_log_live_eval.py --meta-run-id <<run_id>> --model-name "bert24-large-v2" --meta-project "bert24-runs" --source-project "bert24-large-v2-evals" --meta-run-name "bert24-large-v2-evals"
+# python wandb_log_live_eval.py --init-meta --model-name <<model_name>> --meta-project <<project_name>> --meta-run-name "<<model_name>>-evals"

@@ -62,11 +62,10 @@ def main(api, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download WandB artifacts")
-    parser.add_argument("--wandb_entity", default="bert24", help="WandB entity name")
-    parser.add_argument("--wandb_project", default="bert24-large-in-run-evals", help="WandB project name")
+    parser.add_argument("--wandb_entity", help="WandB entity name")
+    parser.add_argument("--wandb_project", help="WandB project name")
     parser.add_argument(
         "--local_download_dir",
-        default=os.path.expanduser("~/bert24_checkpoints/"),
         help="Local directory to download artifacts",
     )
     args = parser.parse_args()
@@ -76,6 +75,6 @@ if __name__ == "__main__":
 
     # Usage
     # crontab -e
-    # 0 * * * * WANDB_API_KEY=api_key /opt/conda/envs/bert24/bin/python /home/rb/bert24/download_artifacts_from_wandb.py >> /home/rb/wandb_checkpoint_downloader.log 2>&1
+    # 0 * * * * WANDB_API_KEY=<<api_key>> python download_artifacts_from_wandb.py >> <<log_file>> 2>&1
     api = wandb.Api(api_key=os.environ.get("WANDB_API_KEY"))
     main(api, args)
