@@ -373,7 +373,7 @@ class UltrafeedbackJob(ClassificationJob):
 class TriviaQAEntailmentJob(ClassificationJob):
     """TriviaQAEntailmentJob binary classification."""
 
-    num_labels = 1
+    num_labels = 2
 
     def __init__(
         self,
@@ -450,17 +450,17 @@ class TriviaQAEntailmentJob(ClassificationJob):
         }
         train_dataset = create_triviaqa_entailment_dataset(split="train", **dataset_kwargs)
         # Set labels to 0 or 1 from boolean
-        train_dataset = train_dataset.cast_column("labels", Value("float32"))
+        train_dataset = train_dataset.cast_column("labels", Value("int64"))
 
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
         triviaqa_entailment_eval_dataset = create_triviaqa_entailment_dataset(split="validation", **dataset_kwargs)
         # Set labels to 0 or 1 from boolean
-        triviaqa_entailment_eval_dataset = triviaqa_entailment_eval_dataset.cast_column("labels", Value("float32"))
+        triviaqa_entailment_eval_dataset = triviaqa_entailment_eval_dataset.cast_column("labels", Value("int64"))
         
         triviaqa_entailment_evaluator = Evaluator(
             label="long_context_triviaqa_entailment",
             dataloader=build_dataloader(triviaqa_entailment_eval_dataset, **dataloader_kwargs),
-            metric_names=["MaskedAccuracy", "BinaryF1Score"],
+            metric_names=["BinaryF1Score"],
         )
         self.evaluators = [triviaqa_entailment_evaluator]
 
