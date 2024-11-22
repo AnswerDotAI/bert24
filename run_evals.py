@@ -176,12 +176,21 @@ def handle_process_completion(process, stderr_file, config_path: Path, verbose: 
             console.log(f"{job_identifier} has finished successfully.")
 
 
-def run_job(config_path: Path, verbose: bool = False, delete_eval_yamls: bool = True, gpu_id: Optional[int] = None):
+def run_job(
+    config_path: Path,
+    verbose: bool = False,
+    delete_eval_yamls: bool = True,
+    gpu_id: Optional[int] = None,
+    gpu_ids: Optional[List[int]] = None,
+):
     """Run a job with optional GPU management."""
     if gpu_id is not None:
         # GPU management is required
         env = os.environ.copy()
         env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    elif gpu_ids is not None:
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
     else:
         env = None  # Use default environment
 
@@ -726,8 +735,14 @@ def main(
     while not msg_queue.empty():
         print(msg_queue.get())
 
-    if len(config_files) >= 1:
+    if len(config_files) >= 1 and parallel is False:
         manage_jobs(configs=config_files, verbose=verbose, delete_eval_yamls=delete_eval_yamls)
+    elif len(config_files) > 1 and parallel is True:
+        raise ValueError(f"{parallel=} is only supported for running one config at a time.")
+    elif len(config_files) == 1 and parallel is True:
+        if not verbose:
+            console.print(f"[bold green]Running {config_files[0].name} in parallel on GPUs {', '.join(map(str, gpu_ids))}")  # fmt: skip
+        run_job(config_files[0], verbose=verbose, delete_eval_yamls=delete_eval_yamls, gpu_ids=gpu_ids)
     else:
         message = "No configuration files found in the specified directory."
         if verbose:
