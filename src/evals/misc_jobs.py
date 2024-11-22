@@ -374,7 +374,7 @@ class TriviaMCQA(ClassificationJob):
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 8192,
-        max_duration: Optional[str] = "2ep",
+        max_duration: Optional[str] = "5ep",
         batch_size: Optional[int] = 32,
         device_train_microbatch_size: Optional[int] = 1,
         load_path: Optional[str] = None,
@@ -406,10 +406,10 @@ class TriviaMCQA(ClassificationJob):
 
         self.optimizer = DecoupledAdamW(
             self.model.parameters(),
-            lr=2.0e-5,
+            lr=3.0e-5,
             betas=(0.9, 0.98),
             eps=1.0e-6,
-            weight_decay=5.0e-06,
+            weight_decay=8.0e-06,
         )
 
         def tokenize_fn_factory(tokenizer, max_seq_length):
