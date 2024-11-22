@@ -184,7 +184,7 @@ def create_mlmmlu_dataset(**kwargs):
 
 def create_trivia_mcqa_dataset(**kwargs):
     return create_eval_dataset(
-        dataset_name="answerdotai/trivia_mcqa_6",
+        dataset_name="answerdotai/trivia_mcqa",
         task_column_names={"answerdotai/trivia_mcqa": ("question", "question_id", "context", "options", "answer")},
         dataset_subset="default",
         **kwargs,

@@ -475,7 +475,7 @@ def download_datasets(tasks: List[TaskName], msg_queue):  # type: ignore
             "mlmmlu_rookie_reserve": [["answerdotai/MLMMLU", "Rookie"], ["answerdotai/MLMMLU", "Reserve"]],
             "eurlex": [["coastalcph/lex_glue", "eurlex"]],
             "ultrafeedback": [["rbiswasfc/ultrafeedback-binary-classification"]],
-            "triviamcqa": [["answerdotai/trivia_mcqa_6", "default"]],
+            "triviamcqa": [["answerdotai/trivia_mcqa", "default"]],
         }
 
         for task in tasks:
