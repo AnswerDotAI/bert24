@@ -404,6 +404,8 @@ def run_jobs_parallel(configs: Sequence[om.DictConfig]) -> Dict[str, Any]:
     * 'job_name': The job name, helpful for keeping track of results during multiprocessing
     """
     num_gpus = torch.cuda.device_count()
+    mp.set_start_method("spawn", force=True)
+    torch.multiprocessing.set_start_method("spawn", force=True)
     results = []
 
     with mp.Manager() as manager:
