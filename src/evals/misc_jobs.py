@@ -374,7 +374,7 @@ class TriviaMCQA(ClassificationJob):
         eval_interval: str = "100ba",
         scheduler: Optional[ComposerScheduler] = None,
         max_sequence_length: Optional[int] = 8192,
-        max_duration: Optional[str] = "5ep",
+        max_duration: Optional[str] = "800ba",
         batch_size: Optional[int] = 32,
         device_train_microbatch_size: Optional[int] = 1,
         load_path: Optional[str] = None,
