@@ -35,7 +35,7 @@ python generate_eval_config_from_checkpoint.py \
 
 ## Launch a single ablation job
 ```bash
-python ablation_eval.py yamls/ablations/checkpoint_name.yaml
+python eval.py yamls/ablations/checkpoint_name.yaml
 ```
 
 ## Automatically generate eval configs for multiple checkpoints and run evals on multiple GPUs
