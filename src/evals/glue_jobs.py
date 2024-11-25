@@ -36,8 +36,8 @@ class MNLIJob(ClassificationJob):
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 256,
-        max_duration: Optional[str] = "3ep",
-        batch_size: Optional[int] = 48,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 64,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -68,12 +68,11 @@ class MNLIJob(ClassificationJob):
         if optimizer is None:
             self.optimizer = DecoupledAdamW(
                 self.model.parameters(),
-                lr=3.0e-05,
+                lr=5.0e-05,
                 betas=(0.9, 0.98),
                 eps=1.0e-06,
-                weight_decay=3.0e-06,
+                weight_decay=1.0e-06,
             )
-  
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -97,8 +96,6 @@ class MNLIJob(ClassificationJob):
         )
         mnli_evaluator_mismatched = Evaluator(
             label="glue_mnli_mismatched",
-
-            
             dataloader=build_dataloader(mnli_eval_mismatched_dataset, **dataloader_kwargs),
             metric_names=["MulticlassAccuracy"],
         )
@@ -151,11 +148,11 @@ class RTEJob(ClassificationJob):
         if optimizer is None:
             self.optimizer = DecoupledAdamW(
                 self.model.parameters(),
-            lr=1.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=1.0e-5,
-        )
+                lr=1.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-5,
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -299,11 +296,11 @@ class COLAJob(ClassificationJob):
         if optimizer is None:
             self.optimizer = DecoupledAdamW(
                 self.model.parameters(),
-            lr=5.0e-5,
-            betas=(0.9, 0.98),
-            eps=1.0e-06,
-            weight_decay=5.0e-6,
-        )
+                lr=5.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=5.0e-6,
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -335,7 +332,7 @@ class MRPCJob(ClassificationJob):
     def __init__(
         self,
         model: ComposerModel,
-        tokenizer_name: str,    
+        tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
         eval_interval: str = "100ba",
@@ -377,7 +374,7 @@ class MRPCJob(ClassificationJob):
                 betas=(0.9, 0.98),
                 eps=1.0e-06,
                 weight_decay=8.0e-6,
-        )
+            )
 
         dataset_kwargs = {
             "task": self.task_name,
@@ -525,7 +522,7 @@ class SST2Job(ClassificationJob):
                 betas=(0.9, 0.98),
                 eps=1.0e-06,
                 weight_decay=3.0e-6,
-        )
+            )
 
         dataset_kwargs = {
             "task": self.task_name,

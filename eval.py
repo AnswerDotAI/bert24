@@ -1,3 +1,6 @@
+# Copyright 2024 **AUTHORS_TODO**
+# License: Apache-2.0
+
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,6 +9,7 @@ import gc
 import multiprocessing as mp
 import os
 import sys
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor as Pool
@@ -366,9 +370,21 @@ def run_job_worker(
         precision=config.precision,
         **config.trainer_kwargs,
     )
-    results = instantiated_job.run(gpu_queue, process_to_gpu)
+    results = instantiated_job.run(gpu_queue, process_to_gpu, config)
 
-    # delete the job so that the optimizer and anything else on the gpu gets deleted
+    # Extract W&B run ID from the logger
+    results["wandb_name"] = None
+    results["wandb_project"] = None
+    results["wandb_entity"] = None
+
+    if results["loggers"] is None:
+        results["loggers"] = []
+    for logger in results["loggers"]:
+        if isinstance(logger, WandBLogger):
+            results["wandb_run_url"] = logger.run_url
+            break
+
+    # Clean up: delete the job so that the optimizer and anything else on the gpu gets deleted
     del instantiated_job
     torch.cuda.empty_cache()
     gc.collect()
@@ -388,6 +404,8 @@ def run_jobs_parallel(configs: Sequence[om.DictConfig]) -> Dict[str, Any]:
     * 'job_name': The job name, helpful for keeping track of results during multiprocessing
     """
     num_gpus = torch.cuda.device_count()
+    mp.set_start_method("spawn", force=True)
+    torch.multiprocessing.set_start_method("spawn", force=True)
     results = []
 
     with mp.Manager() as manager:
@@ -485,6 +503,15 @@ def train(config: om.DictConfig) -> None:
     Args:
         config (DictConfig): Configuration composed by OmegaConf
     """
+    # these subtasks require the parent task to have been run
+    round_2_task_names = config.get(
+        "round_2_task_names",
+        {
+            "mnli": {"rte", "mrpc", "stsb"},
+            "swag": {"copa"},
+        },
+    )
+
     start_time = time.time()
 
     # Initial default seed
@@ -512,9 +539,12 @@ def train(config: om.DictConfig) -> None:
     else:
         local_pretrain_checkpoint_path = None
 
-    # Builds round 1 configs and runs them
-    # round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur", "mlmmlu_semipro", "mlmmlu_reserve", "mlmmlu_rookie"}
-    round_1_task_names = {"mnli", "eurlex", "ultrafeedback", "mlmmlu_amateur_semipro", "mlmmlu_rookie_reserve"}
+    # Builds round 1 configs and runs them by first filtering out all round 2 tasks
+    if round_2_task_names:
+        round_2_tasks = [task for tasks in round_2_task_names.values() for task in tasks]
+    else:
+        round_2_tasks = []
+    round_1_task_names = [task for task in TASK_NAME_TO_CLASS.keys() if task not in round_2_tasks]
 
     round_1_job_configs = create_job_configs(config, round_1_task_names, local_pretrain_checkpoint_path)
 
@@ -540,9 +570,6 @@ def train(config: om.DictConfig) -> None:
         checkpoint_paths[task_name] = job_results["checkpoints"][-1]
 
     # Builds round 2 configs and runs them
-    round_2_task_names = {
-        "mnli": {"boolq", "wic"},
-    }
     round_2_job_configs = []
     for dependent_task_name in round_2_task_names:
         starting_checkpoint_path = (
@@ -578,24 +605,52 @@ def train(config: om.DictConfig) -> None:
     _print_table(all_results)
 
     # Average the GLUE results across seeds and pretty print them
-    glue_results: Dict[str, List[float]] = defaultdict(list)
-    for job_name, result in all_results.items():
+    task_metrics: Dict[str, List[float]] = defaultdict(list)
+    task_to_run_infos: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for job_name, output_dict in all_results.items():
+        result = output_dict["result"]
         job_values = get_values_from_path(job_name, separator="_")
-        for _, eval_results in result["result"]["metrics"].items():
+        task_name = job_values["task"]
+
+        # Collect W&B run information per task
+        run_url = result.get("wandb_run_url")
+        if run_url:
+            task_to_run_infos[task_name].append({"job_name": job_name, "run_url": run_url})
+
+        # Collect metrics per task
+        for _, eval_results in result["metrics"].items():
             for _, metric in eval_results.items():
-                glue_results[job_values["task"]].append(metric * 100)
-    results_mean: Dict[str, float] = {key: float(np.mean(values)) for key, values in glue_results.items()}
+                task_metrics[task_name].append(metric * 100)
+
+    # Compute average metrics per task
+    results_mean: Dict[str, float] = {task_name: float(np.mean(values)) for task_name, values in task_metrics.items()}
 
     overall_glue = []
     overall_superglue = []
     overall_other = []
+
     for task_name, average_metric in results_mean.items():
+        # Classify tasks into GLUE, SuperGLUE, or other
         if task_name in GLUE_TASKS:
             overall_glue.append(average_metric)
-        if task_name in SUPERGLUE_TASKS:
+        elif task_name in SUPERGLUE_TASKS:
             overall_superglue.append(average_metric)
-        if task_name not in GLUE_TASKS.union(SUPERGLUE_TASKS):
+        else:
             overall_other.append(average_metric)
+
+        # Update W&B runs with average metrics
+        for run_info in task_to_run_infos.get(task_name, []):
+            match = re.search(r"([^/]+)/([^/]+)/runs/([^/]+)", run_info["run_url"])
+            if match:
+                import wandb
+
+                api = wandb.Api()
+                run = api.run(f"{match.group(1)}/{match.group(2)}/{match.group(3)}")
+
+                # Update the run's summary with the average metric
+                run.summary[f"average_{task_name}"] = average_metric
+                run.update()
 
     if len(overall_other) > 0:
         other_results_mean = {k: v for k, v in results_mean.items() if k not in GLUE_TASKS.union(SUPERGLUE_TASKS)}

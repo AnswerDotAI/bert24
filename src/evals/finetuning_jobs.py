@@ -11,9 +11,6 @@ import sys
 from multiprocessing import managers
 from typing import Any, Dict, List, Optional, Union, cast
 
-# Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-
 import torch
 import transformers
 from composer import ComposerModel
@@ -24,8 +21,13 @@ from composer.loggers import LoggerDestination
 from composer.optim import ComposerScheduler
 from composer.trainer.trainer import Trainer
 from composer.utils import dist, reproducibility
+from omegaconf import DictConfig
+from omegaconf import OmegaConf as om
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+# Add glue folder root to path to allow us to use relative imports regardless of what directory the script is run from
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 
 def multiple_choice_collate_fn(features):
@@ -34,27 +36,18 @@ def multiple_choice_collate_fn(features):
     batch_size = len(features)
     num_choices = len(features[0]["input_ids"])
     flattened_features = [
-        [
-            {k: v[i] for k, v in feature.items() if type(v) == list}
-            for i in range(num_choices)
-        ]
+        [{k: v[i] for k, v in feature.items() if isinstance(v, list)} for i in range(num_choices)]
         for feature in features
     ]
     flattened_features = sum(flattened_features, [])
 
-    batch = {
-        "input_ids": [],
-        "attention_mask": [],
-        "token_type_ids": [],
-    }
+    batch = {"input_ids": [], "attention_mask": [], "token_type_ids": []}
 
     for feature in flattened_features:
         for k, v in feature.items():
             batch[k].append(v)
 
-    batch = {
-        k: torch.tensor(v).view(batch_size, num_choices, -1) for k, v in batch.items()
-    }
+    batch = {k: torch.tensor(v).view(batch_size, num_choices, -1) for k, v in batch.items()}
     batch["labels"] = torch.tensor(labels, dtype=torch.int64)
     return batch
 
@@ -65,9 +58,7 @@ def build_dataloader(dataset, collate_fn=None, **kwargs):
     return DataLoader(
         dataset=dataset,
         sampler=dist.get_sampler(dataset, drop_last=False, shuffle=True),
-        collate_fn=(
-            transformers.default_data_collator if collate_fn is None else collate_fn
-        ),
+        collate_fn=(transformers.default_data_collator if collate_fn is None else collate_fn),
         **kwargs,
     )
 
@@ -93,6 +84,16 @@ def reset_trainer(trainer: Trainer, garbage_collect: bool = False):
     if garbage_collect:
         gc.collect()
         torch.cuda.empty_cache()
+
+
+def log_config(cfg: DictConfig):
+    if "wandb" in cfg.get("loggers", {}):
+        try:
+            import wandb
+        except ImportError as e:
+            raise e
+        if wandb.run:
+            wandb.config.update(om.to_container(cfg, resolve=True))
 
 
 class FineTuneJob:
@@ -149,6 +150,7 @@ class FineTuneJob:
         self,
         gpu_queue: Optional[mp.Queue] = None,
         process_to_gpu: Optional[managers.DictProxy] = None,
+        cfg: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Trains the model, optionally pulling a GPU id from the queue.
 
@@ -180,6 +182,10 @@ class FineTuneJob:
 
         trainer = self.get_trainer(device=device)
 
+        if cfg is not None:
+            print("Logging config...")
+            log_config(cfg)
+
         trainer.fit()
 
         collected_metrics: Dict[str, Dict[str, Any]] = {}
@@ -193,11 +199,14 @@ class FineTuneJob:
                 if isinstance(result, dict):
                     collected_metrics[eval_name] = result
                 else:
-                    collected_metrics[eval_name] = {
-                        name: metric.compute().cpu().numpy()
-                    }
+                    collected_metrics[eval_name] = {name: metric.compute().cpu().numpy()}
 
         saved_checkpoints = copy.copy(trainer.saved_checkpoints)
+        try:
+            loggers = copy.copy(trainer.logger.destinations)
+        except AttributeError:
+            loggers = None
+
         reset_trainer(trainer, garbage_collect=True)
 
         self.print_metrics(collected_metrics)
@@ -206,6 +215,7 @@ class FineTuneJob:
             "checkpoints": saved_checkpoints,
             "metrics": collected_metrics,
             "job_name": self.job_name,
+            "loggers": loggers,
         }
 
         return output
