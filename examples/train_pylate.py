@@ -50,7 +50,6 @@ args = SentenceTransformerTrainingArguments(
     bf16=True,  # Set to True if you have a GPU that supports BF16
     run_name=run_name,
     logging_steps=10,
-    save_steps=1000,
     learning_rate=lr,
     gradient_accumulation_steps=accum_steps,
     warmup_ratio=0.05,
@@ -70,3 +69,5 @@ trainer = SentenceTransformerTrainer(
 
 # Start the training process
 trainer.train()
+
+model.save_pretrained(f"{output_dir}/final")

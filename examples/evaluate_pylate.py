@@ -29,7 +29,7 @@ model_results = defaultdict(dict)
 run_name = f"{model_shortname}-colbert-KD-{lr}"
 output_dir = f"output/{model_shortname}/{run_name}"
 model = models.ColBERT(
-    model_name_or_path=fetch_most_recent_checkpoint(output_dir),
+    model_name_or_path=f"{output_dir}/final",
     document_length=510,
     trust_remote_code=True,
 )
