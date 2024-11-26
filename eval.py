@@ -306,8 +306,10 @@ def create_job_configs(
         if task_name not in tasks_to_run:
             continue
         # TODO: Fix generator script
-        if main_config.get("base_run_name") and isinstance(main_config.get("base_run_name"), dict):
-            main_config.base_run_name = main_config.base_run_name.get("value")
+        try:
+            main_config.base_run_name = main_config.base_run_name.get('value')
+        except:
+            pass
         for task_seed in task_config.get("seeds", [main_config.default_seed]):
             run_name = f"{main_config.base_run_name}_task={task_name}_seed={str(task_seed)}"
             logger_configs = copy.deepcopy(main_config.get("loggers", {}))

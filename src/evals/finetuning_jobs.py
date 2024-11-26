@@ -351,6 +351,11 @@ class QAJob(FineTuneJob):
             if torch.cuda.device_count() > 0:
                 self.device_train_microbatch_size = "auto"
 
+        try:
+            precision = self.precision.get('value')
+        except:
+            precision = self.precision
+
         return Trainer(
             model=self.model,
             optimizers=self.optimizer,
@@ -371,7 +376,7 @@ class QAJob(FineTuneJob):
             run_name=self.job_name,
             load_ignore_keys=["state/model/model.qa_outputs*"],
             # TODO: Fix generator script
-            precision=self.precision if not isinstance(self.precision, dict) else self.precision['value'],
+            precision=precision,
             device=device,
             progress_bar=True,
             log_to_console=False,
