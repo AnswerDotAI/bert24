@@ -407,6 +407,10 @@ def main(
             task_config["seeds"] = seeds[:1]
             task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
 
+        elif task_name == "llm_guardrails":
+            task_config["seeds"] = seeds[:3]
+            task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+
         else:
             print(
                 f"Warning: Task '{task_name}' doesn't have eval_config defaults. Using task defaults with three seeds."

@@ -182,3 +182,17 @@ def create_mlmmlu_dataset(**kwargs):
             **kwargs,
         )
 
+def create_ultrafeedback_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="rbiswasfc/ultrafeedback-binary-classification",
+        dataset_subset="",
+        task_column_names={"rbiswasfc/ultrafeedback-binary-classification": ("prompt", "response_a", "response_b")},
+    )
+
+def create_guardrails_dataset(**kwargs):
+    return create_eval_dataset(
+        **kwargs,
+        dataset_name="ModernBERT/llm_guardrails",
+        task_column_names={"ModernBERT/llm_guardrails": ("text", "label")},
+    )

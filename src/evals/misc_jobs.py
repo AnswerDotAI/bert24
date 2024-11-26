@@ -26,6 +26,7 @@ from src.evals.data import (
     create_mlmmlu_dataset,
     create_swag_dataset,
     create_ultrafeedback_dataset,
+    create_guardrails_dataset,
 )
 from src.evals.finetuning_jobs import (
     ClassificationJob,
@@ -632,3 +633,93 @@ class MLMMLUReserveRookie(ClassificationJob):
         )
 
         self.evaluators = [rookie_evaluator, reserve_evaluator]
+
+
+
+
+class LLMGuardrails(ClassificationJob):
+    """WildJailBreak + ALERT"""
+
+    multiple_choice = False
+    num_labels = 4
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "100ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 512,
+        max_duration: Optional[str] = "3ep",
+        batch_size: Optional[int] = 16,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="ModernBERT/llm_guardrails",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-5,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=3.0e-6,
+            )
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
+            "drop_last": False,
+        }
+        train_dataset = create_guardrails_dataset(dataset_subset="train", split="train", **dataset_kwargs)
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+        wildjailbreak_eval_dataset = create_guardrails_dataset(dataset_subset="wildjailbreak", split="test", **dataset_kwargs)
+        alert_vanilla_eval_dataset = create_guardrails_dataset(dataset_subset="alert_vanilla", split="test", **dataset_kwargs)
+        alert_adversarial_eval_dataset = create_guardrails_dataset(dataset_subset="alert_adversarial", split="test", **dataset_kwargs)
+
+        wildjailbreak_evaluator = Evaluator(
+            label="wildjailbreak",
+            dataloader=build_dataloader(wildjailbreak_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy"],
+        )
+        alert_vanilla_evaluator = Evaluator(
+            label="alert_vanilla",
+            dataloader=build_dataloader(alert_vanilla_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy"],
+        )
+        alert_adversarial_evaluator = Evaluator(
+            label="alert_adversarial",
+            dataloader=build_dataloader(alert_adversarial_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy"],
+        )
+        self.evaluators = [wildjailbreak_evaluator, alert_vanilla_evaluator, alert_adversarial_evaluator]
