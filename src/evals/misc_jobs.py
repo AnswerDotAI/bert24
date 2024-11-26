@@ -270,6 +270,9 @@ class UltrafeedbackAUROC(MulticlassAUROC):
     def __init__(self):
         super().__init__(num_classes=2)
 
+class LLMGuardrailsAUROC(MulticlassAUROC):
+    def __init__(self):
+        super().__init__(num_classes=2)
 
 class UltrafeedbackJob(ClassificationJob):
     """ultrafeedback binary classification."""
@@ -641,14 +644,14 @@ class LLMGuardrails(ClassificationJob):
     """WildJailBreak + ALERT"""
 
     multiple_choice = False
-    num_labels = 4
+    num_labels = 2
     def __init__(
         self,
         model: ComposerModel,
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "100ba",
+        eval_interval: str = "300ba",
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 512,
@@ -702,24 +705,31 @@ class LLMGuardrails(ClassificationJob):
             "drop_last": False,
         }
         train_dataset = create_guardrails_dataset(dataset_subset="train", split="train", **dataset_kwargs)
+        wildjailbreak_eval_dataset = create_guardrails_dataset(dataset_subset="test_wildjailbreak", split="test", **dataset_kwargs)
+        alert_vanilla_eval_dataset = create_guardrails_dataset(dataset_subset="test_alert_vanilla", split="test", **dataset_kwargs)
+        alert_adversarial_eval_dataset = create_guardrails_dataset(dataset_subset="test_alert_adversarial", split="test", **dataset_kwargs)
+        beavertails_eval_dataset = create_guardrails_dataset(dataset_subset="test_beaver_tails", split="test", **dataset_kwargs)
+
         self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
-        wildjailbreak_eval_dataset = create_guardrails_dataset(dataset_subset="wildjailbreak", split="test", **dataset_kwargs)
-        alert_vanilla_eval_dataset = create_guardrails_dataset(dataset_subset="alert_vanilla", split="test", **dataset_kwargs)
-        alert_adversarial_eval_dataset = create_guardrails_dataset(dataset_subset="alert_adversarial", split="test", **dataset_kwargs)
 
         wildjailbreak_evaluator = Evaluator(
             label="wildjailbreak",
             dataloader=build_dataloader(wildjailbreak_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy"],
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         alert_vanilla_evaluator = Evaluator(
             label="alert_vanilla",
             dataloader=build_dataloader(alert_vanilla_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy"],
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         alert_adversarial_evaluator = Evaluator(
             label="alert_adversarial",
             dataloader=build_dataloader(alert_adversarial_eval_dataset, **dataloader_kwargs),
-            metric_names=["MulticlassAccuracy"],
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
-        self.evaluators = [wildjailbreak_evaluator, alert_vanilla_evaluator, alert_adversarial_evaluator]
+        beavertails_evaluator = Evaluator(
+            label="beavertails",
+            dataloader=build_dataloader(beavertails_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
+        )
+        self.evaluators = [wildjailbreak_evaluator, alert_vanilla_evaluator, alert_adversarial_evaluator, beavertails_evaluator]

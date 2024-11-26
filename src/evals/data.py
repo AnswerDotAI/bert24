@@ -92,6 +92,8 @@ def create_eval_dataset(
         download_config=download_config,
     )
 
+    print(dataset)
+
     log.info(f"Starting tokenization by preprocessing over {num_workers} threads!")
     text_column_names = task_column_names[task]
 
@@ -194,5 +196,5 @@ def create_guardrails_dataset(**kwargs):
     return create_eval_dataset(
         **kwargs,
         dataset_name="ModernBERT/llm_guardrails",
-        task_column_names={"ModernBERT/llm_guardrails": ("text", "label")},
+        task_column_names={"ModernBERT/llm_guardrails": ("text", None)},
     )

@@ -116,6 +116,7 @@ def main():
             "metrics/wildjailbreak/MulticlassAccuracy",
             "metrics/alert_vanilla/MulticlassAccuracy",
             "metrics/alert_adversarial/MulticlassAccuracy",
+            "metrics/beavertails/MulticlassAccuracy",
         ],
     }
 
@@ -129,6 +130,7 @@ def main():
         "metrics/wildjailbreak/MulticlassAccuracy": 3,
         "metrics/alert_vanilla/MulticlassAccuracy": 3,
         "metrics/alert_adversarial/MulticlassAccuracy": 3,
+        "metrics/beavertails/MulticlassAccuracy": 3,
         "metrics/long_context_ultrafeedback/UltrafeedbackAUROC": 2,
     }
 
@@ -142,6 +144,7 @@ def main():
         "metrics/wildjailbreak/MulticlassAccuracy",
         "metrics/alert_vanilla/MulticlassAccuracy",
         "metrics/alert_adversarial/MulticlassAccuracy",
+        "metrics/beavertails/MulticlassAccuracy",
     ]
 
     if args.init_meta:
