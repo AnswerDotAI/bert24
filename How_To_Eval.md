@@ -1,6 +1,6 @@
 # How to Run Evaluations
 
-This document explains how to run fine-tuning evaluations for pre-trained models using the scripts `run_evals_from_checkpoints.py` and `generate_eval_config_from_checkpoint.py`. These scripts assume you have a pre-trained or finetuned Composer `FlexBert`checkpoint to evaluate.
+This document explains how to run fine-tuning evaluations for pre-trained models using the scripts `run_evals.py` and `generate_eval_config.py`. These scripts assume you have a pre-trained or finetuned Composer `FlexBert`checkpoint to evaluate.
 
 ## 1. Optionally Login to Hugging Face
 
@@ -14,13 +14,13 @@ Follow the prompts to enter your authentication token.
 
 ## 2. Run Evaluations
 
-### Option 1: Run Evaluations for All Checkpoints using `run_evals_from_checkpoints.py`
+### Option 1: Run Evaluations for All Checkpoints using `run_evals.py`
 
-You can use the `run_evals_from_checkpoints.py` script to run evaluations for all checkpoints in a directory.
+You can use the `run_evals.py` script to run evaluations for all checkpoints in a directory.
 
 First, view the available arguments:
 ```bash
-python run_evals_from_checkpoints.py --help
+python run_evals.py --help
 ```
 
 To simplify the process, create a YAML configuration file (e.g., `run_evals_args.yaml`) with the required argument values. For example:
@@ -79,7 +79,7 @@ Replace the placeholders with your specific values:
 To run the script, use:
 
 ```bash
-python run_evals_from_checkpoints.py --config run_evals_args.yaml
+python run_evals.py --config run_evals_args.yaml
 ```
 
 This will:
@@ -88,14 +88,14 @@ This will:
 - **Generate evaluation configurations** for the specified tasks.
 - **Run evaluations** in parallel on the specified GPUs.
 
-### Option 2: Run Evaluation for a Specific Checkpoint using `generate_eval_config_from_checkpoint.py` and `ablation_eval.py`
+### Option 2: Run Evaluation for a Specific Checkpoint using `generate_eval_config.py` and `eval.py`
 
-If you want to run evaluation for a specific checkpoint, you can use `generate_eval_config_from_checkpoint.py` to generate the evaluation configuration, and then run `ablation_eval.py`.
+If you want to run evaluation for a specific checkpoint, you can use `generate_eval_config.py` to generate the evaluation configuration, and then run `eval.py`.
 
 #### Step 1: Generate the Evaluation Configuration
 
 ```bash
-python generate_eval_config_from_checkpoint.py \
+python generate_eval_config.py \
   --checkpoint path/to/checkpoint \
   --output-dir configs \
   --model-size base \
@@ -120,7 +120,7 @@ This command will generate a configuration YAML file in the `configs` directory.
 #### Step 2: Run the Evaluation
 
 ```bash
-python ablation_eval.py configs/generated_config.yaml
+python eval.py configs/generated_config.yaml
 ```
 
 Replace `configs/generated_config.yaml` with the actual path to the generated configuration file.
@@ -129,18 +129,18 @@ Replace `configs/generated_config.yaml` with the actual path to the generated co
 
 1. **Building Evaluation Configurations for Single Tasks**
 
-   If you want to build a fine-tuning evaluation configuration YAML for a single task, you can use `generate_eval_config_from_checkpoint.py` with the `--tasks` option to specify the task(s).
+   If you want to build a fine-tuning evaluation configuration YAML for a single task, you can use `generate_eval_config.py` with the `--tasks` option to specify the task(s).
 
    For example:
 
-       python generate_eval_config_from_checkpoint.py \
+       python generate_eval_config.py \
          --checkpoint path/to/checkpoint \
          --output-dir configs \
          --tasks mnli
 
-   Then, run the evaluation with `ablation_eval.py`:
+   Then, run the evaluation with `eval.py`:
 
-       python ablation_eval.py configs/generated_config.yaml
+       python eval.py configs/generated_config.yaml
 
 2. **Monitoring GPU Usage**
 
@@ -155,10 +155,10 @@ Replace `configs/generated_config.yaml` with the actual path to the generated co
 
 - **Parallel Evaluations**: When running evaluations in parallel, you can specify the GPU IDs to use with the `--gpu-ids` option or in the YAML configuration file.
 
-- **Configurable Options**: Both `run_evals_from_checkpoints.py` and `generate_eval_config_from_checkpoint.py` support various options to fine-tune the evaluation process. Use `--help` with these scripts to see all available options.
+- **Configurable Options**: Both `run_evals.py` and `generate_eval_config.py` support various options to fine-tune the evaluation process. Use `--help` with these scripts to see all available options.
 
-      python run_evals_from_checkpoints.py --help
-      python generate_eval_config_from_checkpoint.py --help
+      python run_evals.py --help
+      python generate_eval_config.py --help
 
 - **Using Configuration Files**: You can use YAML configuration files to specify arguments for the scripts, which can simplify command-line usage. Command-line options will override options specified in the configuration file.
 
@@ -168,7 +168,7 @@ Replace `configs/generated_config.yaml` with the actual path to the generated co
 
 ## Optional: Manual Checkpoint Download
 
-If you prefer to manually download checkpoints instead of using the automatic download feature in `run_evals_from_checkpoints.py`, you can use `huggingface-cli`:
+If you prefer to manually download checkpoints instead of using the automatic download feature in `run_evals.py`, you can use `huggingface-cli`:
 
 Replace `{org}`, `{repo}`, and `{checkpoint_folder}` with the appropriate organization, repository, and checkpoint folder names.
 
@@ -181,8 +181,8 @@ huggingface-cli download {org}/{repo} --include "{checkpoint_folder}" --local-di
 
 ### Notes:
 - If there are multiple Composer checkpoints, use the latest one (usually starts with "ep-1").
-- This manual download is optional since `run_evals_from_checkpoints.py` can automatically download checkpoints when you specify the `hub_repo`, `hub_folder`, and `hub_token` arguments.
+- This manual download is optional since `run_evals.py` can automatically download checkpoints when you specify the `hub_repo`, `hub_folder`, and `hub_token` arguments.
 
 ---
 
-This README reflects the latest updates in the scripts `run_evals_from_checkpoints.py` and `generate_eval_config_from_checkpoint.py`. Be sure to review the scripts and their help messages for the most current information.
+This README reflects the latest updates in the scripts `run_evals.py` and `generate_eval_config.py`. Be sure to review the scripts and their help messages for the most current information.
