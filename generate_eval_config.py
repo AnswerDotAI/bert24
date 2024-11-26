@@ -420,6 +420,14 @@ def main(
 
     new_config["tasks"] = tasks_dict
 
+    # Extract actual values from dict-wrapped configs
+    if isinstance(new_config.get("base_run_name"), dict) and "value" in new_config["base_run_name"]:
+        new_config["base_run_name"] = new_config["base_run_name"]["value"]
+    if isinstance(new_config.get("precision"), dict) and "value" in new_config["precision"]:
+        new_config["precision"] = new_config["precision"]["value"]
+    if isinstance(new_config.get("tokenizer_name"), dict) and "value" in new_config["tokenizer_name"]:
+        new_config["tokenizer_name"] = new_config["tokenizer_name"]["value"]
+
     # Write the new configuration to a YAML file
     output_filename = output_dir / f"{ckpt_id}_evaluation.yaml"
     with output_filename.open("w") as file:
