@@ -1,16 +1,12 @@
-import io
 import os
-import queue
 import random
 import re
 import signal
 import subprocess
 import tempfile
-import threading
 import time
 import warnings
 from collections import deque
-from contextlib import redirect_stderr, redirect_stdout
 from enum import Enum
 from multiprocessing import Process, Queue
 from pathlib import Path
@@ -29,7 +25,7 @@ from typer import Exit, Option
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", category=FutureWarning)
-    from ablation_eval import GLUE_TASKS, SUPERGLUE_TASKS, TASK_NAME_TO_CLASS
+    from eval import GLUE_TASKS, SUPERGLUE_TASKS, TASK_NAME_TO_CLASS
 
 
 # Create TaskName enum dynamically from TASK_NAME_TO_CLASS keys
@@ -136,9 +132,9 @@ def get_free_gpu():
         return None
 
 
-def run_subprocess(cmd: List[str], verbose: bool = False):
+def run_subprocess(cmd: List[str], verbose: bool = False, show_errors: bool = False):
     stdout = None if verbose else subprocess.DEVNULL
-    stderr = None if verbose else subprocess.DEVNULL
+    stderr = None if verbose or show_errors else subprocess.DEVNULL
     process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
     all_processes.append(process)  # Add the process to the global list
     process.wait()
@@ -180,12 +176,21 @@ def handle_process_completion(process, stderr_file, config_path: Path, verbose: 
             console.log(f"{job_identifier} has finished successfully.")
 
 
-def run_job(config_path: Path, verbose: bool = False, delete_eval_yamls: bool = True, gpu_id: Optional[int] = None):
+def run_job(
+    config_path: Path,
+    verbose: bool = False,
+    delete_eval_yamls: bool = True,
+    gpu_id: Optional[int] = None,
+    gpu_ids: Optional[List[int]] = None,
+):
     """Run a job with optional GPU management."""
     if gpu_id is not None:
         # GPU management is required
         env = os.environ.copy()
         env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    elif gpu_ids is not None:
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
     else:
         env = None  # Use default environment
 
@@ -198,7 +203,7 @@ def run_job(config_path: Path, verbose: bool = False, delete_eval_yamls: bool = 
         stderr_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
         stderr = stderr_file
 
-    process = subprocess.Popen(["python", "ablation_eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
+    process = subprocess.Popen(["python", "eval.py", str(config_path)], env=env, stdout=stdout, stderr=stderr)
     all_processes.append(process)  # Add the process to the global list
 
     if gpu_id is not None:
@@ -394,7 +399,13 @@ def generate_eval_configs(
 ):
     """Generate evaluation configs for each checkpoint."""
 
-    folders = [folder for folder in checkpoints.glob("*") if folder.is_dir() and not folder.name.startswith(".")]
+    folders = [
+        folder
+        for folder in checkpoints.glob("*")
+        if folder.is_dir()
+        and not folder.name.startswith(".")
+        and any(file.suffix == ".pt" for file in folder.glob("*.pt"))
+    ]
     if use_dir_names is None and len(folders) > 1:
         use_dir_names = True
         print("Using folder names as run names since multiple `checkpoints` were provided with one `train_config`.")
@@ -402,7 +413,7 @@ def generate_eval_configs(
     for folder in folders:
         cmd = [
             "python",
-            "generate_eval_config_from_checkpoint.py",
+            "generate_eval_config.py",
             "--checkpoint",
             str(folder),
             "--output-dir",
@@ -453,7 +464,7 @@ def generate_eval_configs(
         cmd.append("--parallel") if parallel else cmd.append("--single")
 
         # Run the config generation process without suppressing output
-        run_subprocess(cmd)
+        run_subprocess(cmd, show_errors=True)
         if not train_config:
             time.sleep(1)
 
@@ -475,7 +486,6 @@ def download_datasets(tasks: List[TaskName], msg_queue):  # type: ignore
             "mlmmlu_rookie_reserve": [["answerdotai/MLMMLU", "Rookie"], ["answerdotai/MLMMLU", "Reserve"]],
             "eurlex": [["coastalcph/lex_glue", "eurlex"]],
             "ultrafeedback": [["rbiswasfc/ultrafeedback-binary-classification"]],
-            "triviamcqa": [["answerdotai/trivia_mcqa", "default"]],
         }
 
         for task in tasks:
@@ -586,10 +596,11 @@ def download_hub_files(
 
                 # Check if file exists in output_dir or any immediate subdirectory
                 filename = Path(resolved_filename).name
-                existing_files = list(output_dir.glob(f"**/{filename}"))
+                parent_dir = Path(resolved_filename).parent.name
+                existing_files = list(output_dir.glob(f"**/{parent_dir}/{filename}"))
                 if existing_files:
                     existing_file = existing_files[0]
-                    print(f"File '{filename}' already exists at '{existing_file}', skipping download.")
+                    print(f"File '{parent_dir}/{filename}' already exists at '{existing_file}', skipping download.")
                     downloaded_files.append(existing_file)
                     continue
 
@@ -724,8 +735,14 @@ def main(
     while not msg_queue.empty():
         print(msg_queue.get())
 
-    if len(config_files) >= 1:
+    if len(config_files) >= 1 and parallel is False:
         manage_jobs(configs=config_files, verbose=verbose, delete_eval_yamls=delete_eval_yamls)
+    elif len(config_files) > 1 and parallel is True:
+        raise ValueError(f"{parallel=} is only supported for running one config at a time.")
+    elif len(config_files) == 1 and parallel is True:
+        if not verbose:
+            console.print(f"[bold green]Running {config_files[0].name} in parallel on GPUs {', '.join(map(str, gpu_ids))}")  # fmt: skip
+        run_job(config_files[0], verbose=verbose, delete_eval_yamls=delete_eval_yamls, gpu_ids=gpu_ids)
     else:
         message = "No configuration files found in the specified directory."
         if verbose:

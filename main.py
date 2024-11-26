@@ -36,6 +36,7 @@ import src.flex_bert as flex_bert_module
 import src.hf_bert as hf_bert_module
 import src.mosaic_bert as mosaic_bert_module
 import src.text_data as text_data_module
+from src.algorithms.rope_schedule import FlexBertRopeSchedule
 from src.callbacks.dataloader_speed import DataloaderSpeedMonitor
 from src.callbacks.log_grad_norm import LogGradNorm
 from src.callbacks.packing_efficiency import PackingEfficency
@@ -124,6 +125,22 @@ def build_algorithm(name, kwargs):
         return algorithms.Alibi(**kwargs)
     elif name == "gated_linear_units":
         return algorithms.GatedLinearUnits(**kwargs)
+    elif name == "ema":
+        return algorithms.EMA(
+            half_life=kwargs.get("half_life", "1000ba"),
+            smoothing=kwargs.get("smoothing", None),
+            ema_start=kwargs.get("ema_start", "0.0dur"),
+            update_interval=kwargs.get("update_interval", None),
+        )
+    elif name == "rope_schedule":
+        return FlexBertRopeSchedule(
+            min_rope_theta=kwargs.get("min_rope_theta", 10_000),
+            max_rope_theta=kwargs.get("max_rope_theta", 80_000),
+            warmup_tokens=kwargs.get("warmup_tokens", 25_000_000),
+            rope_theta_increment=kwargs.get("rope_theta_increment", 10_000),
+            batch_log_interval=kwargs.get("batch_log_interval", 10),
+            increment_theta_immediately=kwargs.get("increment_theta_immediately", False),
+        )
     else:
         raise ValueError(f"Not sure how to build algorithm: {name}")
 
@@ -454,17 +471,27 @@ def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -
         # this section is intended to use when resuming from a checkpoint where one wants to change
         # the learning rate and weight deacy. It's only been tested with the warmup_stable_decay scheduler
         if cfg.get("restart_override", False):
+            print("Overriding checkpoint's scheduler & optimizer LR & WD, and train microbatch size with config options")  # fmt: skip
             if cfg.scheduler.name not in ["constant_with_warmup", "warmup_stable_decay"]:
-                raise ValueError(f"Changing LR only supported with constant_with_warmup & warmup_stable_decay schedulers, got {cfg.scheduler.name}")  # fmt: skip
-            print("Overriding checkpoint's scheduler & optimzier LR & WD, and train microbatch size with config options")  # fmt: skip
-            for param_group in trainer.state.optimizers[0].param_groups:
-                param_group["lr"] = cfg.optimizer.lr
-                param_group["weight_decay"] = cfg.optimizer.weight_decay if param_group["weight_decay"] > 0 else 0.0
-            for scheduler in trainer.state.schedulers:
-                for i in range(len(scheduler.base_lrs)):
-                    scheduler.base_lrs[i] = cfg.optimizer.lr
-                for i in range(len(scheduler._last_lr)):
-                    scheduler._last_lr[i] = cfg.optimizer.lr
+                print("Rescaling current step LR by ratio of new LR to old LR. This may require scaling the scheduler's alpha_f")  # fmt: skip
+                for param_group in trainer.state.optimizers[0].param_groups:
+                    lr_ratio = cfg.optimizer.lr / param_group["lr"]
+                    param_group["lr"] = cfg.optimizer.lr
+                    param_group["weight_decay"] = cfg.optimizer.weight_decay if param_group["weight_decay"] > 0 else 0.0
+                for scheduler in trainer.state.schedulers:
+                    for i in range(len(scheduler.base_lrs)):
+                        scheduler.base_lrs[i] *= lr_ratio
+                    for i in range(len(scheduler._last_lr)):
+                        scheduler._last_lr[i] *= lr_ratio
+            else:
+                for param_group in trainer.state.optimizers[0].param_groups:
+                    param_group["lr"] = cfg.optimizer.lr
+                    param_group["weight_decay"] = cfg.optimizer.weight_decay if param_group["weight_decay"] > 0 else 0.0
+                for scheduler in trainer.state.schedulers:
+                    for i in range(len(scheduler.base_lrs)):
+                        scheduler.base_lrs[i] = cfg.optimizer.lr
+                    for i in range(len(scheduler._last_lr)):
+                        scheduler._last_lr[i] = cfg.optimizer.lr
             trainer.fit(
                 device_train_microbatch_size=cfg.get("device_train_microbatch_size", "auto"),
                 reset_time=cfg.get("reset_time", False),

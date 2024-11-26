@@ -35,6 +35,7 @@ scheduler:
   t_warmup: 0.5dur
   alpha_f: 0.0
 
+
 # Task configuration
 tasks: # Only run SWAG and COPA for the sake of testing
   swag:
