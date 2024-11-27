@@ -1,4 +1,5 @@
-from datasets import load_dataset,concatenate_datasets, DatasetDict
+from tqdm import tqdm
+from datasets import load_dataset,concatenate_datasets, DatasetDict, Dataset
 import argparse
 import random
 
@@ -307,19 +308,66 @@ def prep_jailbreak_and_alert():
     test_alert_adversarial_ds.push_to_hub(TARGET_HF_REPO, 'test_alert_adversarial', private=PRIVATE_REPO)
 
 
+
+    jailbreak_train_mapped = []
+    has_both = 0
+
+    """ DO ORIGINAL WILDJAILBREAK """
+
+    for row in tqdm(jailbreak_train['train']):
+        label = 1 if 'harmful' in row['data_type'].lower() else 0
+        
+        # Check vanilla and adversarial columns
+        has_vanilla = row['vanilla'] is not None and len(str(row['vanilla']).strip()) > 0
+        has_adversarial = row['adversarial'] is not None and len(str(row['adversarial']).strip()) > 0
+        
+        if has_vanilla and has_adversarial:
+            has_both += 1
+            # Create two rows if both exist
+            jailbreak_train_mapped.append({
+                'text': row['vanilla'],
+                'label': label
+            })
+            jailbreak_train_mapped.append({
+                'text': row['adversarial'], 
+                'label': label
+            })
+        elif has_vanilla:
+            jailbreak_train_mapped.append({
+                'text': row['vanilla'],
+                'label': label
+            })
+        elif has_adversarial:
+            jailbreak_train_mapped.append({
+                'text': row['adversarial'],
+                'label': label
+            })
+
+    # Convert to Dataset
+    jailbreak_train_mapped = Dataset.from_list(jailbreak_train_mapped)
+    DatasetDict({'test': jailbreak_eval.rename_column("adversarial", "text")}).push_to_hub(TARGET_HF_REPO, 'test_wildjailbreak_original', private=PRIVATE_REPO)
+    DatasetDict({'train': jailbreak_train_mapped}).push_to_hub(TARGET_HF_REPO, 'train_wildjailbreak_original', private=PRIVATE_REPO)
+
 def beaver_tails():
-    beaver_tails = load_dataset("PKU-Alignment/BeaverTails", split='330k_test')
+    beaver_tails_train = load_dataset("PKU-Alignment/BeaverTails", split='330k_train')
+    beaver_tails_test = load_dataset("PKU-Alignment/BeaverTails", split='330k_test')
     def process_beaver_tails(example):
         return {
             "text": example["prompt"],
             "label": int(not example["is_safe"])  # Convert True->0, False->1
         }
 
-    beaver_tails = beaver_tails.map(process_beaver_tails, remove_columns=["prompt", "response", "category", "is_safe"])
-    test_beaver_tails_ds = DatasetDict({
-        "test": beaver_tails
+    beaver_tails_train = beaver_tails_train.map(process_beaver_tails, remove_columns=["prompt", "response", "category", "is_safe"])
+    beaver_tails_test = beaver_tails_test.map(process_beaver_tails, remove_columns=["prompt", "response", "category", "is_safe"])
+    train_beaver_tails_ds = DatasetDict({
+        "train": beaver_tails_train
     })
+    test_beaver_tails_ds = DatasetDict({
+        "test": beaver_tails_test
+    })
+    train_beaver_tails_ds.push_to_hub(TARGET_HF_REPO, 'train_beaver_tails', private=PRIVATE_REPO)
     test_beaver_tails_ds.push_to_hub(TARGET_HF_REPO, 'test_beaver_tails', private=PRIVATE_REPO)
+
 
 if __name__ == "__main__":
     prep_jailbreak_and_alert()
