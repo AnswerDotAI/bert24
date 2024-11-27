@@ -92,8 +92,6 @@ def create_eval_dataset(
         download_config=download_config,
     )
 
-    print(dataset)
-
     log.info(f"Starting tokenization by preprocessing over {num_workers} threads!")
     text_column_names = task_column_names[task]
 
