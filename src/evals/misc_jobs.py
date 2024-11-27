@@ -651,12 +651,12 @@ class LLMGuardrails(ClassificationJob):
         tokenizer_name: str,
         job_name: Optional[str] = None,
         seed: int = 42,
-        eval_interval: str = "300ba",
+        eval_interval: str = "200ba",
         scheduler: Optional[ComposerScheduler] = None,
         optimizer: Optional[Optimizer] = None,
         max_sequence_length: Optional[int] = 512,
         max_duration: Optional[str] = "3ep",
-        batch_size: Optional[int] = 16,
+        batch_size: Optional[int] = 128,
         load_path: Optional[str] = None,
         save_folder: Optional[str] = None,
         loggers: Optional[List[LoggerDestination]] = None,
@@ -733,3 +733,159 @@ class LLMGuardrails(ClassificationJob):
             metric_names=["MulticlassAccuracy", "BinaryF1Score"],
         )
         self.evaluators = [wildjailbreak_evaluator, alert_vanilla_evaluator, alert_adversarial_evaluator, beavertails_evaluator]
+
+
+
+class WildJailBreakOriginal(ClassificationJob):
+    """WildJailBreak"""
+
+    multiple_choice = False
+    num_labels = 2
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "500ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 512,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 64,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="ModernBERT/llm_guardrails",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-05,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-06
+            )
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
+            "drop_last": False,
+        }
+        train_dataset = create_guardrails_dataset(dataset_subset="train_wildjailbreak_original", split="train", **dataset_kwargs)
+        wildjailbreak_eval_dataset = create_guardrails_dataset(dataset_subset="test_wildjailbreak_original", split="test", **dataset_kwargs)
+
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+
+        wildjailbreak_evaluator = Evaluator(
+            label="wildjailbreak",
+            dataloader=build_dataloader(wildjailbreak_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
+        )
+
+        self.evaluators = [wildjailbreak_evaluator]
+
+
+class BeaverTails(ClassificationJob):
+    """BeaverTails"""
+
+    multiple_choice = False
+    num_labels = 2
+    def __init__(
+        self,
+        model: ComposerModel,
+        tokenizer_name: str,
+        job_name: Optional[str] = None,
+        seed: int = 42,
+        eval_interval: str = "500ba",
+        scheduler: Optional[ComposerScheduler] = None,
+        optimizer: Optional[Optimizer] = None,
+        max_sequence_length: Optional[int] = 512,
+        max_duration: Optional[str] = "2ep",
+        batch_size: Optional[int] = 64,
+        load_path: Optional[str] = None,
+        save_folder: Optional[str] = None,
+        loggers: Optional[List[LoggerDestination]] = None,
+        callbacks: Optional[List[Callback]] = None,
+        precision: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            tokenizer_name=tokenizer_name,
+            job_name=job_name,
+            seed=seed,
+            task_name="ModernBERT/llm_guardrails",
+            eval_interval=eval_interval,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            max_sequence_length=max_sequence_length,
+            max_duration=max_duration,
+            batch_size=batch_size,
+            load_path=load_path,
+            save_folder=save_folder,
+            loggers=loggers,
+            callbacks=callbacks,
+            precision=precision,
+            **kwargs,
+        )
+
+        if optimizer is None:
+            self.optimizer = DecoupledAdamW(
+                self.model.parameters(),
+                lr=3.0e-05,
+                betas=(0.9, 0.98),
+                eps=1.0e-06,
+                weight_decay=1.0e-06
+            )
+
+        dataset_kwargs = {
+            "task": self.task_name,
+            "tokenizer_name": self.tokenizer_name,
+            "max_seq_length": self.max_sequence_length,
+        }
+
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": min(8, cpu_count() // torch.cuda.device_count()),
+            "drop_last": False,
+        }
+        train_dataset = create_guardrails_dataset(dataset_subset="train_beaver_tails", split="train", **dataset_kwargs)
+        beavertails_eval_dataset = create_guardrails_dataset(dataset_subset="test_beaver_tails", split="test", **dataset_kwargs)
+
+        self.train_dataloader = build_dataloader(train_dataset, **dataloader_kwargs)
+
+        beavertails_evaluator = Evaluator(
+            label="beavertails",
+            dataloader=build_dataloader(beavertails_eval_dataset, **dataloader_kwargs),
+            metric_names=["MulticlassAccuracy", "BinaryF1Score"],
+        )
+        self.evaluators = [beavertails_evaluator]

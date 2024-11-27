@@ -73,6 +73,8 @@ TASK_NAME_TO_CLASS = {
     "mlmmlu_amateur_semipro": misc_jobs_module.MLMMLUAmateurSemipro,
     "mlmmlu_rookie_reserve": misc_jobs_module.MLMMLUReserveRookie,
     "llm_guardrails": misc_jobs_module.LLMGuardrails,
+    "beavertails": misc_jobs_module.BeaverTails,
+    "wildjailbreak_original": misc_jobs_module.WildJailBreakOriginal,
 }
 
 GLUE_TASKS = {"mnli", "rte", "mrpc", "qnli", "qqp", "sst2", "stsb", "cola"}

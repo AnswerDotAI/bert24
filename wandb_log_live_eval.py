@@ -118,6 +118,14 @@ def main():
             "metrics/alert_adversarial/MulticlassAccuracy",
             "metrics/beavertails/MulticlassAccuracy",
         ],
+        "wildjailbreak_original": [
+            "metrics/wildjailbreak/MulticlassAccuracy",
+            "metrics/beavertails/BinaryF1Score",
+        ],
+        "beavertails": [
+            "metrics/beavertails/MulticlassAccuracy",
+            "metrics/beavertails/BinaryF1Score",
+        ],
     }
 
     args.metric2num_seeds = {
@@ -128,9 +136,11 @@ def main():
         "metrics/superglue_wic/MulticlassAccuracy": 3,
         "metrics/superglue_boolq/MulticlassAccuracy": 3,
         "metrics/wildjailbreak/MulticlassAccuracy": 3,
+        "metrics/wildjailbreak/BinaryF1Score": 3,
         "metrics/alert_vanilla/MulticlassAccuracy": 3,
         "metrics/alert_adversarial/MulticlassAccuracy": 3,
         "metrics/beavertails/MulticlassAccuracy": 3,
+        "metrics/beavertails/BinaryF1Score": 3,
         "metrics/long_context_ultrafeedback/UltrafeedbackAUROC": 2,
     }
 
