@@ -40,6 +40,7 @@ from composer.callbacks import (
     OptimizerMonitor,
     RuntimeEstimator,
     SpeedMonitor,
+    EarlyStopper,
 )
 from composer.loggers import WandBLogger
 from composer.optim.scheduler import (
@@ -108,6 +109,14 @@ def build_callback(name, kwargs):
         return OptimizerMonitor(
             log_optimizer_metrics=kwargs.get("log_optimizer_metrics", True),
         )
+    elif name == "early_stopper":
+        return EarlyStopper(
+            monitor='MulticlassAccuracy',
+            dataloader_label='wildjailbreak',
+            patience='1000ba', # 2x eval_interval to have some datapoints
+            comp=torch.greater,
+            min_delta=0.01,
+            )
     else:
         raise ValueError(f"Not sure how to build callback: {name}")
 
@@ -346,6 +355,8 @@ def run_job_worker(
     reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
+    print(f"{task_cls=}")
+    # print(f"Evaluators of the task : {task_cls.evaluators}")
 
     model = build_model(
         config.model,
@@ -681,6 +692,9 @@ if __name__ == "__main__":
         yaml_cfg = om.OmegaConf.load(f)
 
     cli_cfg = om.OmegaConf.from_cli(args_list)
+    # need to properly parse the args
+    cli_cfg = {k.lstrip('--'): v for k, v in cli_cfg.items()}
+    cli_cfg = om.OmegaConf.create(cli_cfg)
     cfg = om.OmegaConf.merge(yaml_cfg, cli_cfg)
 
     if cfg.model.name == "mosaic_bert":
@@ -689,4 +703,8 @@ if __name__ == "__main__":
         cfg = om.OmegaConf.merge(cfg, default_cfg)
 
     assert isinstance(cfg, om.DictConfig)
+    # resolve interpolations after merging
+    resolved_cfg = om.OmegaConf.to_container(cfg, resolve=True, structured_config_mode=False)
+    cfg = om.OmegaConf.create(resolved_cfg)
+    print(f"Config : \n {cfg}")
     train(cfg)

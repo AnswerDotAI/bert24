@@ -17,7 +17,7 @@ def prep_jailbreak_and_alert():
     jailbreak_train = load_dataset("allenai/wildjailbreak", 'train', delimiter="\t", keep_default_na=False,)
 
     # Load the WildJailbreak evaluation set
-    jailbreak_eval = load_dataset("allenai/wildjailbreak", "eval", split='train', delimiter="\t", keep_default_na=False,N)
+    jailbreak_eval = load_dataset("allenai/wildjailbreak", "eval", split='train', delimiter="\t", keep_default_na=False)
 
 
     alert_vanilla = load_dataset("Babelscape/ALERT", "alert")
