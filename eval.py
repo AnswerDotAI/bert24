@@ -112,7 +112,7 @@ def build_callback(name, kwargs):
     elif name == "early_stopper":
         return EarlyStopper(
             monitor='MulticlassAccuracy',
-            dataloader_label='wildjailbreak',
+            dataloader_label=kwargs.get('task'),
             patience='1000ba', # 2x eval_interval to have some datapoints
             comp=torch.greater,
             min_delta=0.01,
@@ -355,8 +355,6 @@ def run_job_worker(
     reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
-    print(f"{task_cls=}")
-    # print(f"Evaluators of the task : {task_cls.evaluators}")
 
     model = build_model(
         config.model,
