@@ -1,6 +1,27 @@
 # How to Run Evaluations
 
-This document explains how to run fine-tuning evaluations for pre-trained models using the scripts `run_evals.py` and `generate_eval_config.py`. These scripts assume you have a pre-trained or finetuned Composer `FlexBert`checkpoint to evaluate.
+These notes explain how to run fine-tuning evaluations for pre-trained models on this repo. First it will show how to do this all with the `run_evals.py` helper script.
+
+Running an eval requires specifying many input values, such as the path to the checkpoint you will be finetuning, training configurations, the precise eval task or tasks to run, which GPU devices to use, etc.. 
+
+So running the script 
+
+
+In general you can provide values by specifying default values in the code itself, by setting values in yaml files which are read by the script, or by passing command line arguments to a script, or by setting environmental variables.
+
+
+(The first way, `run_evals.py`, is in fact just a convenience wrapper which itself does the second way under the hood, running `generate_eval_config.py` and `eval.py`.)
+
+
+You can supply these values through a mix of various means: default values which are defined in the code itself.
+
+
+
+These We're using Mosiac Composer, which is 
+
+
+To run an eval, you need to 
+These scripts assume you have a pre-trained or finetuned Composer `FlexBert`checkpoint to evaluate.
 
 ## 1. Optionally Login to Hugging Face
 
