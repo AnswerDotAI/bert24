@@ -1,6 +1,10 @@
 import wandb
 import yaml
 
+"""
+This script creates sweeps in the UI from a list of configs. The sweep IDs are written to a text file.
+Those sweeps are then run with launch_sweeps.sh script.
+"""
 def create_sweep_for_config(config_path):
     task = "beavertails" if "beavertails" in config_path else "wildjailbreak"
     
@@ -31,7 +35,7 @@ def create_sweep_for_config(config_path):
     
     return sweep_id
 
-# List of config files
+# configs to run
 config_files = [
     "configs/beavertails/bert-base-sweep-beavertails.yaml",
     "configs/beavertails/deberta-bert-base-sweep-beavertails.yaml",
@@ -45,13 +49,12 @@ config_files = [
     # "configs/large/wildjailbreak/roberta-bert-large.yaml"
 ]
 
-# Create sweeps for each config and save IDs
 all_sweep_ids = {}
 for config_path in config_files:
     sweep_id = create_sweep_for_config(config_path)
     all_sweep_ids[config_path] = sweep_id
 
-# Save sweep IDs to file
+# save sweep IDs to a txt
 with open('sweep_ids.txt', 'w') as f:
     for config_path, sweep_id in all_sweep_ids.items():
         f.write(f"{sweep_id}\n")
