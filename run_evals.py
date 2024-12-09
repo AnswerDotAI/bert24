@@ -486,6 +486,7 @@ def download_datasets(tasks: List[TaskName], msg_queue):  # type: ignore
             "mlmmlu_rookie_reserve": [["answerdotai/MLMMLU", "Rookie"], ["answerdotai/MLMMLU", "Reserve"]],
             "eurlex": [["coastalcph/lex_glue", "eurlex"]],
             "ultrafeedback": [["rbiswasfc/ultrafeedback-binary-classification"]],
+            "llm_guardrails": [["ModernBERT/llm_guardrails", "wildjailbreak"], ["ModernBERT/llm_guardrails", "alert_vanilla"], ["ModernBERT/llm_guardrails", "alert_adversarial"]],
         }
 
         for task in tasks:
