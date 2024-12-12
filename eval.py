@@ -111,7 +111,7 @@ def build_callback(name, kwargs):
         )
     elif name == "early_stopper":
         return EarlyStopper(
-            monitor='MulticlassAccuracy',
+            monitor=kwargs.get('metric_to_monitor'),
             dataloader_label=kwargs.get('task'),
             patience='1000ba', # 2x eval_interval to have some datapoints
             comp=torch.greater,
@@ -297,6 +297,7 @@ def create_job_configs(
 ):
     configs = []
     for task_name, task_config in main_config.tasks.items():
+        task_name = main_config.get("task", task_name)
         if main_config.get("base_run_name") is None:
             main_config.base_run_name = os.environ.get("COMPOSER_RUN_NAME", "glue")
         if task_name not in tasks_to_run:
@@ -352,7 +353,7 @@ def run_job_worker(
 ) -> Any:
     """Instantiates the job object and runs it."""
     # need to set seed before model initialization for determinism
-    reproducibility.configure_deterministic_mode()
+    # reproducibility.configure_deterministic_mode()
     reproducibility.seed_all(config.seed)
     task_cls = TASK_NAME_TO_CLASS[config.task]
 
