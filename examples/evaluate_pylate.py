@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import srsly
+
 from pylate import evaluation, indexes, models, retrieve
 
 
@@ -64,7 +65,7 @@ for dataset in eval_datasets:
             batch_size=16,
         )
 
-        scores = retriever.retrieve(queries_embeddings=queries_embeddings, k=20, k_token=80, batch_size=2)
+        scores = retriever.retrieve(queries_embeddings=queries_embeddings, k=100)
 
         evaluation_scores = evaluation.evaluate(
             scores=scores,
