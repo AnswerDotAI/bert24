@@ -1,6 +1,6 @@
 # Welcome!
 
-This is the repository where you can find BERT-24 (name TBD), our experiments to bring BERT and DeBERTa into modernity via both architecture changes and scaling.
+This is the repository where you can find ModernBERT, our experiments to bring BERT and DeBERTa into modernity via both architecture changes and scaling.
 
 This repository is initialised off [MosaicBERT](https://github.com/mosaicml/examples/tree/main/examples/benchmarks/bert), and specifically the [unmerged fork bringing Flash Attention 2](https://github.com/Skylion007/mosaicml-examples/tree/skylion007/add-fa2-to-bert) to it, under the terms of its Apache 2.0 license. It currently hasn't been modified yet, and serves as a starting point.
 
