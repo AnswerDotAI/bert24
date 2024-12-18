@@ -22,7 +22,7 @@ def fetch_most_recent_checkpoint(model_path: str):
 
 
 eval_datasets = ["fiqa", "scifact", "nfcorpus", "trec-covid"]
-model_name = "ModernBERT/bert24-base-v2-2ep-decay_100B-0.08-lr"
+model_name = "answerdotai/ModernBERT-base"
 model_shortname = model_name.split("/")[-1]
 lr = 8e-5
 model_results = defaultdict(dict)
@@ -31,7 +31,6 @@ output_dir = f"output/{model_shortname}/{run_name}"
 model = models.ColBERT(
     model_name_or_path=f"{output_dir}/final",
     document_length=510,
-    trust_remote_code=True,
 )
 for dataset in eval_datasets:
     for eval_dataset in eval_datasets:
