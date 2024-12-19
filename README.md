@@ -6,6 +6,8 @@ This repository noticeably introduces FlexBERT, our modular approach to encoder 
 
 This README is very barebones and is still under construction. It will improve with more reproducibility and documentation in the new year, as we gear up for more encoder niceties after the pre-holidays release of ModernBERT. For now, we're mostly looking forward to seeing what people build with the [🤗 model checkpoints](https://huggingface.co/collections/answerdotai/modernbert-67627ad707a4acbf33c41deb)).
 
+For more details on what this repository brings, we recommend reading our [release blog post](https://huggingface.co/blog/modernbert) for a high-level overview, and our [arXiv preprint](https://arxiv.org/abs/2412.13663) for more technical details.
+
 All code used in this repository is the code used as part of our experiments for both pre-training and GLUE evaluations, there's no uncommitted secret training sauce.
 
 ** This is the research repository for ModernBERT, focused on pre-training and evaluations. If you're seeking the HuggingFace version, designed to integrate with any common pipeline, please head to the [ModernBERT Collection on HuggingFace](https://huggingface.co/collections/answerdotai/modernbert-67627ad707a4acbf33c41deb)**
