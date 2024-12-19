@@ -1,3 +1,6 @@
+# Copyright 2024 onwards Answer.AI, LightOn, and contributors
+# License: Apache-2.0
+
 from datasets import load_dataset
 from pylate import losses, models, utils
 from sentence_transformers import (

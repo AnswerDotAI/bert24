@@ -1,3 +1,9 @@
+# Copyright 2024 onwards Answer.AI, LightOn, and contributors
+# License: Apache-2.0
+
+# Copyright 2022 MosaicML Composer authors
+# SPDX-License-Identifier: Apache-2.0
+
 from enum import Enum
 import math
 import textwrap
