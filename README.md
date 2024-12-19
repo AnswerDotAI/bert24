@@ -2,7 +2,7 @@
 
 This is the repository where you can find ModernBERT, our experiments to bring BERT into modernity via both architecture changes and scaling.
 
-This repository noticeably introduces FlexBERT, our modular approach to encoder building blocks, and heavily relies on .yaml configuration files to build models. The codebase builds upon [MosaicBERT](https://github.com/mosaicml/examples/tree/main/examples/benchmarks/bert), and specifically the [unmerged fork bringing Flash Attention 2](https://github.com/Skylion007/mosaicml-examples/tree/skylion007/add-fa2-to-bert) to it, under the terms of its Apache 2.0 license. We extend our thanks to MosaicML for starting the work on modernising encoders! 
+This repository noticeably introduces FlexBERT, our modular approach to encoder building blocks, and heavily relies on .yaml configuration files to build models. The codebase builds upon [MosaicBERT](https://github.com/mosaicml/examples/tree/main/examples/benchmarks/bert), and specifically the [unmerged fork bringing Flash Attention 2](https://github.com/Skylion007/mosaicml-examples/tree/skylion007/add-fa2-to-bert) to it, under the terms of its Apache 2.0 license. We extend our thanks to MosaicML for starting the work on modernising encoders!
 
 This README is very barebones and is still under construction. It will improve with more reproducibility and documentation in the new year, as we gear up for more encoder niceties after the pre-holidays release of ModernBERT. For now, we're mostly looking forward to seeing what people build with the [🤗 model checkpoints](https://huggingface.co/collections/answerdotai/modernbert-67627ad707a4acbf33c41deb)).
 
@@ -10,7 +10,9 @@ For more details on what this repository brings, we recommend reading our [relea
 
 All code used in this repository is the code used as part of our experiments for both pre-training and GLUE evaluations, there's no uncommitted secret training sauce.
 
-** This is the research repository for ModernBERT, focused on pre-training and evaluations. If you're seeking the HuggingFace version, designed to integrate with any common pipeline, please head to the [ModernBERT Collection on HuggingFace](https://huggingface.co/collections/answerdotai/modernbert-67627ad707a4acbf33c41deb)**
+**This is the research repository for ModernBERT, focused on pre-training and evaluations. If you're seeking the HuggingFace version, designed to integrate with any common pipeline, please head to the [ModernBERT Collection on HuggingFace](https://huggingface.co/collections/answerdotai/modernbert-67627ad707a4acbf33c41deb)**
+
+*ModernBERT is a collaboration between [Answer.AI](https://answer.ai), [LightOn](https://lighton.ai), and friends.*
 
 ## Setup
 
