@@ -410,6 +410,10 @@ def main(
             task_config["seeds"] = seeds[:1]
             task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
 
+        elif task_name == "llm_guardrails":
+            task_config["seeds"] = seeds[:3]
+            task_config["trainer_kwargs"] = {"save_num_checkpoints_to_keep": 0}
+
         else:
             print(
                 f"Warning: Task '{task_name}' doesn't have eval_config defaults. Using task defaults with three seeds."
@@ -418,6 +422,14 @@ def main(
         tasks_dict[task_name] = task_config
 
     new_config["tasks"] = tasks_dict
+
+    # Extract actual values from dict-wrapped configs
+    if isinstance(new_config.get("base_run_name"), dict) and "value" in new_config["base_run_name"]:
+        new_config["base_run_name"] = new_config["base_run_name"]["value"]
+    if isinstance(new_config.get("precision"), dict) and "value" in new_config["precision"]:
+        new_config["precision"] = new_config["precision"]["value"]
+    if isinstance(new_config.get("tokenizer_name"), dict) and "value" in new_config["tokenizer_name"]:
+        new_config["tokenizer_name"] = new_config["tokenizer_name"]["value"]
 
     # Write the new configuration to a YAML file
     output_filename = output_dir / f"{ckpt_id}_evaluation.yaml"
