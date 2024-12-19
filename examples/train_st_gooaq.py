@@ -25,6 +25,7 @@ def main():
 
     # 1. Load a model to finetune
     model = SentenceTransformer(model_name)
+    model.max_seq_length = 8192
 
     # 2. Load a dataset to finetune on
     dataset = load_dataset("sentence-transformers/gooaq", split="train")
