@@ -1,3 +1,6 @@
+# Copyright 2024 onwards Answer.AI, LightOn, and contributors
+# License: Apache-2.0
+
 import time
 from composer.core import Callback, State
 from composer.loggers import Logger
