@@ -361,7 +361,7 @@ def init_from_checkpoint(cfg: DictConfig, new_model: nn.Module):
         new_model=new_model.model,
         mode=cfg.get("mode", "tile_weights_from_middle"),
     )
-    print(f"Initalized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
+    print(f"Initialized model from checkpoint {cfg.checkpoint_run_name} with {n_params=:.4e} parameters")
 
 
 def main(cfg: DictConfig, return_trainer: bool = False, do_train: bool = True) -> Optional[Trainer]:

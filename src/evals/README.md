@@ -40,7 +40,7 @@ python eval.py yamls/ablations/checkpoint_name.yaml
 
 ## Automatically generate eval configs for multiple checkpoints and run evals on multiple GPUs
 
-`run_evals_from_checkpoints.py` can be used to automatically generate configs from the latest checkpoints in a given directory, and run all evals on all avalible GPUs.
+`run_evals_from_checkpoints.py` can be used to automatically generate configs from the latest checkpoints in a given directory, and run all evals on all available GPUs.
 
 Run `python run_evals_from_checkpoints.py --help` for all options. All options from `generate_eval_config_from_checkpoint.py` are also available.
 
