@@ -230,7 +230,7 @@ def create_mosaic_bert_classification(
         First, it will switch the training loss to :class:`~torch.nn.MSELoss`.
         Second, the returned :class:`.ComposerModel`'s train/validation metrics
         will be :class:`~torchmetrics.MeanSquaredError` and
-        :class:`~torchmetrics.SpearmanCorrCoef`. For the classifcation case
+        :class:`~torchmetrics.SpearmanCorrCoef`. For the classification case
         (when ``num_labels > 1``), the training loss is
         :class:`~torch.nn.CrossEntropyLoss`, and the train/validation
         metrics are :class:`~torchmetrics.MulticlassAccuracy` and

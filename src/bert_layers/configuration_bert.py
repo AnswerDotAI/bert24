@@ -24,7 +24,7 @@ class BertConfig(TransformersBertConfig):
                 create when initializing the model. You should be able to ignore this parameter in most cases.
                 Defaults to 512.
             attention_probs_dropout_prob (float): By default, turn off attention dropout in MosaicBERT
-                Note that the custom Triton Flash Attention with ALiBi implementation does not support droput.
+                Note that the custom Triton Flash Attention with ALiBi implementation does not support dropout.
                 However, Flash Attention 2 supports ALiBi and dropout https://github.com/Dao-AILab/flash-attention
             embed_dropout_prob (float): Dropout probability for the embedding layer.
             attn_out_dropout_prob (float): Dropout probability for the attention output layer.
@@ -155,7 +155,7 @@ class FlexBertConfig(TransformersBertConfig):
             unpad_embeddings (bool): Unpad inputs before the embedding layer.
             pad_logits (bool): Pad logits after the calculating the loss.
             compile_model (bool): Compile the subset of the model which can be compiled.
-            masked_prediction (bool): Use only pass the masked tokens throught the final MLM layers
+            masked_prediction (bool): Use only pass the masked tokens through the final MLM layers
             **kwargs: Additional keyword arguments.
         """
         super().__init__(attention_probs_dropout_prob=attention_probs_dropout_prob, **kwargs)

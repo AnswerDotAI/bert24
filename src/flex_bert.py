@@ -41,7 +41,7 @@ except ImportError:
 all = ["create_flex_bert_mlm", "create_flex_bert_classification"]
 
 
-# we want the efficent versions to have the same name as the TorchMetrics' name
+# we want the efficient versions to have the same name as the TorchMetrics' name
 def rename_class(new_name):
     def class_renamer(cls):
         cls.__name__ = new_name
@@ -398,7 +398,7 @@ def create_flex_bert_classification(
         First, it will switch the training loss to :class:`~torch.nn.MSELoss`.
         Second, the returned :class:`.ComposerModel`'s train/validation metrics
         will be :class:`~torchmetrics.MeanSquaredError` and
-        :class:`~torchmetrics.SpearmanCorrCoef`. For the classifcation case
+        :class:`~torchmetrics.SpearmanCorrCoef`. For the classification case
         (when ``num_labels > 1``), the training loss is
         :class:`~torch.nn.CrossEntropyLoss`, and the train/validation
         metrics are :class:`~torchmetrics.MulticlassAccuracy` and
