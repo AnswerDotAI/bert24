@@ -45,7 +45,7 @@ def process_data(args):
         try:
             meta = parse_model_string(run.name)
         except ValueError:
-            print(f"Skipping run with unparseable name: {run.name}")
+            print(f"Skipping run with unparsable name: {run.name}")
             continue
         task = meta["task"]
         summary = run.summary
