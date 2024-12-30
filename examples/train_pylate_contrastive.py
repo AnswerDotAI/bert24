@@ -12,7 +12,8 @@ import torch
 torch._inductor.config.fallback_random = True
 torch._inductor.config.triton.unique_kernel_names = True
 # Or completely disable torch compile
-# model.forward = torch.compile(model.forward, mode="max-autotune", fullgraph=True)
+# ModernBERT is compiled by default, so there is no need to call compile explicitly and it actually breaks the model
+# model = torch.compile(model)
 
 # Define model parameters for contrastive training
 model_name = "answerdotai/ModernBERT-large"  # Choose the pre-trained model you want to use as base
