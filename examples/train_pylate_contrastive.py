@@ -8,7 +8,6 @@ from sentence_transformers import (
 from pylate import evaluation, losses, models, utils
 
 # Add at the start of your train_pylate_contrastive.py
-import torch
 torch._inductor.config.fallback_random = True
 # ModernBERT is compiled by default, so there is no need to call compile explicitly and it actually breaks the model
 # model = torch.compile(model)
