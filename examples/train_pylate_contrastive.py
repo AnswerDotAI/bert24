@@ -11,7 +11,6 @@ from pylate import evaluation, losses, models, utils
 import torch
 torch._inductor.config.fallback_random = True
 torch._inductor.config.triton.unique_kernel_names = True
-# Or completely disable torch compile
 # ModernBERT is compiled by default, so there is no need to call compile explicitly and it actually breaks the model
 # model = torch.compile(model)
 
