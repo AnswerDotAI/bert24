@@ -9,10 +9,10 @@ from sentence_transformers import (
 
 
 def main():
-    # Define model parameters for contrastive training
     model_name = "answerdotai/ModernBERT-base"  # Choose the pre-trained model you want to use as base
     model_shortname = model_name.split("/")[-1]
 
+    # Define model parameters for contrastive training
     batch_size = 64  # Larger batch size often improves results, but requires more memory
     lr = 3e-6
     num_train_epochs = 5  # Adjust based on your requirements
@@ -49,10 +49,11 @@ def main():
         num_train_epochs=num_train_epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-        bf16=False,  # Set to True if you have a GPU that supports BF16
+        fp16=False,  # Set to False if you get an error that your GPU can't run on FP16
+        bf16=True,  # Set to True if you have a GPU that supports BF16
         run_name=run_name,  # Will be used in W&B if `wandb` is installed
         learning_rate=lr,
+        logging_steps=100,
     )
 
     # Initialize the trainer for the contrastive training
