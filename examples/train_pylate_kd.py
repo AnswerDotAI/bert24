@@ -8,6 +8,7 @@ from sentence_transformers import (
     SentenceTransformerTrainingArguments,
 )
 
+
 def main():
     # Load the datasets required for knowledge distillation (train, queries, documents)
     train = load_dataset(
@@ -75,6 +76,7 @@ def main():
     trainer.train()
 
     model.save_pretrained(f"{output_dir}/final")
+
 
 if __name__ == "__main__":
     main()
